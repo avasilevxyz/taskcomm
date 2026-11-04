@@ -1,3 +1,4 @@
 xyz.avasilev.taskcomm.autoconfigure.TaskcommAutoConfiguration
 xyz.avasilev.taskcomm.autoconfigure.TaskcommSchemaAutoConfiguration
 xyz.avasilev.taskcomm.autoconfigure.TaskcommTaskAutoConfiguration
+xyz.avasilev.taskcomm.autoconfigure.TaskcommCommunicationAutoConfiguration

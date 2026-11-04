@@ -1,0 +1,29 @@
+package xyz.avasilev.taskcomm.communication.internal;
+
+import java.time.Duration;
+import java.util.UUID;
+
+/**
+ * Аренда открытой попытки — всё, что нужно, чтобы её продлить и закрыть
+ * (docs/adr/0046-lease-in-attempt.md).
+ *
+ * @param attemptId идентификатор попытки
+ * @param token токен аренды, новый на каждый захват
+ * @param duration на сколько продлевается аренда
+ * @param heartbeatInterval как часто аренда продлевается
+ * @param maxRenewals предел обработки в продлениях
+ */
+record AttemptLease(UUID attemptId, UUID token, Duration duration, Duration heartbeatInterval, int maxRenewals) {
+
+    /**
+     * Новая аренда по настройкам фазы.
+     *
+     * @param attemptId идентификатор попытки
+     * @param lease настройки аренды
+     * @return аренда с новым токеном
+     */
+    static AttemptLease of(final UUID attemptId, final LeaseSettings lease) {
+        return new AttemptLease(
+                attemptId, UUID.randomUUID(), lease.duration(), lease.heartbeatInterval(), lease.maxRenewals());
+    }
+}

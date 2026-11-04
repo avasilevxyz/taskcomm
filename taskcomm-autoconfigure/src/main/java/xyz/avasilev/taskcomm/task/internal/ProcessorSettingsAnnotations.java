@@ -26,6 +26,12 @@ import xyz.avasilev.taskcomm.task.api.TaskProcessorSettings;
  */
 final class ProcessorSettingsAnnotations {
 
+    /**
+     * Имя аннотации настроек коммуникаций — чужой подсистемы; ищется по имени, потому что задачи
+     * от коммуникаций не зависят (docs/adr/0066-processor-settings-annotation-names.md).
+     */
+    static final String FOREIGN = "xyz.avasilev.taskcomm.communication.api.CommunicationProcessorSettings";
+
     private ProcessorSettingsAnnotations() {}
 
     /**
@@ -64,9 +70,14 @@ final class ProcessorSettingsAnnotations {
     }
 
     private static SettingsOverride read(final AnnotatedElement element, final String place) {
+        final MergedAnnotations annotations = MergedAnnotations.from(element, SearchStrategy.DIRECT);
+        if (annotations.isPresent(FOREIGN)) {
+            throw new TaskcommConfigurationException("@CommunicationProcessorSettings на процессоре задач (" + place
+                    + "): у подсистемы своя аннотация — @TaskProcessorSettings "
+                    + "(docs/adr/0066-processor-settings-annotation-names.md).");
+        }
         final Attributes attributes = new Attributes(place);
-        MergedAnnotations.from(element, SearchStrategy.DIRECT).stream(TaskProcessorSettings.class)
-                .forEach(attributes::add);
+        annotations.stream(TaskProcessorSettings.class).forEach(attributes::add);
         return attributes.toOverride();
     }
 

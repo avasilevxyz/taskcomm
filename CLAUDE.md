@@ -101,7 +101,8 @@ toolchain** (а не только toolchain нацелен на неё) — ли
 только мажорную версию, нижнюю границу патча держит эта проверка.
 
 **Не пиним** — версии приходят из BOM Spring Boot: Micrometer и его реестры, драйвер PostgreSQL,
-Tomcat, Jackson 3, Liquibase (только в тестах). Явный пин старой ветки Micrometer против Boot ломает Actuator, а пин драйвера
+Tomcat, Jackson 3, Liquibase (только в тестах). `jackson-dataformat-xml` — тоже из BOM и только `compileOnly`:
+потребителю она не приезжает, SOAP-потребитель подключает её сам ([ADR 0135](docs/adr/0135-communication-engine.md)). Явный пин старой ветки Micrometer против Boot ломает Actuator, а пин драйвера
 вниз нарушает наше же правило «не понижать версии зависимостей».
 
 Checkstyle обязан **разбирать синтаксис Java 25**: `sealed` с `permits` и pattern matching

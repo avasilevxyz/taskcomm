@@ -45,6 +45,9 @@ dependencyResolutionManagement {
             // код стартера видит только databind, версия — из BOM.
             library('spring-boot-starter-jackson', 'org.springframework.boot', 'spring-boot-starter-jackson').versionRef('spring-boot')
             library('jackson-databind', 'tools.jackson.core', 'jackson-databind').withoutVersion()
+            // XML для разбора SOAP по умолчанию (docs/adr/0135): стартер её не тянет, SOAP-потребитель
+            // подключает сам; версия — из BOM.
+            library('jackson-dataformat-xml', 'tools.jackson.dataformat', 'jackson-dataformat-xml').withoutVersion()
             library('spring-boot-starter-test', 'org.springframework.boot', 'spring-boot-starter-test').versionRef('spring-boot')
             library('spring-boot-configuration-processor', 'org.springframework.boot', 'spring-boot-configuration-processor').versionRef('spring-boot')
             library('spring-boot-autoconfigure-processor', 'org.springframework.boot', 'spring-boot-autoconfigure-processor').versionRef('spring-boot')

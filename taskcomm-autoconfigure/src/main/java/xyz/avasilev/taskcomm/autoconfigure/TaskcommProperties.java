@@ -35,6 +35,9 @@ public class TaskcommProperties {
     /** Подсистема задач. */
     private Task task = new Task();
 
+    /** Подсистема коммуникаций. */
+    private Communication communication = new Communication();
+
     /** Удаление результатов детей задач после сборки. */
     private Results results = new Results();
 
@@ -366,5 +369,137 @@ public class TaskcommProperties {
 
         /** Глубина хранения: партиция удаляется, когда её верхняя граница старше этого срока. */
         private Duration retention = Duration.ofDays(180);
+    }
+    /**
+     * Свойства {@code taskcomm.communication.*}: подсистема коммуникаций. Поллинг — та же форма, что
+     * у задач; аренда и повторы — свои умолчания (docs/rules/configuration.md). Срок ожидания ответа,
+     * ограничение скорости и размыкатель появятся вместе с этапами 5c и 5d.
+     */
+    @Getter
+    @Setter
+    public static class Communication {
+
+        /** Выключатель подсистемы коммуникаций; корневой taskcomm.enabled выключает и её. */
+        private boolean enabled = true;
+
+        /** Основной поллер коммуникаций. */
+        private Poll poll = new Poll();
+
+        /** Аренда по умолчанию для всех систем. */
+        private CommunicationLease lease = new CommunicationLease();
+
+        /** Повторы по умолчанию для всех систем. */
+        private CommunicationRetry retry = new CommunicationRetry();
+
+        /** Выделенные поллеры по именам; не заданное берётся у основного. */
+        private Map<String, CommunicationPoller> pollers = new LinkedHashMap<>();
+
+        /** Переопределения по внешним системам; ключ — имя системы, по нему же ищется процессор. */
+        private Map<String, CommunicationSystem> systems = new LinkedHashMap<>();
+    }
+
+    /** Аренда коммуникаций по умолчанию. */
+    @Getter
+    @Setter
+    public static class CommunicationLease {
+
+        /** На сколько выдаётся и продлевается аренда. */
+        private Duration duration = Duration.ofSeconds(60);
+
+        /** Как часто продлевается аренда — заметно меньше аренды. */
+        private Duration heartbeatInterval = Duration.ofSeconds(20);
+
+        /** Предел обработки одной попытки; таймаут клиента внешней системы обязан быть короче. */
+        private Duration maxExecutionTime = Duration.ofMinutes(5);
+    }
+
+    /** Повторы коммуникаций по умолчанию. */
+    @Getter
+    @Setter
+    public static class CommunicationRetry {
+
+        /** Лимит попыток в цикле повторов. */
+        private int maxAttempts = 5;
+
+        /** Первая задержка backoff. */
+        private Duration initialDelay = Duration.ofSeconds(10);
+
+        /** Множитель backoff. */
+        private double multiplier = 2.0;
+
+        /** Верхняя граница задержки backoff. */
+        private Duration maxDelay = Duration.ofHours(1);
+
+        /** Доля джиттера в (0, 1]; джиттер обязателен. */
+        private double jitter = 0.2;
+    }
+
+    /** Выделенный поллер коммуникаций. */
+    @Getter
+    @Setter
+    public static class CommunicationPoller {
+
+        /** Внешние системы поллера; основной их не берёт. */
+        private List<String> systems = new ArrayList<>();
+
+        /** Пауза между захватами при пустой очереди. */
+        private Duration interval;
+
+        /** Верхняя граница одного захвата. */
+        private Integer batchSize;
+
+        /** Размер пула воркеров поллера. */
+        private Integer workers;
+
+        /** Форма захвата. */
+        private ClaimOrder claimOrder;
+
+        /** Шаг дедлайна формы deadline. */
+        private Duration deadlineStep;
+
+        /** Доля захватов по FIFO у формы quota. */
+        private Double fifoShare;
+    }
+
+    /** Переопределения внешней системы. */
+    @Getter
+    @Setter
+    public static class CommunicationSystem {
+
+        /** Приоритет коммуникаций системы по умолчанию; меньше значит важнее. */
+        private Integer priority;
+
+        /** Аренда системы. */
+        private LeaseOverride lease = new LeaseOverride();
+
+        /** Повторы системы. */
+        private RetryOverride retry = new RetryOverride();
+
+        /**
+         * Отказные статусы ответа: код (429) или класс (5xx). Не задано — умолчание
+         * транспорта: 5xx и 429 у REST и SOAP, ничего у RAW; пустой список выключает их.
+         */
+        private List<String> failureStatuses;
+
+        /** Переопределения по фазам: process, handle-response. */
+        private Map<String, CommunicationSystemPhase> phases = new LinkedHashMap<>();
+    }
+
+    /** Переопределения фазы внешней системы: только аренда и повторы. */
+    @Getter
+    @Setter
+    public static class CommunicationSystemPhase {
+
+        /** На фазе запрещён: свойство системы — падение при старте. */
+        private Integer priority;
+
+        /** На фазе запрещены: свойство системы — падение при старте. */
+        private List<String> failureStatuses;
+
+        /** Аренда фазы. */
+        private LeaseOverride lease = new LeaseOverride();
+
+        /** Повторы фазы. */
+        private RetryOverride retry = new RetryOverride();
     }
 }

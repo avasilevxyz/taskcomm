@@ -15,6 +15,7 @@ dependencies {
     // встаёт наша. Потребителю это приезжает через spring-boot-starter-jdbc в стартере.
     compileOnly libs.spring.boot.jdbc
     compileOnly libs.jackson.databind
+    compileOnly libs.jackson.dataformat.xml
     annotationProcessor libs.spring.boot.configuration.processor
     annotationProcessor libs.spring.boot.autoconfigure.processor
 
@@ -36,6 +37,7 @@ dependencies {
     testImplementation libs.spring.boot.starter.test
     testImplementation libs.spring.boot.starter.jdbc
     testImplementation libs.jackson.databind
+    testImplementation libs.jackson.dataformat.xml
     testImplementation libs.archunit.junit5
     testImplementation libs.testcontainers.postgresql
     testImplementation libs.testcontainers.junit.jupiter

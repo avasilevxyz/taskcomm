@@ -27,6 +27,10 @@ sealed interface HttpCommunicationProcessor<C, R, A> extends CommunicationProces
   у REST и Kafka, XML у SOAP — разбор по умолчанию приходит аргументом, метод можно переопределить;
   у RAW оба обязательны. Исключение из метода разбора — неразбираемое тело
   ([ADR 0134](../adr/0134-communication-public-api-shape.md)).
+- **SOAP по умолчанию снимает конверт**: корень — `Envelope` SOAP 1.1 или 1.2, разбирается первый элемент
+  `Body`, DTD запрещены. `jackson-dataformat-xml` стартер **не тянет**: SOAP-процессор, полагающийся на разбор
+  по умолчанию, без неё в classpath — падение при старте
+  ([ADR 0135](../adr/0135-communication-engine.md)).
 - Форма контракта — колонка `contract_shape` в `tc_communication`: `REST` | `SOAP` | `KAFKA` |
   `RAW`. У **входящих** проставляется **при создании** — в этот момент выбран кодек; у **исходящих** —
   при первом захвате
@@ -261,10 +265,11 @@ sealed interface HttpCommunicationProcessor<C, R, A> extends CommunicationProces
 включён размыкатель или нет. У задач успех по-прежнему — отсутствие исключения; расхождение
 сознательное.
 
-- Отказные статусы — `failure-statuses` в `systems.<имя>`, **вне** `circuit-breaker`. По умолчанию
+- Отказные статусы — `failure-statuses` в `systems.<имя>`, **вне** `circuit-breaker`. Применяются **только к ответу
+  исходящей**: у входящей `response_*` — наш ответ отправителю ([ADR 0135](../adr/0135-communication-engine.md)). По умолчанию
   зависят от транспорта: `5xx` и `429` у REST и SOAP (`4xx` не всегда проблема системы), **пусто
   у RAW** — смысл статуса знает только автор процессора, — у Kafka статуса нет.
-- REST- или SOAP-процессор вернулся нормально, не записав ответ, — `SUCCEEDED` и WARN.
+- REST- или SOAP-процессор исходящей вернулся нормально, не записав ответ, — `SUCCEEDED` и WARN.
 - `failure-statuses` применяются к синхронному ответу в попытке `PROCESS`; к попытке
   `HANDLE_RESPONSE` — нет: там `response_*` — наш ответ отправителю колбэка
   ([ADR 0086](../adr/0086-async-response-in-outbound.md)).
