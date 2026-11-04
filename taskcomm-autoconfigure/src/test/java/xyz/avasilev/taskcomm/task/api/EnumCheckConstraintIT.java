@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.sql.init.DatabaseInitializationMode;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import xyz.avasilev.taskcomm.TestPostgres;
+import xyz.avasilev.taskcomm.communication.api.CommunicationStatus;
 import xyz.avasilev.taskcomm.execution.api.OriginRelation;
 import xyz.avasilev.taskcomm.execution.api.OriginType;
 import xyz.avasilev.taskcomm.schema.internal.TaskcommSchemaInitializer;
@@ -49,6 +50,12 @@ class EnumCheckConstraintIT {
     void taskUnitStatusMatchesCheck() {
         assertThat(checkValues("tc_task_unit_status_check"))
                 .containsExactlyInAnyOrderElementsOf(names(TaskUnitStatus.values()));
+    }
+
+    @Test
+    void communicationStatusMatchesCheck() {
+        assertThat(checkValues("tc_communication_status_check"))
+                .containsExactlyInAnyOrderElementsOf(names(CommunicationStatus.values()));
     }
 
     @Test

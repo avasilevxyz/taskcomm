@@ -681,9 +681,10 @@ public void createOrder(OrderRequest request) {
 Направление — **тип, а не значение поля**:
 
 ```java
-public sealed interface Communication<C> {
-    record Inbound<C>(String source, C requestPayload)       implements Communication<C> {}
-    record Outbound<C>(String destination, C requestPayload) implements Communication<C> {}
+public sealed interface Communication<C> permits Communication.Inbound, Communication.Outbound {
+    C requestPayload();
+    non-sealed interface Inbound<C>  extends Communication<C> { String source(); }
+    non-sealed interface Outbound<C> extends Communication<C> { String destination(); }
 }
 ```
 

@@ -35,7 +35,7 @@ import org.springframework.stereotype.Service;
  * <p>Подсистемы перечислены явно. Добавление новой подсистемы требует дописать сюда правила.
  *
  * <p>{@code allowEmptyShould(true)} стоит только там, где в {@code that()} пока нет ни одного
- * класса, — у коммуникаций и REST. ArchUnit по умолчанию валит такое правило — это защита
+ * класса, — у REST. ArchUnit по умолчанию валит такое правило — это защита
  * от опечатки в предикате. С появлением первого класса в пакете послабление обязано уйти, иначе
  * правило продолжит молча ничего не проверять.
  */
@@ -99,8 +99,7 @@ class ArchitectureTest {
             .resideInAPackage(COMMUNICATION)
             .should()
             .dependOnClassesThat()
-            .resideInAPackage(TASK)
-            .allowEmptyShould(true);
+            .resideInAPackage(TASK);
 
     @ArchTest
     static final ArchRule EXECUTION_IS_PASSIVE = noClasses()

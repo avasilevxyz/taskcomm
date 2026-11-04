@@ -9,6 +9,8 @@
   кодек, в обоих режимах приёма; у исходящих — при первом захвате, как здесь.
 - **Изменено:** [0086](0086-async-response-in-outbound.md) — третий параметр типа `CommunicationProcessor<C, R, A>`
   для доменной формы колбэка и метод `handleResponse`; исходящая Kafka по умолчанию ждёт ответа.
+- **Изменено:** [0134](0134-communication-public-api-shape.md) — методы разбора `decodeRequest` и `decodeResponse` у каждого
+  контракта: JSON по умолчанию у REST и Kafka, XML у SOAP, у RAW обязательны.
 
 ## Контекст
 

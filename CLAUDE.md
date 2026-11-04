@@ -293,14 +293,17 @@ classpath — Spring уже всё нашёл.
 Направление — **тип, а не значение поля**:
 
 ```java
-public sealed interface Communication<C> {
-    record Inbound<C>(String source, C requestPayload)       implements Communication<C> {}
-    record Outbound<C>(String destination, C requestPayload) implements Communication<C> {}
+public sealed interface Communication<C> permits Communication.Inbound, Communication.Outbound {
+    C requestPayload();
+    non-sealed interface Inbound<C>  extends Communication<C> { String source(); }
+    non-sealed interface Outbound<C> extends Communication<C> { String destination(); }
 }
 ```
 
 Невалидную коммуникацию (обе стороны пустые, обе заполненные) нельзя собрать в принципе, а процессор
 разбирает направление через pattern matching. В БД по-прежнему две колонки и признак направления.
+Интерфейсы, а не записи, — как у `Task`: новое поле не ломает совместимость
+([ADR 0134](docs/adr/0134-communication-public-api-shape.md)).
 
 Нагрузка называется `requestPayload`, а не `payload`: доменных форм у коммуникации две — запроса
 и ответа ([ADR 0055](docs/adr/0055-communication-exchange-storage.md)). У задач колонка остаётся
