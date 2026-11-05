@@ -6,6 +6,8 @@ import javax.sql.DataSource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.function.SingletonSupplier;
+import xyz.avasilev.taskcomm.TaskcommException;
+import xyz.avasilev.taskcomm.UnreadablePayloadException;
 import xyz.avasilev.taskcomm.communication.api.CallbackRequest;
 import xyz.avasilev.taskcomm.communication.api.Communication;
 import xyz.avasilev.taskcomm.communication.api.CommunicationCancelResult;
@@ -41,6 +43,8 @@ public class DefaultCommunicationService implements CommunicationService {
 
     private final CommunicationAdministration administration;
 
+    private final CommunicationCodec codec;
+
     /**
      * Собирает сервис.
      *
@@ -73,6 +77,7 @@ public class DefaultCommunicationService implements CommunicationService {
                 new SyncReception(resolved, SingletonSupplier.of(engine), creator, this.reader, ids));
         this.callbacks = new CommunicationCallbacks(dataSource, creator, codec, this.reader, resolved, ids);
         this.administration = new CommunicationAdministration(dataSource, transactionManager, resolved, ids);
+        this.codec = codec;
     }
 
     @Override
@@ -102,6 +107,20 @@ public class DefaultCommunicationService implements CommunicationService {
             final C payload,
             final CommunicationSendOptions options) {
         return this.creations.send(this.registry.get().forCreate(processor), payload, options);
+    }
+
+    @Override
+    public SendResult<?> sendJson(
+            final String destination, final String payloadJson, final CommunicationSendOptions options) {
+        final RegisteredProcessor processor = this.registry.get().forCreate(destination);
+        final Object payload;
+        try {
+            payload = this.codec.read(payloadJson, processor.types().request());
+        } catch (final TaskcommException unreadable) {
+            throw new UnreadablePayloadException(
+                    "Запрос в систему '" + destination + "' не разбирается: " + unreadable.getMessage(), unreadable);
+        }
+        return this.creations.send(processor, payload, options);
     }
 
     @Override

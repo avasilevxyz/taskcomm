@@ -44,6 +44,34 @@ public class TaskcommProperties {
     /** Белый список полей поиска по нагрузке. */
     private Search search = new Search();
 
+    /** REST API. */
+    private Rest rest = new Rest();
+
+    /**
+     * Свойства {@code taskcomm.rest.*} (docs/adr/0091-rest-disabled-by-default.md,
+     * docs/adr/0140-rest-controllers.md).
+     */
+    @Getter
+    @Setter
+    public static class Rest {
+
+        /**
+         * Включить REST. Выключен по умолчанию: в его составе отмена, перезапуск, создание и тела обмена.
+         * Включив, закройте пути в своей конфигурации безопасности — стартер этого не делает, а отдаёт
+         * бин RequestMatcher с именем taskcommRequestMatcher, если Spring Security есть в приложении.
+         */
+        private boolean enabled;
+
+        /** Префикс путей REST. */
+        private String basePath = "/api/taskcomm";
+
+        /**
+         * Окно чтения истории по умолчанию — по времени создания дела, а не сущности: так устроен ключ
+         * партиционирования. Запрос задаёт своё окно параметрами from и to или снимает его everywhere=true.
+         */
+        private Duration searchWindow = Duration.ofDays(30);
+    }
+
     /**
      * Свойства {@code taskcomm.search.*} (docs/adr/0037-search-field-registry.md).
      */

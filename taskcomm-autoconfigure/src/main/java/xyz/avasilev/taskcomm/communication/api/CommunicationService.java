@@ -80,6 +80,20 @@ public interface CommunicationService {
             Class<? extends CommunicationProcessor<C, ?, ?>> processor, C payload, CommunicationSendOptions options);
 
     /**
+     * Отправляет исходящую по нагрузке сырым JSON — для REST и для кода, у которого доменной формы нет
+     * (docs/adr/0140-rest-controllers.md). JSON разбирается в тип запроса из дженерика процессора сразу,
+     * до записи.
+     *
+     * @param destination внешняя система-получатель
+     * @param payloadJson запрос в JSON
+     * @param options опции отправки
+     * @return созданная коммуникация или дубликат
+     * @throws IllegalArgumentException если процессора такой системы нет
+     * @throws xyz.avasilev.taskcomm.UnreadablePayloadException если JSON не разбирается в запрос процессора
+     */
+    SendResult<?> sendJson(String destination, String payloadJson, CommunicationSendOptions options);
+
+    /**
      * Асинхронный приём входящей: тело разбирается здесь, в потоке вызывающего, кодеком транспортного
      * контракта процессора; коммуникация создаётся в транзакции вызывающего, обрабатывает её движок
      * с повторами. Ответ отправителю — забота вызывающего: {@code response_*} остаётся пустым.

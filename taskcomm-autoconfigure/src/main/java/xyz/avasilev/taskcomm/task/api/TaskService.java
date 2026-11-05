@@ -93,6 +93,19 @@ public interface TaskService {
     <T> Task<T> submit(Class<? extends TaskProcessor<T>> processor, T payload, TaskSubmitOptions options);
 
     /**
+     * Ставит задачу по нагрузке сырым JSON — для REST и для кода, у которого доменной формы нет
+     * (docs/adr/0140-rest-controllers.md). JSON разбирается в тип из дженерика процессора сразу, до записи.
+     *
+     * @param taskType строковый тип задачи
+     * @param payloadJson нагрузка задачи в JSON
+     * @param options опции постановки
+     * @return созданная задача
+     * @throws IllegalArgumentException если процессора такого типа нет
+     * @throws xyz.avasilev.taskcomm.UnreadablePayloadException если JSON не разбирается в нагрузку процессора
+     */
+    Task<?> submitJson(String taskType, String payloadJson, TaskSubmitOptions options);
+
+    /**
      * Задачи дела указанного типа, в порядке создания (docs/adr/0110-execution-composition-reads-in-subsystems.md).
      * Чтение идёт в партиции дела. Из {@code process} подзадачи не вызывайте: миллион подзадач дадут
      * миллион запросов; в {@code collect} это один вызов.

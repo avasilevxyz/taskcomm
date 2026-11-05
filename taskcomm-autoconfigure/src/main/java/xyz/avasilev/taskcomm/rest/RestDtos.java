@@ -1,0 +1,282 @@
+package xyz.avasilev.taskcomm.rest;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonRawValue;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import xyz.avasilev.taskcomm.communication.api.CommunicationSnapshot;
+import xyz.avasilev.taskcomm.communication.api.CommunicationStatus;
+import xyz.avasilev.taskcomm.communication.api.CorrelationKeySnapshot;
+import xyz.avasilev.taskcomm.execution.api.Origin;
+import xyz.avasilev.taskcomm.task.api.TaskSnapshot;
+
+/**
+ * Формы ответов REST (docs/adr/0140-rest-controllers.md). Нагрузки и результаты — сырой JSON, вставленный
+ * в ответ как есть; пустые поля в ответ не попадают.
+ */
+public final class RestDtos {
+
+    private RestDtos() {}
+
+    /**
+     * Страница списка.
+     *
+     * @param items строки
+     * @param next курсор следующей страницы или {@code null} — дальше нет
+     * @param window окно, в котором искали
+     * @param <T> строка
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record PageDto<T>(List<T> items, String next, WindowDto window) {}
+
+    /**
+     * Окно чтения истории — по времени создания дела.
+     *
+     * @param from начало или {@code null}
+     * @param to конец, не включая, или {@code null}
+     * @param everywhere искали ли во всех партициях
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record WindowDto(Instant from, Instant to, boolean everywhere) {}
+
+    /**
+     * Дело.
+     *
+     * @param id идентификатор
+     * @param createdAt время создания — ключ партиционирования
+     */
+    public record ExecutionRefDto(UUID id, Instant createdAt) {}
+
+    /**
+     * Родители сущности задач.
+     *
+     * @param taskId задача или {@code null}
+     * @param batchId группа или {@code null}
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record ParentsDto(UUID taskId, UUID batchId) {}
+
+    /**
+     * Состояние сущности задач.
+     *
+     * @param status статус
+     * @param statusDescription причина или {@code null}
+     * @param phase фаза или {@code null}
+     * @param priority приоритет
+     * @param createdAt время создания
+     * @param updatedAt время изменения
+     * @param orphan у типа нет процессора
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record TaskStateDto(
+            String status,
+            String statusDescription,
+            String phase,
+            int priority,
+            Instant createdAt,
+            Instant updatedAt,
+            boolean orphan) {}
+
+    /**
+     * Задача, группа или подзадача.
+     *
+     * @param id идентификатор
+     * @param level уровень
+     * @param taskType тип задачи
+     * @param execution дело
+     * @param parents родители
+     * @param state состояние
+     * @param origin создатель или {@code null}
+     * @param payload нагрузка
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record TaskDto(
+            UUID id,
+            TaskSnapshot.Level level,
+            String taskType,
+            ExecutionRefDto execution,
+            ParentsDto parents,
+            TaskStateDto state,
+            Origin origin,
+            @JsonRawValue String payload) {}
+
+    /**
+     * Исход попытки.
+     *
+     * @param status исход или {@code null} — попытка не закрыта
+     * @param statusDescription причина или {@code null}
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record OutcomeDto(String status, String statusDescription) {}
+
+    /**
+     * Начало и конец попытки.
+     *
+     * @param startedAt начало или {@code null}
+     * @param finishedAt конец или {@code null}
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record TimesDto(Instant startedAt, Instant finishedAt) {}
+
+    /**
+     * Попытка задачи.
+     *
+     * @param id идентификатор
+     * @param phase фаза
+     * @param outcome исход
+     * @param times начало и конец
+     * @param lockedBy экземпляр
+     * @param leaseRenewals продления аренды
+     * @param result результат или {@code null}
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record TaskAttemptDto(
+            UUID id,
+            String phase,
+            OutcomeDto outcome,
+            TimesDto times,
+            String lockedBy,
+            int leaseRenewals,
+            @JsonRawValue String result) {}
+
+    /**
+     * Состояние коммуникации.
+     *
+     * @param status статус
+     * @param statusDescription причина или {@code null}
+     * @param phase фаза
+     * @param contractShape форма контракта или {@code null}
+     * @param priority приоритет
+     * @param createdAt время создания
+     * @param updatedAt время изменения
+     * @param orphan у системы нет процессора
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record CommunicationStateDto(
+            CommunicationStatus status,
+            String statusDescription,
+            String phase,
+            String contractShape,
+            int priority,
+            Instant createdAt,
+            Instant updatedAt,
+            boolean orphan) {}
+
+    /**
+     * Коммуникация.
+     *
+     * @param id идентификатор
+     * @param direction направление
+     * @param externalSystem внешняя система
+     * @param execution дело
+     * @param state состояние
+     * @param origin создатель или {@code null}
+     * @param requestPayload запрос или {@code null}
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record CommunicationDto(
+            UUID id,
+            CommunicationSnapshot.Direction direction,
+            String externalSystem,
+            ExecutionRefDto execution,
+            CommunicationStateDto state,
+            Origin origin,
+            @JsonRawValue String requestPayload) {}
+
+    /**
+     * Сообщение обмена — как есть.
+     *
+     * @param body сырое тело
+     * @param headers заголовки
+     * @param id идентификатор сообщения или {@code null}
+     * @param at время сообщения или {@code null}
+     * @param status статус ответа или {@code null}
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record ExchangeMessageDto(
+            String body, Map<String, List<String>> headers, String id, Instant at, Integer status) {}
+
+    /**
+     * Обмен попытки коммуникации и доменные формы.
+     *
+     * @param request что ушло или пришло или {@code null}
+     * @param response что вернулось или {@code null}
+     * @param callbackPayload доменная форма колбэка или {@code null}
+     * @param responsePayload доменная форма ответа или {@code null}
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record ExchangeDto(
+            ExchangeMessageDto request,
+            ExchangeMessageDto response,
+            @JsonRawValue String callbackPayload,
+            @JsonRawValue String responsePayload) {}
+
+    /**
+     * Попытка коммуникации.
+     *
+     * @param id идентификатор
+     * @param phase фаза
+     * @param outcome исход
+     * @param times начало и конец
+     * @param lockedBy экземпляр или {@code null}
+     * @param exchange обмен
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record CommunicationAttemptDto(
+            UUID id, String phase, OutcomeDto outcome, TimesDto times, String lockedBy, ExchangeDto exchange) {}
+
+    /**
+     * Дело целиком: все сущности в порядке создания, у каждой — её создатель.
+     *
+     * @param execution дело
+     * @param tasks задачи
+     * @param batches группы
+     * @param units подзадачи
+     * @param communications коммуникации
+     * @param correlationKeys ключи корреляции
+     */
+    public record ExecutionDto(
+            ExecutionRefDto execution,
+            List<TaskDto> tasks,
+            List<TaskDto> batches,
+            List<TaskDto> units,
+            List<CommunicationDto> communications,
+            List<CorrelationKeySnapshot> correlationKeys) {}
+
+    /**
+     * Исход отмены или перезапуска.
+     *
+     * @param accepted принят ли
+     * @param reason причина
+     */
+    public record ResultDto(boolean accepted, String reason) {}
+
+    /**
+     * Созданная сущность.
+     *
+     * @param id идентификатор
+     * @param execution дело
+     * @param status статус
+     * @param duplicateOf совпавшая коммуникация — у дубликата, иначе {@code null}
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record CreatedDto(UUID id, ExecutionRefDto execution, String status, UUID duplicateOf) {}
+
+    /**
+     * Ручное удаление результатов.
+     *
+     * @param parents сколько родителей отмечено
+     */
+    public record DiscardDto(int parents) {}
+
+    /**
+     * Ошибка запроса.
+     *
+     * @param error что не так
+     * @param knownFields известные поля поиска — у отказа по необъявленному полю, иначе {@code null}
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record ErrorDto(String error, List<String> knownFields) {}
+}

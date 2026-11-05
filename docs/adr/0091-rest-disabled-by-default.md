@@ -2,6 +2,8 @@
 
 - **Дата:** 2026-10-20
 - **Статус:** принято
+- **Изменено:** [0140](0140-rest-controllers.md) — `RequestMatcher` отдаётся, только если Spring Security
+  есть на classpath.
 
 ## Контекст
 

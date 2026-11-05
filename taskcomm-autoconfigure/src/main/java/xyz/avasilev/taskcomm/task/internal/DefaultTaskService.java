@@ -14,6 +14,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.util.ClassUtils;
 import org.springframework.util.function.SingletonSupplier;
 import xyz.avasilev.taskcomm.TaskcommException;
+import xyz.avasilev.taskcomm.UnreadablePayloadException;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.api.Origin;
 import xyz.avasilev.taskcomm.execution.api.OriginRelation;
@@ -220,6 +221,19 @@ public class DefaultTaskService implements TaskService {
     public <T> Task<T> submit(
             final Class<? extends TaskProcessor<T>> processor, final T payload, final TaskSubmitOptions options) {
         return this.submit(this.registry.get().forSubmit(processor), payload, options);
+    }
+
+    @Override
+    public Task<?> submitJson(final String taskType, final String payloadJson, final TaskSubmitOptions options) {
+        final RegisteredProcessor processor = this.registry.get().forSubmit(taskType);
+        final Object payload;
+        try {
+            payload = this.codec.read(payloadJson, processor.types().task());
+        } catch (final TaskcommException unreadable) {
+            throw new UnreadablePayloadException(
+                    "Нагрузка задачи типа '" + taskType + "' не разбирается: " + unreadable.getMessage(), unreadable);
+        }
+        return this.submit(processor, payload, options);
     }
 
     @Override

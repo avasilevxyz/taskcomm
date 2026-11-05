@@ -48,6 +48,11 @@ dependencyResolutionManagement {
             // XML для разбора SOAP по умолчанию (docs/adr/0135): стартер её не тянет, SOAP-потребитель
             // подключает сам; версия — из BOM.
             library('jackson-dataformat-xml', 'tools.jackson.dataformat', 'jackson-dataformat-xml').withoutVersion()
+            // REST (docs/adr/0140): потребителю не приезжают — REST включает он сам, у него MVC и Security свои;
+            // версии — из BOM.
+            library('spring-webmvc', 'org.springframework', 'spring-webmvc').withoutVersion()
+            library('spring-security-web', 'org.springframework.security', 'spring-security-web').withoutVersion()
+            library('spring-boot-starter-webmvc', 'org.springframework.boot', 'spring-boot-starter-webmvc').versionRef('spring-boot')
             library('spring-boot-starter-test', 'org.springframework.boot', 'spring-boot-starter-test').versionRef('spring-boot')
             library('spring-boot-configuration-processor', 'org.springframework.boot', 'spring-boot-configuration-processor').versionRef('spring-boot')
             library('spring-boot-autoconfigure-processor', 'org.springframework.boot', 'spring-boot-autoconfigure-processor').versionRef('spring-boot')
