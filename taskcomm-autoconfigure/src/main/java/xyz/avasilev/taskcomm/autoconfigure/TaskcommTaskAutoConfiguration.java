@@ -18,8 +18,10 @@ import org.springframework.transaction.PlatformTransactionManager;
 import tools.jackson.databind.json.JsonMapper;
 import xyz.avasilev.taskcomm.execution.internal.ExecutionRepository;
 import xyz.avasilev.taskcomm.execution.internal.UuidV7;
+import xyz.avasilev.taskcomm.task.api.TaskInspection;
 import xyz.avasilev.taskcomm.task.api.TaskProcessor;
 import xyz.avasilev.taskcomm.task.api.TaskService;
+import xyz.avasilev.taskcomm.task.internal.DefaultTaskInspection;
 import xyz.avasilev.taskcomm.task.internal.DefaultTaskService;
 import xyz.avasilev.taskcomm.task.internal.PollerLayout;
 import xyz.avasilev.taskcomm.task.internal.TaskCreator;
@@ -177,6 +179,25 @@ public class TaskcommTaskAutoConfiguration {
                 codec,
                 dataSource,
                 TaskcommBeanSelection.transactionManager(qualifiedManagers, managers, beanFactory, dataSource));
+    }
+
+    /**
+     * Чтение задач для экранов и сопровождения (docs/adr/0138-inspection-api.md).
+     *
+     * @param registry реестр — лениво
+     * @param qualified {@code DataSource} под {@link TaskcommDataSource}
+     * @param dataSources все бины {@code DataSource}
+     * @param beanFactory фабрика бинов
+     * @return чтение задач
+     */
+    @Bean
+    public TaskInspection taskcommTaskInspection(
+            final ObjectProvider<TaskProcessorRegistry> registry,
+            @TaskcommDataSource final ObjectProvider<DataSource> qualified,
+            final ObjectProvider<DataSource> dataSources,
+            final ListableBeanFactory beanFactory) {
+        return new DefaultTaskInspection(
+                TaskcommBeanSelection.dataSource(qualified, dataSources, beanFactory), registry::getObject);
     }
 
     /**

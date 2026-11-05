@@ -146,19 +146,21 @@ taskcomm/
 xyz.avasilev.taskcomm          TaskcommException и его общие наследники — публичный API,
 │                              доступный всем пакетам без связи между подсистемами
 ├── execution/
-│   ├── api/           публичный API: Execution, ExecutionRef, ExecutionService, Origin
+│   ├── api/           публичный API: Execution, ExecutionRef, ExecutionService, Origin,
+│   │                  HistoryWindow, PageRequest, Page — общие значения чтения (ADR 0138)
 │   └── internal/      реализация, ExecutionRepository, держатель текущего дела, генератор UUIDv7
 ├── task/
 │   ├── api/           публичный API: Task, TaskBatch, TaskUnit, TaskService, TaskSubmitOptions,
 │   │                  TaskProcessor и три его наследника, Emitter, SearchableField,
 │   │                  @TaskProcessorSettings и сокращения, контекст обработки (skip(reason),
-│   │                  doNotRetry(reason), shouldStop(), executionRef(), attemptNumber(), isRetry())
+│   │                  doNotRetry(reason), shouldStop(), executionRef(), attemptNumber(), isRetry()),
+│   │                  TaskInspection и его запросы и снимки
 │   └── internal/      реализация: сервисы, хранилище по обязанностям (создание, захват,
 │                      закрытие попытки, heartbeat — ADR 0117), поллер, retry
 ├── communication/
 │   ├── api/           публичный API: Communication, CommunicationService, значения-запросы приёма,
 │   │                  CommunicationProcessor и его транспортные наследники, CommunicationContext,
-│   │                  нейтральные заголовки
+│   │                  нейтральные заголовки, CommunicationInspection и его запросы и снимки
 │   └── internal/      реализация, CommunicationRepository
 ├── schema/
 │   └── internal/      проверка схемы при старте, initialize, обслуживание партиций и граница

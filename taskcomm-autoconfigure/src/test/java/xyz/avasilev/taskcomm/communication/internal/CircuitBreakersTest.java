@@ -3,11 +3,13 @@ package xyz.avasilev.taskcomm.communication.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
+import xyz.avasilev.taskcomm.communication.api.CircuitBreakerSnapshot;
 import xyz.avasilev.taskcomm.communication.api.Communication;
 import xyz.avasilev.taskcomm.communication.api.CommunicationContext;
 import xyz.avasilev.taskcomm.communication.api.KafkaCommunicationProcessor;
@@ -52,6 +54,24 @@ class CircuitBreakersTest {
 
         assertThat(this.breakers.claimable("stock")).isFalse();
         assertThat(this.breakers.dueProbes(SYSTEMS)).isEmpty();
+    }
+
+    @Test
+    void snapshotShowsStateWindowAndNextProbe() {
+        this.breakers.record("stock", true);
+        this.breakers.record("stock", false);
+
+        assertThat(this.breakers.snapshots("i-1"))
+                .containsExactly(new CircuitBreakerSnapshot("i-1", "stock", "CLOSED", 2, 0.5, null));
+
+        final Instant before = Instant.now();
+        this.open();
+
+        assertThat(this.breakers.snapshots("i-1")).singleElement().satisfies(snapshot -> {
+            assertThat(snapshot.state()).isEqualTo("OPEN");
+            assertThat(snapshot.calls()).isZero();
+            assertThat(snapshot.nextProbeAt()).isAfter(before.plusSeconds(5));
+        });
     }
 
     @Test

@@ -16,6 +16,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.transaction.PlatformTransactionManager;
 import tools.jackson.databind.json.JsonMapper;
+import xyz.avasilev.taskcomm.communication.api.CommunicationInspection;
 import xyz.avasilev.taskcomm.communication.api.CommunicationProcessor;
 import xyz.avasilev.taskcomm.communication.api.CommunicationService;
 import xyz.avasilev.taskcomm.communication.internal.CommunicationCodec;
@@ -24,6 +25,7 @@ import xyz.avasilev.taskcomm.communication.internal.CommunicationEngine;
 import xyz.avasilev.taskcomm.communication.internal.CommunicationProcessorRegistry;
 import xyz.avasilev.taskcomm.communication.internal.CommunicationSettings;
 import xyz.avasilev.taskcomm.communication.internal.CommunicationStartup;
+import xyz.avasilev.taskcomm.communication.internal.DefaultCommunicationInspection;
 import xyz.avasilev.taskcomm.communication.internal.DefaultCommunicationService;
 import xyz.avasilev.taskcomm.execution.internal.ExecutionRepository;
 import xyz.avasilev.taskcomm.execution.internal.UuidV7;
@@ -169,6 +171,32 @@ public class TaskcommCommunicationAutoConfiguration {
                 codec,
                 ids,
                 TaskcommBeanSelection.dataSource(qualified, dataSources, beanFactory));
+    }
+
+    /**
+     * Чтение коммуникаций для экранов и сопровождения (docs/adr/0138-inspection-api.md).
+     *
+     * @param registry реестр — лениво
+     * @param engine движок — лениво, по нему размыкатели экземпляра
+     * @param codec кодек
+     * @param qualified {@code DataSource} под {@code @TaskcommDataSource}
+     * @param dataSources все {@code DataSource}
+     * @param beanFactory фабрика бинов
+     * @return чтение коммуникаций
+     */
+    @Bean
+    public CommunicationInspection taskcommCommunicationInspection(
+            final ObjectProvider<CommunicationProcessorRegistry> registry,
+            final ObjectProvider<CommunicationEngine> engine,
+            final CommunicationCodec codec,
+            @TaskcommDataSource final ObjectProvider<DataSource> qualified,
+            final ObjectProvider<DataSource> dataSources,
+            final ListableBeanFactory beanFactory) {
+        return new DefaultCommunicationInspection(
+                TaskcommBeanSelection.dataSource(qualified, dataSources, beanFactory),
+                codec,
+                registry::getObject,
+                engine::getObject);
     }
 
     /**

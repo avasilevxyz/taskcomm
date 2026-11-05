@@ -1,8 +1,10 @@
 package xyz.avasilev.taskcomm.communication.internal;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.List;
 import java.util.Locale;
@@ -12,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.DoubleSupplier;
 import java.util.function.LongSupplier;
 import lombok.extern.slf4j.Slf4j;
+import xyz.avasilev.taskcomm.communication.api.CircuitBreakerSnapshot;
 
 /**
  * Размыкатели исходящих по системам — <b>в памяти экземпляра</b> (docs/adr/0065-communication-circuit-breaker.md).
@@ -115,6 +118,21 @@ class CircuitBreakers {
         }
     }
 
+    /**
+     * Снимок размыкателей этого экземпляра — только систем, у которых размыкатель уже заведён.
+     *
+     * @param instance имя экземпляра
+     * @return снимки по системам
+     */
+    List<CircuitBreakerSnapshot> snapshots(final String instance) {
+        final long now = this.nanoClock.getAsLong();
+        final Instant wall = Instant.now();
+        return this.breakers.values().stream()
+                .map(breaker -> breaker.snapshot(instance, now, wall))
+                .sorted(Comparator.comparing(CircuitBreakerSnapshot::externalSystem))
+                .toList();
+    }
+
     /** Состояние размыкателя одной системы. */
     private final class Breaker {
 
@@ -142,6 +160,19 @@ class CircuitBreakers {
         synchronized boolean claimable(final long now) {
             this.expireProbe(now);
             return this.state == State.CLOSED;
+        }
+
+        synchronized CircuitBreakerSnapshot snapshot(final String instance, final long now, final Instant wall) {
+            this.expireProbe(now);
+            final long failures =
+                    this.window.stream().filter(entry -> entry[1] == 1).count();
+            return new CircuitBreakerSnapshot(
+                    instance,
+                    this.system,
+                    this.state.name(),
+                    this.window.size(),
+                    this.window.isEmpty() ? 0 : (double) failures / this.window.size(),
+                    this.state == State.OPEN ? wall.plusNanos(Math.max(0, this.nextProbeAt - now)) : null);
         }
 
         synchronized boolean startProbe(final long now) {

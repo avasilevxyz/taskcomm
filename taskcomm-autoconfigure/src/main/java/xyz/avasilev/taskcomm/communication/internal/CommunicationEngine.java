@@ -53,6 +53,8 @@ public class CommunicationEngine implements SmartLifecycle {
 
     private final Duration heartbeatTick;
 
+    private final CircuitBreakers breakers;
+
     private final TaskScheduler externalScheduler;
 
     private final List<ScheduledFuture<?>> futures = new ArrayList<>();
@@ -97,7 +99,7 @@ public class CommunicationEngine implements SmartLifecycle {
         this.heartbeat = new CommunicationHeartbeat(dataSource, transactionManager);
         this.heartbeatTick = settings.heartbeatTick();
         this.externalScheduler = scheduler;
-        final CircuitBreakers breakers = new CircuitBreakers(
+        this.breakers = new CircuitBreakers(
                 settings, System::nanoTime, () -> ThreadLocalRandom.current().nextDouble());
         this.worker = new CommunicationWorker(
                 registry,
@@ -107,7 +109,7 @@ public class CommunicationEngine implements SmartLifecycle {
                 new CommunicationExchange(dataSource, transactionManager, codec),
                 settings,
                 new ProcessorKeys(dataSource, transactionManager, ids),
-                new SendGuards(new RateLimiters(settings, System::nanoTime), breakers));
+                new SendGuards(new RateLimiters(settings, System::nanoTime), this.breakers));
         this.safety =
                 new CommunicationSafetyPoller(dataSource, transactionManager, settings, retries, registry.systems());
         this.safetyInterval = settings.safetyInterval();
@@ -123,7 +125,7 @@ public class CommunicationEngine implements SmartLifecycle {
                         this.worker,
                         threadFactory != null ? threadFactory : workerThreads(poller),
                         decorator,
-                        breakers,
+                        this.breakers,
                         system -> settings.breaker(system).settings().probeCalls()))
                 .toList();
     }
@@ -190,6 +192,15 @@ public class CommunicationEngine implements SmartLifecycle {
      */
     String instance() {
         return this.instance;
+    }
+
+    /**
+     * Размыкатели этого экземпляра.
+     *
+     * @return размыкатели
+     */
+    CircuitBreakers breakers() {
+        return this.breakers;
     }
 
     private void renewLeases() {

@@ -35,6 +35,7 @@ import xyz.avasilev.taskcomm.execution.api.ExecutionService;
 import xyz.avasilev.taskcomm.task.api.FlatTaskProcessor;
 import xyz.avasilev.taskcomm.task.api.ProcessingContext;
 import xyz.avasilev.taskcomm.task.api.Task;
+import xyz.avasilev.taskcomm.task.api.TaskInspection;
 import xyz.avasilev.taskcomm.task.api.TaskRetry;
 import xyz.avasilev.taskcomm.task.api.TaskService;
 import xyz.avasilev.taskcomm.task.internal.TaskEngine;
@@ -67,6 +68,7 @@ class TaskcommTaskAutoConfigurationIT {
         this.contextRunner.run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).hasSingleBean(TaskService.class);
+            assertThat(context).hasSingleBean(TaskInspection.class);
             assertThat(context).hasSingleBean(TaskProcessorRegistry.class);
             assertThat(context.getBean(TaskEngine.class).isRunning()).isTrue();
         });
@@ -77,6 +79,7 @@ class TaskcommTaskAutoConfigurationIT {
         this.contextRunner.withPropertyValues("taskcomm.task.enabled=false").run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).doesNotHaveBean(TaskService.class);
+            assertThat(context).doesNotHaveBean(TaskInspection.class);
             assertThat(context).doesNotHaveBean(TaskEngine.class);
             assertThat(context).hasSingleBean(ExecutionService.class);
         });
@@ -87,6 +90,7 @@ class TaskcommTaskAutoConfigurationIT {
         this.contextRunner.withPropertyValues("taskcomm.enabled=false").run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).doesNotHaveBean(TaskService.class);
+            assertThat(context).doesNotHaveBean(TaskInspection.class);
             assertThat(context).doesNotHaveBean(TaskEngine.class);
             assertThat(context).doesNotHaveBean(ExecutionService.class);
         });

@@ -26,6 +26,7 @@ import xyz.avasilev.taskcomm.TaskcommConfigurationException;
 import xyz.avasilev.taskcomm.TestPostgres;
 import xyz.avasilev.taskcomm.communication.api.Communication;
 import xyz.avasilev.taskcomm.communication.api.CommunicationContext;
+import xyz.avasilev.taskcomm.communication.api.CommunicationInspection;
 import xyz.avasilev.taskcomm.communication.api.CommunicationProcessorSettings;
 import xyz.avasilev.taskcomm.communication.api.CommunicationService;
 import xyz.avasilev.taskcomm.communication.api.KafkaCommunicationProcessor;
@@ -61,6 +62,7 @@ class TaskcommCommunicationAutoConfigurationIT {
         this.contextRunner.run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).hasSingleBean(CommunicationService.class);
+            assertThat(context).hasSingleBean(CommunicationInspection.class);
             assertThat(context).hasSingleBean(CommunicationProcessorRegistry.class);
             assertThat(context).hasSingleBean(CommunicationStartup.class);
             assertThat(context.getBean(CommunicationEngine.class).isRunning()).isTrue();
@@ -74,6 +76,7 @@ class TaskcommCommunicationAutoConfigurationIT {
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context).doesNotHaveBean(CommunicationService.class);
+                    assertThat(context).doesNotHaveBean(CommunicationInspection.class);
                     assertThat(context).doesNotHaveBean(CommunicationEngine.class);
                     assertThat(context).hasSingleBean(ExecutionService.class);
                 });
@@ -84,6 +87,7 @@ class TaskcommCommunicationAutoConfigurationIT {
         this.contextRunner.withPropertyValues("taskcomm.enabled=false").run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).doesNotHaveBean(CommunicationService.class);
+            assertThat(context).doesNotHaveBean(CommunicationInspection.class);
             assertThat(context).doesNotHaveBean(CommunicationEngine.class);
             assertThat(context).doesNotHaveBean(ExecutionService.class);
         });
