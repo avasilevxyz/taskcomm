@@ -17,6 +17,7 @@ import xyz.avasilev.taskcomm.communication.internal.RetryOverride;
 import xyz.avasilev.taskcomm.communication.internal.RetryPolicy;
 import xyz.avasilev.taskcomm.communication.internal.SettingsOverride;
 import xyz.avasilev.taskcomm.communication.internal.SystemOverrides;
+import xyz.avasilev.taskcomm.communication.internal.Timing;
 
 /**
  * Перевод свойств {@code taskcomm.communication.*} во внутренние значения подсистемы коммуникаций.
@@ -70,7 +71,8 @@ final class CommunicationPropertiesMapping {
                                     phaseSettings.getPriority(),
                                     lease(phaseSettings.getLease()),
                                     retry(phaseSettings.getRetry()),
-                                    phaseSettings.getFailureStatuses())));
+                                    phaseSettings.getFailureStatuses(),
+                                    phaseSettings.getResponseTimeout())));
             result.put(
                     system,
                     new SystemOverrides(
@@ -78,7 +80,8 @@ final class CommunicationPropertiesMapping {
                                     settings.getPriority(),
                                     lease(settings.getLease()),
                                     retry(settings.getRetry()),
-                                    settings.getFailureStatuses()),
+                                    settings.getFailureStatuses(),
+                                    settings.getResponseTimeout()),
                             phases));
         });
         return result;
@@ -107,6 +110,20 @@ final class CommunicationPropertiesMapping {
                 .map(entry -> dedicated(entry.getKey(), entry.getValue(), main))
                 .toList();
         return withPath(PREFIX + "pollers", () -> new PollerLayout(mainPoller, dedicated));
+    }
+
+    /**
+     * Срок ожидания ответа по умолчанию и такт подстраховочного поллера.
+     *
+     * @param communication свойства коммуникаций
+     * @return сроки
+     */
+    static Timing timing(final TaskcommProperties.Communication communication) {
+        return withPath(
+                PREFIX.substring(0, PREFIX.length() - 1),
+                () -> new Timing(
+                        communication.getResponseTimeout(),
+                        communication.getSafety().getInterval()));
     }
 
     /**

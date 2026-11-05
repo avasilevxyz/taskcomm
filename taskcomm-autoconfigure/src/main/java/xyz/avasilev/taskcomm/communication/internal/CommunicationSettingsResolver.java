@@ -33,12 +33,18 @@ final class CommunicationSettingsResolver {
 
     private final PollerLayout pollers;
 
+    private final Timing timing;
+
     private final Map<String, Map<CommunicationPhase, SettingsOverride>> phases = new HashMap<>();
 
     private final List<String> report = new ArrayList<>();
 
     CommunicationSettingsResolver(
-            final AttemptSettings global, final Map<String, SystemOverrides> yaml, final PollerLayout pollers) {
+            final AttemptSettings global,
+            final Map<String, SystemOverrides> yaml,
+            final PollerLayout pollers,
+            final Timing timing) {
+        this.timing = timing;
         this.global = global;
         this.yaml = Map.copyOf(yaml);
         this.pollers = pollers;
@@ -49,6 +55,7 @@ final class CommunicationSettingsResolver {
         final Map<CommunicationSettings.Key, AttemptSettings> attempts = new HashMap<>();
         final Map<String, Integer> priorities = new HashMap<>();
         final Map<String, FailureStatuses> statuses = new HashMap<>();
+        final Map<String, Duration> timeouts = new HashMap<>();
         for (final RegisteredProcessor processor : registry.all()) {
             final String system = processor.system();
             final SettingsOverride onClass = ProcessorSettingsAnnotations.onClass(processor.processorClass());
@@ -56,8 +63,10 @@ final class CommunicationSettingsResolver {
             priorities.put(system, priority);
             final FailureStatuses failure = this.failureStatuses(system, onClass, processor.shape());
             statuses.put(system, failure);
+            final Duration timeout = this.responseTimeout(system, onClass);
+            timeouts.put(system, timeout);
             this.report.add("система '" + system + "' (" + processor.shape() + "), приоритет " + priority
-                    + ", отказные статусы " + failure.values());
+                    + ", отказные статусы " + failure.values() + ", срок ожидания ответа " + timeout);
             for (final CommunicationPhase phase : CommunicationPhase.values()) {
                 final SettingsOverride onMethod =
                         ProcessorSettingsAnnotations.onMethod(processor.processorClass(), phase);
@@ -69,6 +78,7 @@ final class CommunicationSettingsResolver {
             if (registry.find(system).isEmpty()) {
                 this.report.add("система '" + system + "' — без процессора, только yaml");
                 priorities.put(system, this.priority(system, SettingsOverride.NONE));
+                timeouts.put(system, this.responseTimeout(system, SettingsOverride.NONE));
                 for (final CommunicationPhase phase : CommunicationPhase.values()) {
                     attempts.put(
                             new CommunicationSettings.Key(system, phase),
@@ -80,7 +90,14 @@ final class CommunicationSettingsResolver {
                 "Итоговые настройки коммуникаций по системам и фазам, в скобках — уровень значения:\n  {}",
                 String.join("\n  ", this.report));
         return new CommunicationSettings(
-                this.global, attempts, priorities, statuses, this.heartbeatTick(attempts), this.pollers);
+                this.global,
+                attempts,
+                priorities,
+                statuses,
+                timeouts,
+                this.timing,
+                this.heartbeatTick(attempts),
+                this.pollers);
     }
 
     private void readPhases(final String system, final SystemOverrides overrides) {
@@ -92,9 +109,12 @@ final class CommunicationSettingsResolver {
                 throw new TaskcommConfigurationException(
                         path + ": фазы '" + key + "' нет. Фазы — process, handle-response.");
             }
-            if (settings.priority() != null || settings.failureStatuses() != null) {
-                throw new TaskcommConfigurationException(path + ": приоритет и отказные статусы на фазе запрещены — "
-                        + "это настройки системы. Задайте их в " + SYSTEMS + system + ".");
+            if (settings.priority() != null
+                    || settings.failureStatuses() != null
+                    || settings.responseTimeout() != null) {
+                throw new TaskcommConfigurationException(
+                        path + ": приоритет, отказные статусы и срок ожидания ответа на фазе запрещены — "
+                                + "это настройки системы. Задайте их в " + SYSTEMS + system + ".");
             }
             byPhase.put(phase, settings);
         });
@@ -116,6 +136,22 @@ final class CommunicationSettingsResolver {
             return fromYaml;
         }
         return onClass.priority() != null ? onClass.priority() : CommunicationSettings.DEFAULT_PRIORITY;
+    }
+
+    private Duration responseTimeout(final String system, final SettingsOverride onClass) {
+        final Duration fromYaml =
+                this.yaml.getOrDefault(system, SystemOverrides.NONE).system().responseTimeout();
+        final Duration chosen = fromYaml != null ? fromYaml : onClass.responseTimeout();
+        if (chosen == null) {
+            return this.timing.responseTimeout();
+        }
+        build(
+                () -> {
+                    Timing.positive("response-timeout", chosen);
+                    return chosen;
+                },
+                "внешняя система '" + system + "'");
+        return chosen;
     }
 
     private FailureStatuses failureStatuses(

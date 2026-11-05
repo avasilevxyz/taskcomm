@@ -70,6 +70,11 @@ final class SyncReception {
         final CreatedCommunication row = this.creator.create(created);
         final CommunicationRef target =
                 new CommunicationRef(row.id(), row.execution().createdAt());
+        if (row.duplicate() != null) {
+            return new ReceiveAndProcessResult.Duplicate<>(
+                    (Communication.Inbound<C>) this.reader.one(target, processor),
+                    row.duplicate().duplicateOf());
+        }
         if (decoded.failure() != null) {
             return new ReceiveAndProcessResult.Unparseable<>(
                     (Communication.Inbound<C>) this.reader.one(target, processor), decoded.failure());
@@ -86,8 +91,9 @@ final class SyncReception {
                                 row.execution().id(),
                                 created.scheduling().priority(),
                                 row.createdAt(),
-                                created.placement().origin(),
-                                decoded.json())));
+                                row.origin(),
+                                decoded.json(),
+                                null)));
         final Communication.Inbound<C> inbound = (Communication.Inbound<C>) this.reader.one(target, processor);
         return outcome.processed()
                 ? new ReceiveAndProcessResult.Processed<>(inbound, (R) outcome.response())

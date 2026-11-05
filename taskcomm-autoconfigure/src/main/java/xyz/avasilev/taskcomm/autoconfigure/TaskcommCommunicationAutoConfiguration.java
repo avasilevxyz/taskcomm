@@ -80,7 +80,8 @@ public class TaskcommCommunicationAutoConfiguration {
                 CommunicationPropertiesMapping.global(communication),
                 CommunicationPropertiesMapping.systems(communication),
                 registry,
-                CommunicationPropertiesMapping.pollers(communication));
+                CommunicationPropertiesMapping.pollers(communication),
+                CommunicationPropertiesMapping.timing(communication));
     }
 
     /**

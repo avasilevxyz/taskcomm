@@ -60,7 +60,7 @@ class CommunicationClaimer {
             SELECT c.id, c.execution_created_at, c.execution_id, c.direction,
                    coalesce(c.source, c.destination) AS system, c.phase, c.contract_shape, c.priority, c.created_at,
                    c.request_payload::text AS payload, c.origin_type, c.origin_id, c.origin_attempt_id,
-                   c.origin_relation, a.id AS attempt_id
+                   c.origin_relation, a.id AS attempt_id, a.request_payload::text AS callback
               FROM tc_communication c
               JOIN tc_communication_attempt a ON a.execution_created_at = c.execution_created_at
                    AND a.communication_id = c.id AND a.phase = c.phase AND a.finished_at IS NULL
@@ -359,7 +359,8 @@ class CommunicationClaimer {
                         rs.getInt("priority"),
                         rs.getObject("created_at", OffsetDateTime.class).toInstant(),
                         origin,
-                        rs.getString("payload")));
+                        rs.getString("payload"),
+                        rs.getString("callback")));
     }
 
     /**

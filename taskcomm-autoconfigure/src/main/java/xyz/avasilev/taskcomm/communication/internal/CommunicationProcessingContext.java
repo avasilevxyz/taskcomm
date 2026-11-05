@@ -1,24 +1,29 @@
 package xyz.avasilev.taskcomm.communication.internal;
 
+import java.util.Optional;
 import java.util.function.BooleanSupplier;
 import xyz.avasilev.taskcomm.communication.api.CommunicationContext;
+import xyz.avasilev.taskcomm.communication.api.CorrelationKey;
+import xyz.avasilev.taskcomm.communication.api.DedupKey;
 import xyz.avasilev.taskcomm.communication.api.ExchangeMessage;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 
 /**
- * Контекст одного вызова процессора коммуникаций. Запись обмена идёт сразу в базу своей транзакцией;
- * остальное отвечает из памяти. Записанный статус ответа контекст помнит: по нему воркер решает
- * исход попытки (docs/adr/0065-communication-circuit-breaker.md).
+ * Контекст одного вызова процессора коммуникаций. Запись обмена и ключей идёт сразу в базу своими
+ * короткими транзакциями; остальное отвечает из памяти. Записанный статус ответа контекст помнит:
+ * по нему воркер решает исход попытки (docs/adr/0065-communication-circuit-breaker.md).
  *
- * <p>Ключи корреляции и дедупликации — этап 5c: до него методы бросают
- * {@link UnsupportedOperationException} (docs/adr/0135-communication-engine.md). «Не ждать» без ключа
- * и так верно — ожидания нет, — поэтому метод ничего не делает.
+ * <p>Ключ дедупликации, оказавшийся дубликатом, действует как {@code skip}: {@link #shouldStop()}
+ * отвечает {@code true}, нормальный возврат даёт {@code SKIPPED}, исключение перебивает пропуск
+ * (docs/adr/0076-communication-deduplication.md).
  */
 final class CommunicationProcessingContext implements CommunicationContext {
 
     private final ClaimedCommunication attempt;
 
     private final CommunicationExchange exchange;
+
+    private final ProcessorKeys keys;
 
     private final BooleanSupplier stopSignal;
 
@@ -30,12 +35,16 @@ final class CommunicationProcessingContext implements CommunicationContext {
 
     private volatile Integer responseStatus;
 
+    private volatile boolean doNotAwait;
+
     CommunicationProcessingContext(
             final ClaimedCommunication attempt,
             final CommunicationExchange exchange,
+            final ProcessorKeys keys,
             final BooleanSupplier stopSignal) {
         this.attempt = attempt;
         this.exchange = exchange;
+        this.keys = keys;
         this.stopSignal = stopSignal;
     }
 
@@ -83,27 +92,27 @@ final class CommunicationProcessingContext implements CommunicationContext {
 
     @Override
     public void registerCorrelationId(final String correlationId) {
-        throw new UnsupportedOperationException("registerCorrelationId" + NewCommunication.NOT_YET);
+        this.keys.correlate(this.attempt, CorrelationKey.of(correlationId));
     }
 
     @Override
     public void registerCorrelationId(final String externalSystem, final String correlationId) {
-        throw new UnsupportedOperationException("registerCorrelationId" + NewCommunication.NOT_YET);
+        this.keys.correlate(this.attempt, CorrelationKey.of(externalSystem, correlationId));
     }
 
     @Override
     public void doNotAwaitResponse() {
-        // без ключа корреляции ответа и так не ждут
+        this.doNotAwait = true;
     }
 
     @Override
     public boolean dedupKey(final String key) {
-        throw new UnsupportedOperationException("dedupKey" + NewCommunication.NOT_YET);
+        return this.dedup(new DedupKey.WholeHistory(key));
     }
 
     @Override
     public boolean dedupKey(final String subject, final String key) {
-        throw new UnsupportedOperationException("dedupKey" + NewCommunication.NOT_YET);
+        return this.dedup(new DedupKey.LastSucceeded(subject, key));
     }
 
     String skipReason() {
@@ -120,6 +129,16 @@ final class CommunicationProcessingContext implements CommunicationContext {
 
     Integer responseStatus() {
         return this.responseStatus;
+    }
+
+    boolean doNotAwait() {
+        return this.doNotAwait;
+    }
+
+    private boolean dedup(final DedupKey key) {
+        final Optional<CommunicationDedup.Match> match = this.keys.dedup(this.attempt, key);
+        match.ifPresent(found -> this.skipReason = CommunicationDedup.reason(found));
+        return match.isPresent();
     }
 
     private static String requireReason(final String reason, final String method) {

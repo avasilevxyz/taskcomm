@@ -394,8 +394,23 @@ public class TaskcommProperties {
         /** Выделенные поллеры по именам; не заданное берётся у основного. */
         private Map<String, CommunicationPoller> pollers = new LinkedHashMap<>();
 
+        /** Срок ожидания асинхронного ответа; истёк — повторная отправка. */
+        private Duration responseTimeout = Duration.ofHours(1);
+
+        /** Подстраховочный поллер: такт проверки истёкших ожиданий ответа. */
+        private CommunicationSafety safety = new CommunicationSafety();
+
         /** Переопределения по внешним системам; ключ — имя системы, по нему же ищется процессор. */
         private Map<String, CommunicationSystem> systems = new LinkedHashMap<>();
+    }
+
+    /** Подстраховочный поллер коммуникаций. */
+    @Getter
+    @Setter
+    public static class CommunicationSafety {
+
+        /** Такт проверки истёкших ожиданий ответа. */
+        private Duration interval = Duration.ofMinutes(1);
     }
 
     /** Аренда коммуникаций по умолчанию. */
@@ -481,6 +496,9 @@ public class TaskcommProperties {
          */
         private List<String> failureStatuses;
 
+        /** Срок ожидания асинхронного ответа от системы. */
+        private Duration responseTimeout;
+
         /** Переопределения по фазам: process, handle-response. */
         private Map<String, CommunicationSystemPhase> phases = new LinkedHashMap<>();
     }
@@ -495,6 +513,9 @@ public class TaskcommProperties {
 
         /** На фазе запрещены: свойство системы — падение при старте. */
         private List<String> failureStatuses;
+
+        /** На фазе запрещён: свойство системы — падение при старте. */
+        private Duration responseTimeout;
 
         /** Аренда фазы. */
         private LeaseOverride lease = new LeaseOverride();

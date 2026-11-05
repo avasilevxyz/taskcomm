@@ -22,6 +22,10 @@ public final class CommunicationSettings {
 
     private final Map<String, FailureStatuses> failureStatuses;
 
+    private final Map<String, Duration> responseTimeouts;
+
+    private final Timing timing;
+
     private final Duration heartbeatTick;
 
     private final PollerLayout pollers;
@@ -31,12 +35,16 @@ public final class CommunicationSettings {
             final Map<Key, AttemptSettings> attempts,
             final Map<String, Integer> priorities,
             final Map<String, FailureStatuses> failureStatuses,
+            final Map<String, Duration> responseTimeouts,
+            final Timing timing,
             final Duration heartbeatTick,
             final PollerLayout pollers) {
         this.global = global;
         this.attempts = Map.copyOf(attempts);
         this.priorities = Map.copyOf(priorities);
         this.failureStatuses = Map.copyOf(failureStatuses);
+        this.responseTimeouts = Map.copyOf(responseTimeouts);
+        this.timing = timing;
         this.heartbeatTick = heartbeatTick;
         this.pollers = pollers;
     }
@@ -48,6 +56,7 @@ public final class CommunicationSettings {
      * @param yaml переопределения систем из {@code yaml} — уровни 1 и 2
      * @param registry процессоры — их аннотации дают уровни 3 и 4
      * @param pollers раскладка поллеров
+     * @param timing срок ожидания ответа по умолчанию и такт подстраховки
      * @return итоговые настройки
      * @throws xyz.avasilev.taskcomm.TaskcommConfigurationException если итоговое значение недопустимо
      */
@@ -55,8 +64,28 @@ public final class CommunicationSettings {
             final AttemptSettings global,
             final Map<String, SystemOverrides> yaml,
             final CommunicationProcessorRegistry registry,
-            final PollerLayout pollers) {
-        return new CommunicationSettingsResolver(global, yaml, pollers).resolve(registry);
+            final PollerLayout pollers,
+            final Timing timing) {
+        return new CommunicationSettingsResolver(global, yaml, pollers, timing).resolve(registry);
+    }
+
+    /**
+     * Срок ожидания асинхронного ответа от системы (docs/adr/0086-async-response-in-outbound.md).
+     *
+     * @param system внешняя система
+     * @return срок
+     */
+    Duration responseTimeout(final String system) {
+        return this.responseTimeouts.getOrDefault(system, this.timing.responseTimeout());
+    }
+
+    /**
+     * Такт подстраховочного поллера.
+     *
+     * @return такт
+     */
+    Duration safetyInterval() {
+        return this.timing.safetyInterval();
     }
 
     /**

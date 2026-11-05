@@ -123,7 +123,6 @@ final class ProcessorSettingsAnnotations {
 
         @SuppressWarnings("unchecked")
         SettingsOverride toOverride() {
-            this.duration("responseTimeout");
             return new SettingsOverride(
                     (Integer) this.values.get("priority"),
                     new LeaseOverride(
@@ -136,7 +135,8 @@ final class ProcessorSettingsAnnotations {
                             (Double) this.values.get("multiplier"),
                             this.duration("maxDelay"),
                             (Double) this.values.get("jitter")),
-                    (List<String>) this.values.get("failureStatuses"));
+                    (List<String>) this.values.get("failureStatuses"),
+                    this.duration("responseTimeout"));
         }
 
         private void put(final String attribute, final Object value, final String source) {

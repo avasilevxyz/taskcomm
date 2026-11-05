@@ -219,11 +219,11 @@ class TaskcommCommunicationAutoConfigurationIT {
                 .withUserConfiguration(TaskcommTaskAutoConfigurationIT.QualifiedScheduler.class)
                 .run(context -> {
                     assertThat(context).hasNotFailed();
-                    // такт партиций, такт основного поллера коммуникаций и heartbeat
+                    // такт партиций, такт основного поллера коммуникаций, heartbeat и подстраховка
                     assertThat(context.getBean(TaskcommTaskAutoConfigurationIT.CountingScheduler.class)
                                     .scheduled
                                     .get())
-                            .isEqualTo(3);
+                            .isEqualTo(4);
                 });
     }
 

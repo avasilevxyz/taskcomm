@@ -43,6 +43,8 @@ record ClaimedCommunication(
      * @param createdAt время создания
      * @param origin указатель на создателя или {@code null}
      * @param payload доменная форма запроса в JSON
+     * @param callback доменная форма колбэка в JSON — у попытки обработки ответа; иначе {@code null}
      */
-    record Snapshot(UUID executionId, int priority, Instant createdAt, Origin origin, String payload) {}
+    record Snapshot(
+            UUID executionId, int priority, Instant createdAt, Origin origin, String payload, String callback) {}
 }

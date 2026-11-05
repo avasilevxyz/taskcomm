@@ -45,6 +45,10 @@ public class CommunicationEngine implements SmartLifecycle {
 
     private final CommunicationWorker worker;
 
+    private final CommunicationSafetyPoller safety;
+
+    private final Duration safetyInterval;
+
     private final String instance;
 
     private final Duration heartbeatTick;
@@ -99,7 +103,11 @@ public class CommunicationEngine implements SmartLifecycle {
                 new CommunicationAttemptCloser(dataSource, transactionManager, retries),
                 this.heartbeat,
                 new CommunicationExchange(dataSource, transactionManager, codec),
-                settings);
+                settings,
+                new ProcessorKeys(dataSource, transactionManager, ids));
+        this.safety =
+                new CommunicationSafetyPoller(dataSource, transactionManager, settings, retries, registry.systems());
+        this.safetyInterval = settings.safetyInterval();
         final PollerLayout layout = settings.pollers();
         final List<PollerSettings> all = new ArrayList<>();
         all.add(layout.main());
@@ -127,6 +135,8 @@ public class CommunicationEngine implements SmartLifecycle {
         }
         this.futures.add(scheduler.scheduleWithFixedDelay(
                 this::renewLeases, Instant.now().plus(this.heartbeatTick), this.heartbeatTick));
+        this.futures.add(scheduler.scheduleWithFixedDelay(
+                this::runSafety, Instant.now().plus(this.safetyInterval), this.safetyInterval));
         this.running = true;
     }
 
@@ -183,6 +193,14 @@ public class CommunicationEngine implements SmartLifecycle {
             this.heartbeat.refreshCancellations();
         } catch (final RuntimeException failure) {
             log.warn("Heartbeat коммуникаций: продление аренд не удалось, повтор на следующем такте", failure);
+        }
+    }
+
+    private void runSafety() {
+        try {
+            this.safety.tick();
+        } catch (final RuntimeException failure) {
+            log.warn("Подстраховочный поллер коммуникаций: такт не удался, повтор на следующем", failure);
         }
     }
 

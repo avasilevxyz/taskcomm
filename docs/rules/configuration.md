@@ -39,6 +39,7 @@ taskcomm:
     lease: { duration: 60s, heartbeat-interval: 20s, max-execution-time: 5m }
     retry: { max-attempts: 5, initial-delay: 10s, multiplier: 2.0, max-delay: 1h, jitter: 0.2 }
     response-timeout: 1h            # срок ожидания асинхронного ответа, потом повторная отправка
+    safety: { interval: 1m }        # подстраховочный поллер: истёкшие ожидания ответа
     circuit-breaker:                # только исходящие; выключен по умолчанию
       enabled: false
       window: 60s

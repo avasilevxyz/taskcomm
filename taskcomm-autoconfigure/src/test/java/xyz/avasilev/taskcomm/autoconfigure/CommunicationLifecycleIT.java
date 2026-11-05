@@ -23,7 +23,6 @@ import xyz.avasilev.taskcomm.TestPostgres;
 import xyz.avasilev.taskcomm.communication.api.Communication;
 import xyz.avasilev.taskcomm.communication.api.CommunicationContext;
 import xyz.avasilev.taskcomm.communication.api.CommunicationHeaders;
-import xyz.avasilev.taskcomm.communication.api.CommunicationSendOptions;
 import xyz.avasilev.taskcomm.communication.api.CommunicationService;
 import xyz.avasilev.taskcomm.communication.api.CommunicationStatus;
 import xyz.avasilev.taskcomm.communication.api.ExchangeMessage;
@@ -195,7 +194,7 @@ class CommunicationLifecycleIT {
     }
 
     @Test
-    void unknownSystemAndKeysAreRejectedBeforeWriting() {
+    void unknownSystemIsRejectedBeforeWriting() {
         this.contextRunner.run(context -> {
             final CommunicationService communications = context.getBean(CommunicationService.class);
 
@@ -204,12 +203,6 @@ class CommunicationLifecycleIT {
                     .hasMessageContaining("'nobody'");
             assertThatThrownBy(() -> communications.receive("nobody", InboundRequest.of("{}")))
                     .isInstanceOf(TaskcommException.class);
-            assertThatThrownBy(() -> communications.send(
-                            "orders",
-                            new Order("x"),
-                            CommunicationSendOptions.defaults().dedupKey("k")))
-                    .isInstanceOf(UnsupportedOperationException.class)
-                    .hasMessageContaining("5c");
             assertThat(count(context.getBean(DataSource.class))).isZero();
         });
     }

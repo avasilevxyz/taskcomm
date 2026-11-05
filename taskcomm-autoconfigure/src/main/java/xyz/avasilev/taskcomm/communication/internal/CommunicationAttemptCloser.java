@@ -24,6 +24,10 @@ class CommunicationAttemptCloser {
     /** Начало причины {@code FAILED} у синхронно принятой коммуникации. */
     static final String SYNC_FAILED = "синхронный приём не повторяется: ";
 
+    /** Блокировка строки коммуникации: приём колбэка правит ту же строку (docs/adr/0099-early-callback-proves-delivery.md). */
+    private static final String LOCK =
+            "SELECT id::text FROM tc_communication WHERE execution_created_at = :executionCreatedAt AND id = :id FOR UPDATE";
+
     private static final String CLOSE = """
             UPDATE tc_communication_attempt
                SET status = :status, status_description = :reason, finished_at = now(), updated_at = now(),
@@ -50,17 +54,19 @@ class CommunicationAttemptCloser {
     }
 
     /**
-     * Закрывает попытку успехом, коммуникация — {@code SUCCEEDED}.
+     * Закрывает попытку успехом: коммуникация {@code SUCCEEDED}, ждёт ответа или передаётся в обработку
+     * раннего колбэка.
      *
      * @param attempt захваченная работа
      * @param response доменная форма ответа в JSON или {@code null}
+     * @param doNotAwait процессор сказал «не ждать»
      * @return {@code true}, если попытка была открыта и закрыта этим вызовом
      */
-    boolean succeed(final ClaimedCommunication attempt, final String response) {
+    boolean succeed(final ClaimedCommunication attempt, final String response, final boolean doNotAwait) {
         return this.close(
                 attempt,
                 new Outcome("SUCCEEDED", null, response),
-                jdbc -> CommunicationRetries.finish(jdbc, attempt.target(), "SUCCEEDED", null));
+                jdbc -> this.retries.afterSuccess(jdbc, closed(attempt), doNotAwait));
     }
 
     /**
@@ -75,7 +81,7 @@ class CommunicationAttemptCloser {
         return this.close(
                 attempt,
                 new Outcome("SKIPPED", reason, response),
-                jdbc -> CommunicationRetries.finish(jdbc, attempt.target(), "SKIPPED", reason));
+                jdbc -> this.retries.afterSkip(jdbc, closed(attempt), reason));
     }
 
     /**
@@ -116,6 +122,14 @@ class CommunicationAttemptCloser {
     private boolean close(
             final ClaimedCommunication attempt, final Outcome outcome, final Consumer<JdbcClient> afterClose) {
         final boolean closed = Boolean.TRUE.equals(this.transactions.execute(transaction -> {
+            this.jdbc
+                    .sql(LOCK)
+                    .param(
+                            "executionCreatedAt",
+                            CommunicationSql.parameter(attempt.target().executionCreatedAt()))
+                    .param("id", attempt.target().id())
+                    .query(String.class)
+                    .optional();
             final int updated = this.jdbc
                     .sql(CLOSE)
                     .param("status", outcome.status())

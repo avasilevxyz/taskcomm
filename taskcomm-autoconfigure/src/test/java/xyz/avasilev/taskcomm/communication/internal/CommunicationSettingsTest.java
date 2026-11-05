@@ -110,7 +110,7 @@ class CommunicationSettingsTest {
     private static CommunicationSettings resolve(
             final Map<String, SystemOverrides> yaml, final CommunicationProcessor<?, ?, ?>... processors) {
         return CommunicationSettings.resolve(
-                GLOBAL, yaml, new CommunicationProcessorRegistry(List.of(processors), true), POLLERS);
+                GLOBAL, yaml, new CommunicationProcessorRegistry(List.of(processors), true), POLLERS, Timing.DEFAULT);
     }
 
     /** REST: класс задаёт три попытки, метод — предел обработки. */

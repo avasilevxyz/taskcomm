@@ -38,19 +38,23 @@ class CommunicationWorker {
 
     private final CommunicationSettings settings;
 
+    private final ProcessorKeys keys;
+
     CommunicationWorker(
             final CommunicationProcessorRegistry registry,
             final CommunicationCodec codec,
             final CommunicationAttemptCloser closer,
             final CommunicationHeartbeat heartbeat,
             final CommunicationExchange exchange,
-            final CommunicationSettings settings) {
+            final CommunicationSettings settings,
+            final ProcessorKeys keys) {
         this.registry = registry;
         this.codec = codec;
         this.closer = closer;
         this.heartbeat = heartbeat;
         this.exchange = exchange;
         this.settings = settings;
+        this.keys = keys;
     }
 
     /**
@@ -82,7 +86,7 @@ class CommunicationWorker {
                     .orElseThrow(() -> new IllegalStateException(
                             "Захвачена коммуникация системы без процессора '" + attempt.system() + "'"));
             final CommunicationProcessingContext context = new CommunicationProcessingContext(
-                    attempt, this.exchange, () -> this.heartbeat.shouldStop(attempt));
+                    attempt, this.exchange, this.keys, () -> this.heartbeat.shouldStop(attempt));
             return this.close(attempt, processor, context, this.invoke(attempt, processor, context), sync);
         } catch (final RuntimeException failure) {
             log.warn(
@@ -106,9 +110,6 @@ class CommunicationWorker {
                 OriginType.COMMUNICATION, attempt.target().id(), attempt.lease().attemptId(), OriginRelation.SPAWNED);
         try (CurrentExecution.Scope _ =
                 CurrentExecution.bind(new CurrentExecution.Binding(attempt.execution(), creator))) {
-            if (attempt.phase() != CommunicationPhase.PROCESS) {
-                throw new IllegalStateException("Обработка асинхронного ответа появится на этапе 5c");
-            }
             final Communication<Object> communication = CommunicationViews.of(
                     attempt.direction(),
                     new CommunicationViews.Row(
@@ -124,7 +125,7 @@ class CommunicationWorker {
                             attempt.snapshot().payload(), processor.types().request()));
             final CommunicationProcessor<Object, Object, Object> typed =
                     (CommunicationProcessor<Object, Object, Object>) processor.processor();
-            return new Invocation(typed.process(communication, context), null);
+            return new Invocation(this.dispatch(typed, communication, processor, attempt, context), null);
         } catch (final Throwable failure) {
             log.warn(
                     "Процессор системы '{}' завершил попытку {} коммуникации {} исключением",
@@ -134,6 +135,28 @@ class CommunicationWorker {
                     failure);
             return new Invocation(null, failure);
         }
+    }
+
+    /**
+     * Вызов метода фазы: отправка или приём — {@code beforeProcess}, затем {@code process}, если ключ
+     * перед ним не оказался дубликатом; обработка ответа — {@code handleResponse} с колбэком.
+     */
+    private Object dispatch(
+            final CommunicationProcessor<Object, Object, Object> processor,
+            final Communication<Object> communication,
+            final RegisteredProcessor registered,
+            final ClaimedCommunication attempt,
+            final CommunicationProcessingContext context) {
+        if (attempt.phase() == CommunicationPhase.HANDLE_RESPONSE) {
+            processor.handleResponse(
+                    (Communication.Outbound<Object>) communication,
+                    this.codec.read(
+                            attempt.snapshot().callback(), registered.types().callback()),
+                    context);
+            return null;
+        }
+        processor.beforeProcess(communication, context);
+        return context.skipReason() != null ? null : processor.process(communication, context);
     }
 
     private SyncOutcome close(
@@ -154,7 +177,7 @@ class CommunicationWorker {
         final String response = this.codec.write(invocation.result());
         closed = context.skipReason() != null
                 ? this.closer.skip(attempt, context.skipReason(), response)
-                : this.closer.succeed(attempt, response);
+                : this.closer.succeed(attempt, response, context.doNotAwait());
         return closed
                 ? SyncOutcome.processed(invocation.result())
                 : SyncOutcome.failed("аренда потеряна раньше, чем обработка закончилась; исход не сохранён");
@@ -169,7 +192,9 @@ class CommunicationWorker {
         String failure = null;
         if (invocation.failure() != null) {
             failure = CommunicationSql.describe(invocation.failure());
-        } else if (attempt.direction() == Direction.OUTBOUND && context.skipReason() == null) {
+        } else if (attempt.direction() == Direction.OUTBOUND
+                && attempt.phase() == CommunicationPhase.PROCESS
+                && context.skipReason() == null) {
             failure = this.responseFailure(attempt, processor, context);
         }
         return failure;

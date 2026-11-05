@@ -55,7 +55,32 @@ final class BodyDecoding {
     }
 
     /**
-     * Разбирает тело входящей: исключение разбора — неразобранное тело; ошибка записи JSON — нет,
+     * Разбирает тело колбэка в доменную форму {@code A}.
+     *
+     * @param processor процессор системы
+     * @param body сырое тело
+     * @param headers заголовки
+     * @return доменная форма колбэка
+     * @throws RuntimeException если тело не разбирается
+     */
+    @SuppressWarnings("unchecked")
+    Object response(final RegisteredProcessor processor, final String body, final CommunicationHeaders headers) {
+        final ResolvableType type = processor.types().callback();
+        return switch (processor.processor()) {
+            case RestCommunicationProcessor<?, ?, ?> rest ->
+                ((RestCommunicationProcessor<?, ?, Object>) rest).decodeResponse(body, headers, this.json(type));
+            case SoapCommunicationProcessor<?, ?, ?> soapProcessor ->
+                ((SoapCommunicationProcessor<?, ?, Object>) soapProcessor)
+                        .decodeResponse(body, headers, this.xml(type));
+            case KafkaCommunicationProcessor<?, ?, ?> kafka ->
+                ((KafkaCommunicationProcessor<?, ?, Object>) kafka).decodeResponse(body, headers, this.json(type));
+            case RawCommunicationProcessor<?, ?, ?> raw -> raw.decodeResponse(body, headers);
+        };
+    }
+
+    /**
+     * Разбирает тело входящей: исключение разбора
+     * — неразобранное тело; ошибка записи JSON — нет,
      * она бросается.
      *
      * @param processor процессор системы
@@ -63,9 +88,21 @@ final class BodyDecoding {
      * @return итог разбора
      */
     DecodedBody decode(final RegisteredProcessor processor, final InboundRequest request) {
+        return this.decode(processor, request.body(), request.headers());
+    }
+
+    /**
+     * Разбирает тело входящей по сырому телу и заголовкам.
+     *
+     * @param processor процессор системы
+     * @param body сырое тело
+     * @param headers заголовки
+     * @return итог разбора
+     */
+    DecodedBody decode(final RegisteredProcessor processor, final String body, final CommunicationHeaders headers) {
         final Object payload;
         try {
-            payload = this.request(processor, request.body(), request.headers());
+            payload = this.request(processor, body, headers);
         } catch (final RuntimeException failure) {
             return new DecodedBody(null, null, "тело не разбирается: " + CommunicationSql.describe(failure));
         }

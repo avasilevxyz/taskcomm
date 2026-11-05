@@ -41,7 +41,8 @@ class CommunicationClaimIT {
                 CommunicationTestSettings.global(3, Duration.ZERO, Duration.ofMinutes(1)),
                 Map.of(),
                 new CommunicationProcessorRegistry(List.of(new StockProcessor())),
-                CommunicationTestSettings.POLLERS));
+                CommunicationTestSettings.POLLERS,
+                Timing.DEFAULT));
     }
 
     @Test
@@ -118,7 +119,8 @@ class CommunicationClaimIT {
                 new NewCommunication.Placement(null, null),
                 direction == Direction.INBOUND
                         ? new NewCommunication.Start(ExchangeMessage.of("{\"sku\":1}"), null, null, null)
-                        : NewCommunication.Start.OUTBOUND));
+                        : NewCommunication.Start.OUTBOUND,
+                NewCommunication.Keys.NONE));
     }
 
     private String value(final String sql, final UUID id) {

@@ -2,8 +2,11 @@ package xyz.avasilev.taskcomm.communication.internal;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import xyz.avasilev.taskcomm.communication.api.CommunicationSendOptions;
+import xyz.avasilev.taskcomm.communication.api.CorrelationKey;
+import xyz.avasilev.taskcomm.communication.api.DedupKey;
 import xyz.avasilev.taskcomm.communication.api.ExchangeMessage;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.api.Origin;
@@ -19,6 +22,7 @@ import xyz.avasilev.taskcomm.execution.internal.CurrentExecution;
  * @param scheduling приоритет и готовность
  * @param placement дело и создатель
  * @param start как начинается первая попытка
+ * @param keys ключи дедупликации и корреляции
  */
 record NewCommunication(
         Direction direction,
@@ -27,22 +31,19 @@ record NewCommunication(
         ContractShape shape,
         Scheduling scheduling,
         Placement placement,
-        Start start) {
-
-    /** Окончание сообщения методов, отложенных до этапа 5c. */
-    static final String NOT_YET =
-            " появится вместе с корреляцией и дедупликацией (этап 5c, " + "docs/adr/0135-communication-engine.md)";
+        Start start,
+        Keys keys) {
 
     /**
-     * Отказ ключам дедупликации и корреляции до этапа 5c — до записи чего-либо.
+     * Ключи дедупликации и корреляции.
      *
-     * @param present заданы ли ключи
-     * @throws UnsupportedOperationException если заданы
+     * @param dedup ключи дедупликации
+     * @param correlation ключи корреляции
      */
-    static void requireNoKeys(final boolean present) {
-        if (present) {
-            throw new UnsupportedOperationException("Ключи дедупликации и корреляции при создании" + NOT_YET);
-        }
+    record Keys(List<DedupKey> dedup, List<CorrelationKey> correlation) {
+
+        /** Ключей нет. */
+        static final Keys NONE = new Keys(List.of(), List.of());
     }
 
     /**
