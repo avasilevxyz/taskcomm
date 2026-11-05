@@ -107,9 +107,21 @@ class CommunicationRetries {
         } else if (ResponseAttempts.unparsedArrived(jdbc, closed.target())) {
             finish(jdbc, closed.target(), "FAILED", ResponseAttempts.UNPARSED);
         } else if (!doNotAwait && CommunicationCorrelation.awaits(jdbc, closed.target(), closed.system())) {
-            ResponseAttempts.await(jdbc, closed.target(), this.settings.responseTimeout(closed.system()));
+            this.awaitUnlessCancelled(jdbc, closed);
         } else {
             finish(jdbc, closed.target(), "SUCCEEDED", null);
+        }
+    }
+
+    /**
+     * Отправка удалась, и ответа ждут: при отметке отмены коммуникация {@code CANCELLED} — ждать ответа
+     * на отменённое некому (docs/adr/0100-cancel-keeps-real-outcome.md, docs/adr/0099-early-callback-proves-delivery.md).
+     */
+    private void awaitUnlessCancelled(final JdbcClient jdbc, final Closed closed) {
+        if (this.state(jdbc, closed).cancelled()) {
+            finish(jdbc, closed.target(), "CANCELLED", CANCELLED);
+        } else {
+            ResponseAttempts.await(jdbc, closed.target(), this.settings.responseTimeout(closed.system()));
         }
     }
 

@@ -24,6 +24,8 @@ final class ResponseAttempts {
             SELECT count(*) FROM tc_communication_attempt
              WHERE execution_created_at = :executionCreatedAt AND communication_id = :id
                AND phase = 'HANDLE_RESPONSE' AND status = 'FAILED' AND request_payload IS NULL
+               AND created_at >= (SELECT c.retry_cycle_started_at FROM tc_communication c
+                                   WHERE c.execution_created_at = :executionCreatedAt AND c.id = :id)
             """;
 
     private static final String CLOSE_OPEN = """

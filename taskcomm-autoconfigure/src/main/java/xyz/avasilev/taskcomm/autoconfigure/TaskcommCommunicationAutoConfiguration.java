@@ -150,6 +150,8 @@ public class TaskcommCommunicationAutoConfiguration {
      * @param qualified {@code DataSource} под {@code @TaskcommDataSource}
      * @param dataSources все {@code DataSource}
      * @param beanFactory фабрика бинов
+     * @param qualifiedManagers менеджеры транзакций под {@code @TaskcommTransactionManager}
+     * @param managers все менеджеры транзакций
      * @return сервис
      */
     @Bean
@@ -162,7 +164,10 @@ public class TaskcommCommunicationAutoConfiguration {
             final UuidV7 ids,
             @TaskcommDataSource final ObjectProvider<DataSource> qualified,
             final ObjectProvider<DataSource> dataSources,
-            final ListableBeanFactory beanFactory) {
+            final ListableBeanFactory beanFactory,
+            @TaskcommTransactionManager final ObjectProvider<PlatformTransactionManager> qualifiedManagers,
+            final ObjectProvider<PlatformTransactionManager> managers) {
+        final DataSource dataSource = TaskcommBeanSelection.dataSource(qualified, dataSources, beanFactory);
         return new DefaultCommunicationService(
                 registry::getObject,
                 settings::getObject,
@@ -170,7 +175,8 @@ public class TaskcommCommunicationAutoConfiguration {
                 creator,
                 codec,
                 ids,
-                TaskcommBeanSelection.dataSource(qualified, dataSources, beanFactory));
+                dataSource,
+                TaskcommBeanSelection.transactionManager(qualifiedManagers, managers, beanFactory, dataSource));
     }
 
     /**

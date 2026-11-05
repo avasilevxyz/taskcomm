@@ -8,6 +8,8 @@ import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -22,7 +24,9 @@ import xyz.avasilev.taskcomm.TaskcommException;
 import xyz.avasilev.taskcomm.TestPostgres;
 import xyz.avasilev.taskcomm.communication.api.CallbackRequest;
 import xyz.avasilev.taskcomm.communication.api.Communication;
+import xyz.avasilev.taskcomm.communication.api.CommunicationCancelResult;
 import xyz.avasilev.taskcomm.communication.api.CommunicationContext;
+import xyz.avasilev.taskcomm.communication.api.CommunicationRestartResult;
 import xyz.avasilev.taskcomm.communication.api.CommunicationSendOptions;
 import xyz.avasilev.taskcomm.communication.api.CommunicationService;
 import xyz.avasilev.taskcomm.communication.api.ExchangeMessage;
@@ -246,6 +250,42 @@ class CommunicationResponseIT {
         });
     }
 
+    @Test
+    void restartAfterUnparseableCallbackWaitsAndTakesNewCallback() {
+        this.contextRunner.run(context -> {
+            final CommunicationService communications = context.getBean(CommunicationService.class);
+            final SendResult<Payment> sent = communications.send("bank", new Payment("wait-5"));
+            final UUID id = sent.communication().id();
+            awaitStatus(context.getBean(DataSource.class), id, "AWAITING_RESPONSE");
+            communications.receiveResponse("bank", CallbackRequest.of("ref-wait-5", "не json"));
+            assertThat(column(context.getBean(DataSource.class), id, "status")).isEqualTo("FAILED");
+
+            final CommunicationRestartResult restarted = communications.restart(sent.communication());
+
+            assertThat(restarted.accepted()).as(restarted.reason()).isTrue();
+            awaitStatus(context.getBean(DataSource.class), id, "AWAITING_RESPONSE");
+            assertThat(communications.receiveResponse("bank", CallbackRequest.of("ref-wait-5", "{\"status\":\"ok\"}")))
+                    .isInstanceOf(ReceiveResponseResult.Attached.class);
+            awaitStatus(context.getBean(DataSource.class), id, "SUCCEEDED");
+        });
+    }
+
+    @Test
+    void cancelDuringSendEndsCancelledInsteadOfWaiting() {
+        this.contextRunner.run(context -> {
+            final CommunicationService communications = context.getBean(CommunicationService.class);
+            final BankProcessor bank = context.getBean(BankProcessor.class);
+            final SendResult<Payment> sent = communications.send("bank", new Payment("wait-slow-1"));
+            assertThat(bank.entered.await(WAIT.toSeconds(), TimeUnit.SECONDS)).isTrue();
+
+            final CommunicationCancelResult cancelled = communications.cancel(sent.communication());
+            bank.release.countDown();
+
+            assertThat(cancelled.reason()).contains("доиграет");
+            awaitStatus(context.getBean(DataSource.class), sent.communication().id(), "CANCELLED");
+        });
+    }
+
     private static void awaitStatus(final DataSource dataSource, final UUID id, final String status) {
         await().atMost(WAIT)
                 .untilAsserted(
@@ -282,6 +322,10 @@ class CommunicationResponseIT {
 
         final List<Confirmation> confirmations = new CopyOnWriteArrayList<>();
 
+        final CountDownLatch entered = new CountDownLatch(1);
+
+        final CountDownLatch release = new CountDownLatch(1);
+
         @Override
         public String externalSystem() {
             return "bank";
@@ -296,6 +340,10 @@ class CommunicationResponseIT {
             if (id.startsWith("dedup-") && context.dedupKey(id)) {
                 return null;
             }
+            if (id.startsWith("wait-slow-")) {
+                this.entered.countDown();
+                this.hold();
+            }
             context.recordResponse(ExchangeMessage.of("{}").withStatus(200));
             if (id.startsWith("wait-") || id.startsWith("nowait-")) {
                 context.registerCorrelationId("ref-" + id);
@@ -304,6 +352,17 @@ class CommunicationResponseIT {
                 context.doNotAwaitResponse();
             }
             return null;
+        }
+
+        private void hold() {
+            try {
+                if (!this.release.await(WAIT.toSeconds(), TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("тест не отпустил отправку");
+                }
+            } catch (final InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(interrupted);
+            }
         }
 
         @Override

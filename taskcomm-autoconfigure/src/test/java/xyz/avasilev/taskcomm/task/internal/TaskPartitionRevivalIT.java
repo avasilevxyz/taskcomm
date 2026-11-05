@@ -77,7 +77,10 @@ class TaskPartitionRevivalIT {
                 this.db.creator(),
                 new TaskPayloadCodec(JsonMapper.builder().build()),
                 this.db.dataSource,
-                this.db.transactionManager);
+                this.db.transactionManager,
+                () -> {
+                    throw new IllegalStateException("движок в этом тесте не нужен");
+                });
 
         final Task<String> task;
         try (CurrentExecution.Scope _ = CurrentExecution.bind(new CurrentExecution.Binding(execution, creator))) {

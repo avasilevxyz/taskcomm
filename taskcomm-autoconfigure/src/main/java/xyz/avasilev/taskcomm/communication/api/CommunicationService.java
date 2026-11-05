@@ -173,4 +173,43 @@ public interface CommunicationService {
      */
     <C> List<Communication<C>> findInExecution(
             ExecutionRef execution, Class<? extends CommunicationProcessor<C, ?, ?>> processor);
+
+    /**
+     * Отменяет коммуникацию (docs/adr/0139-restart-api.md): ждущая захвата или ответа становится
+     * {@code CANCELLED} сразу, отправляющаяся или обрабатываемая доигрывает попытку и пишет настоящий
+     * исход; отправка, после которой ждут ответа, — {@code CANCELLED}. Отменённое не перезапускается
+     * никогда (docs/adr/0071-no-restart-after-cancel.md).
+     *
+     * @param communication коммуникация
+     * @return принята отмена или отвергнута — у терминальной и уже отменённой
+     */
+    CommunicationCancelResult cancel(Communication<?> communication);
+
+    /**
+     * Отменяет коммуникацию по снимку из {@link CommunicationInspection} — в том числе коммуникацию
+     * системы без процессора.
+     *
+     * @param communication снимок
+     * @return принята отмена или отвергнута
+     */
+    CommunicationCancelResult cancel(CommunicationSnapshot communication);
+
+    /**
+     * Перезапускает упавшую коммуникацию: заново отправка исходящей или обработка входящей, с новым циклом
+     * попыток; ключи дедупликации снова не завершены. Исходящая, у которой упала обработка ответа, тоже
+     * отправляется заново. Входящая, принятая синхронно, обрабатывается в фоне — ответить отправителю
+     * уже некому. Отвергается у отменённой, не упавшей и у входящей с неразобранным телом.
+     *
+     * @param communication коммуникация
+     * @return принят перезапуск или отвергнут с причиной
+     */
+    CommunicationRestartResult restart(Communication<?> communication);
+
+    /**
+     * Перезапускает коммуникацию по снимку из {@link CommunicationInspection}.
+     *
+     * @param communication снимок
+     * @return принят перезапуск или отвергнут с причиной
+     */
+    CommunicationRestartResult restart(CommunicationSnapshot communication);
 }

@@ -80,6 +80,12 @@ class CommunicationDedup {
              WHERE execution_created_at = :executionCreatedAt AND communication_id = :id AND finished_at IS NULL
             """;
 
+    private static final String REOPEN = """
+            UPDATE tc_communication_dedup
+               SET finished_at = NULL, succeeded_at = NULL, updated_at = now()
+             WHERE execution_created_at = :executionCreatedAt AND communication_id = :id
+            """;
+
     private final UuidV7 ids;
 
     CommunicationDedup(final UuidV7 ids) {
@@ -181,6 +187,20 @@ class CommunicationDedup {
     static void finish(final JdbcClient jdbc, final CommunicationRef target, final boolean succeeded) {
         jdbc.sql(FINISH)
                 .param("succeeded", succeeded)
+                .param("executionCreatedAt", CommunicationSql.parameter(target.executionCreatedAt()))
+                .param("id", target.id())
+                .update();
+    }
+
+    /**
+     * Снимает с ключей коммуникации отметку завершения — при ручном перезапуске: перезапущенная снова
+     * незавершённая, и повторная доставка того же должна стать её дубликатом.
+     *
+     * @param jdbc клиент в транзакции перезапуска
+     * @param target коммуникация
+     */
+    static void reopen(final JdbcClient jdbc, final CommunicationRef target) {
+        jdbc.sql(REOPEN)
                 .param("executionCreatedAt", CommunicationSql.parameter(target.executionCreatedAt()))
                 .param("id", target.id())
                 .update();

@@ -1,5 +1,6 @@
 package xyz.avasilev.taskcomm.task.api;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
@@ -162,4 +163,72 @@ public interface TaskService {
      * @return принята отмена или отвергнута
      */
     TaskCancelResult cancel(TaskUnit<?> unit);
+
+    /**
+     * Отменяет сущность по снимку из {@link TaskInspection} — для экранов и сопровождения, в том числе
+     * сущность осиротевшего типа, у которой доменной формы нет.
+     *
+     * @param entity снимок задачи, группы или подзадачи
+     * @return принята отмена или отвергнута
+     */
+    TaskCancelResult cancel(TaskSnapshot entity);
+
+    /**
+     * Перезапускает задачу: новое раскрытие или, у плоской задачи, обработка заново, с новым циклом
+     * попыток (docs/adr/0049-restart-semantics.md). Прежние дети остаются историей. Перезапускается
+     * завершённая задача — {@code SUCCEEDED}, {@code WARNING}, {@code FAILED}, {@code SKIPPED};
+     * отменённое не перезапускается никогда (docs/adr/0071-no-restart-after-cancel.md).
+     *
+     * @param task задача
+     * @return принят перезапуск или отвергнут с причиной
+     */
+    TaskRestartResult restart(Task<?> task);
+
+    /**
+     * Перезапускает группу: новое раскрытие, затем сборка; предки снова ждут детей. Отвергается, пока
+     * задача собирается (docs/adr/0097-no-restart-during-collect.md), если группа принадлежит прежнему
+     * раскрытию задачи (docs/adr/0098-restart-only-latest-expansion.md) или результаты детей задачи
+     * уже удалены.
+     *
+     * @param batch группа
+     * @return принят перезапуск или отвергнут с причиной
+     */
+    TaskRestartResult restart(TaskBatch<?> batch);
+
+    /**
+     * Перезапускает упавшую подзадачу на месте: заново {@code process}, соседи не трогаются, предки
+     * снова ждут детей и соберутся, когда закончится последняя. Отвергается по тем же причинам, что
+     * перезапуск группы, и если результаты группы удалены — тогда перезапускают группу или задачу.
+     *
+     * @param unit подзадача
+     * @return принят перезапуск или отвергнут с причиной
+     */
+    TaskRestartResult restart(TaskUnit<?> unit);
+
+    /**
+     * Перезапускает сущность по снимку из {@link TaskInspection} — по правилам её уровня.
+     *
+     * @param entity снимок задачи, группы или подзадачи
+     * @return принят перезапуск или отвергнут с причиной
+     */
+    TaskRestartResult restart(TaskSnapshot entity);
+
+    /**
+     * Удаляет результаты детей у всех собранных родителей (docs/adr/0122-child-results-discard-sweep.md).
+     * То же, что {@link #discardChildResults(Duration)} с нулевым сроком.
+     *
+     * @return сколько родителей отмечено
+     */
+    int discardChildResults();
+
+    /**
+     * Удаляет результаты детей у родителей, чья успешная сборка закончилась не позже срока назад,
+     * независимо от {@code taskcomm.results.discard}. В вызове на родителях ставится отметка — с ней
+     * перезапуск их подзадач отвергается; сами строки результатов удаляются в фоне движком
+     * (docs/adr/0139-restart-api.md). Движок остановлен — строки лежат до удаления партиции.
+     *
+     * @param olderThan сколько прошло с конца сборки; ноль — все
+     * @return сколько родителей отмечено
+     */
+    int discardChildResults(Duration olderThan);
 }

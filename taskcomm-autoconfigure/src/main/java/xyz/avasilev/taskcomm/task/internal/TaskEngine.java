@@ -61,6 +61,8 @@ public class TaskEngine implements SmartLifecycle {
 
     private ThreadPoolTaskScheduler ownScheduler;
 
+    private TaskScheduler activeScheduler;
+
     private boolean running;
 
     /**
@@ -153,6 +155,7 @@ public class TaskEngine implements SmartLifecycle {
                     Instant.now().plus(TaskResultDiscard.SWEEP_INTERVAL),
                     TaskResultDiscard.SWEEP_INTERVAL));
         }
+        this.activeScheduler = scheduler;
         this.running = true;
     }
 
@@ -177,12 +180,53 @@ public class TaskEngine implements SmartLifecycle {
             this.ownScheduler.shutdown();
             this.ownScheduler = null;
         }
+        this.activeScheduler = null;
         this.running = false;
     }
 
     @Override
     public synchronized boolean isRunning() {
         return this.running;
+    }
+
+    /**
+     * Ручное удаление результатов детей (docs/adr/0139-restart-api.md): отметка — в потоке вызывающего,
+     * удаление строк — в фоне на планировщике движка. Движок остановлен — строки отмеченных родителей
+     * лежат до удаления партиции, как хвост прерванного удаления (docs/adr/0122-child-results-discard-sweep.md).
+     *
+     * @param olderThan сколько прошло с конца сборки; ноль — все собранные
+     * @return сколько родителей отмечено
+     */
+    int discardResults(final Duration olderThan) {
+        final List<TaskEntityRef> marked = this.discard.markDue(olderThan);
+        if (!marked.isEmpty()) {
+            this.deleteInBackground(marked);
+        }
+        return marked.size();
+    }
+
+    private synchronized void deleteInBackground(final List<TaskEntityRef> marked) {
+        if (this.activeScheduler == null) {
+            log.warn(
+                    "Движок задач остановлен: результаты детей {} отмеченных родителей останутся до удаления партиции",
+                    marked.size());
+            return;
+        }
+        this.futures.add(this.activeScheduler.schedule(
+                () -> {
+                    for (final TaskEntityRef parent : marked) {
+                        try {
+                            this.discard.deleteMarked(parent);
+                        } catch (final RuntimeException failure) {
+                            log.warn(
+                                    "Удаление результатов детей {} {} прервано; хвост останется до удаления партиции",
+                                    parent.level(),
+                                    parent.id(),
+                                    failure);
+                        }
+                    }
+                },
+                Instant.now()));
     }
 
     private void renewLeases() {

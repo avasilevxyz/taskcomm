@@ -2,6 +2,7 @@ package xyz.avasilev.taskcomm.task.internal;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -22,7 +23,9 @@ import xyz.avasilev.taskcomm.task.api.Task;
 import xyz.avasilev.taskcomm.task.api.TaskBatch;
 import xyz.avasilev.taskcomm.task.api.TaskCancelResult;
 import xyz.avasilev.taskcomm.task.api.TaskProcessor;
+import xyz.avasilev.taskcomm.task.api.TaskRestartResult;
 import xyz.avasilev.taskcomm.task.api.TaskService;
+import xyz.avasilev.taskcomm.task.api.TaskSnapshot;
 import xyz.avasilev.taskcomm.task.api.TaskStatus;
 import xyz.avasilev.taskcomm.task.api.TaskSubmitOptions;
 import xyz.avasilev.taskcomm.task.api.TaskUnit;
@@ -78,7 +81,7 @@ public class DefaultTaskService implements TaskService {
 
     private final JdbcClient jdbc;
 
-    private final Supplier<TaskCancellation> cancellation;
+    private final Supplier<TaskAdministration> administration;
 
     /**
      * Собирает сервис.
@@ -92,7 +95,8 @@ public class DefaultTaskService implements TaskService {
      * @param creator создание задачи
      * @param codec кодек нагрузок и результатов
      * @param dataSource {@code DataSource} стартера — для чтений и отмены
-     * @param transactionManager менеджер транзакций стартера — для отмены
+     * @param transactionManager менеджер транзакций стартера — для отмены и перезапуска
+     * @param engine движок — лениво; ручное удаление результатов идёт на его планировщике
      */
     public DefaultTaskService(
             final Supplier<TaskProcessorRegistry> registry,
@@ -100,22 +104,20 @@ public class DefaultTaskService implements TaskService {
             final TaskCreator creator,
             final TaskPayloadCodec codec,
             final DataSource dataSource,
-            final PlatformTransactionManager transactionManager) {
+            final PlatformTransactionManager transactionManager,
+            final Supplier<TaskEngine> engine) {
         this.registry = SingletonSupplier.of(registry);
         this.settings = SingletonSupplier.of(settings);
         this.creator = creator;
         this.codec = codec;
         this.jdbc = JdbcClient.create(dataSource);
-        this.cancellation = SingletonSupplier.of(() -> new TaskCancellation(
-                dataSource,
-                transactionManager,
-                new TaskChildren(
-                        dataSource, transactionManager, this.settings.get().pollers())));
+        this.administration = SingletonSupplier.of(() -> new TaskAdministration(
+                dataSource, transactionManager, this.settings.get().pollers(), engine));
     }
 
     @Override
     public TaskCancelResult cancel(final Task<?> task) {
-        return this.cancellation
+        return this.administration
                 .get()
                 .cancel(new TaskEntityRef(
                         TaskLevel.TASK, task.id(), task.executionRef().createdAt()));
@@ -123,7 +125,7 @@ public class DefaultTaskService implements TaskService {
 
     @Override
     public TaskCancelResult cancel(final TaskBatch<?> batch) {
-        return this.cancellation
+        return this.administration
                 .get()
                 .cancel(new TaskEntityRef(
                         TaskLevel.BATCH, batch.id(), batch.executionRef().createdAt()));
@@ -131,10 +133,61 @@ public class DefaultTaskService implements TaskService {
 
     @Override
     public TaskCancelResult cancel(final TaskUnit<?> unit) {
-        return this.cancellation
+        return this.administration
                 .get()
                 .cancel(new TaskEntityRef(
                         TaskLevel.UNIT, unit.id(), unit.executionRef().createdAt()));
+    }
+
+    @Override
+    public TaskCancelResult cancel(final TaskSnapshot entity) {
+        return this.administration.get().cancel(ref(entity));
+    }
+
+    @Override
+    public TaskRestartResult restart(final Task<?> task) {
+        return this.administration
+                .get()
+                .restart(new TaskEntityRef(
+                        TaskLevel.TASK, task.id(), task.executionRef().createdAt()));
+    }
+
+    @Override
+    public TaskRestartResult restart(final TaskBatch<?> batch) {
+        return this.administration
+                .get()
+                .restart(new TaskEntityRef(
+                        TaskLevel.BATCH, batch.id(), batch.executionRef().createdAt()));
+    }
+
+    @Override
+    public TaskRestartResult restart(final TaskUnit<?> unit) {
+        return this.administration
+                .get()
+                .restart(new TaskEntityRef(
+                        TaskLevel.UNIT, unit.id(), unit.executionRef().createdAt()));
+    }
+
+    @Override
+    public TaskRestartResult restart(final TaskSnapshot entity) {
+        return this.administration.get().restart(ref(entity));
+    }
+
+    @Override
+    public int discardChildResults() {
+        return this.discardChildResults(Duration.ZERO);
+    }
+
+    @Override
+    public int discardChildResults(final Duration olderThan) {
+        return this.administration.get().discardChildResults(olderThan);
+    }
+
+    private static TaskEntityRef ref(final TaskSnapshot entity) {
+        return new TaskEntityRef(
+                TaskLevel.valueOf(entity.level().name()),
+                entity.id(),
+                entity.executionRef().createdAt());
     }
 
     @Override

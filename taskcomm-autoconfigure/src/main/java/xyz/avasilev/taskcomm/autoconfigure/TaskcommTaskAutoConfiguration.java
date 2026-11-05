@@ -158,6 +158,7 @@ public class TaskcommTaskAutoConfiguration {
      * @param beanFactory фабрика бинов
      * @param qualifiedManagers менеджеры транзакций под {@link TaskcommTransactionManager}
      * @param managers все менеджеры транзакций
+     * @param engine движок — лениво, для ручного удаления результатов
      * @return сервис задач
      */
     @Bean
@@ -170,7 +171,8 @@ public class TaskcommTaskAutoConfiguration {
             final ObjectProvider<DataSource> dataSources,
             final ListableBeanFactory beanFactory,
             @TaskcommTransactionManager final ObjectProvider<PlatformTransactionManager> qualifiedManagers,
-            final ObjectProvider<PlatformTransactionManager> managers) {
+            final ObjectProvider<PlatformTransactionManager> managers,
+            final ObjectProvider<TaskEngine> engine) {
         final DataSource dataSource = TaskcommBeanSelection.dataSource(qualified, dataSources, beanFactory);
         return new DefaultTaskService(
                 registry::getObject,
@@ -178,7 +180,8 @@ public class TaskcommTaskAutoConfiguration {
                 creator,
                 codec,
                 dataSource,
-                TaskcommBeanSelection.transactionManager(qualifiedManagers, managers, beanFactory, dataSource));
+                TaskcommBeanSelection.transactionManager(qualifiedManagers, managers, beanFactory, dataSource),
+                engine::getObject);
     }
 
     /**

@@ -2,6 +2,7 @@ package xyz.avasilev.taskcomm.task.internal;
 
 import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import javax.sql.DataSource;
@@ -116,17 +117,7 @@ class TaskResultDiscard {
     int sweep() {
         int discarded = 0;
         for (final TaskLevel level : List.of(TaskLevel.BATCH, TaskLevel.TASK)) {
-            final List<TaskEntityRef> due = this.jdbc
-                    .sql(DUE.replace(TaskRetries.TABLE, level.table()))
-                    .param("delay", TaskSql.seconds(this.settings.delay()))
-                    .param("limit", SWEEP_LIMIT)
-                    .query((rs, rowNum) -> new TaskEntityRef(
-                            level,
-                            rs.getObject("id", UUID.class),
-                            rs.getObject("execution_created_at", OffsetDateTime.class)
-                                    .toInstant()))
-                    .list();
-            for (final TaskEntityRef parent : due) {
+            for (final TaskEntityRef parent : this.due(level, this.settings.delay())) {
                 if (this.discard(parent)) {
                     discarded++;
                 }
@@ -150,6 +141,45 @@ class TaskResultDiscard {
         if (marked == null || marked == 0) {
             return false;
         }
+        this.deleteMarked(parent);
+        return true;
+    }
+
+    /**
+     * Ручное удаление (docs/adr/0139-restart-api.md): отметка всем собранным родителям, чья сборка
+     * закончилась не позже срока назад. Каждый родитель — своей транзакцией, условно, как у
+     * подметальщика; сами результаты удаляет {@link #deleteMarked(TaskEntityRef)} в фоне.
+     *
+     * @param olderThan сколько прошло с конца сборки; ноль — все
+     * @return отмеченные этим вызовом родители
+     */
+    List<TaskEntityRef> markDue(final Duration olderThan) {
+        final List<TaskEntityRef> marked = new ArrayList<>();
+        for (final TaskLevel level : List.of(TaskLevel.BATCH, TaskLevel.TASK)) {
+            List<TaskEntityRef> due = this.due(level, olderThan);
+            while (!due.isEmpty()) {
+                for (final TaskEntityRef parent : due) {
+                    final Integer updated = this.transactions.execute(status -> this.jdbc
+                            .sql(MARK.replace(TaskRetries.TABLE, parent.level().table()))
+                            .param("executionCreatedAt", TaskSql.parameter(parent.executionCreatedAt()))
+                            .param("id", parent.id())
+                            .update());
+                    if (updated != null && updated == 1) {
+                        marked.add(parent);
+                    }
+                }
+                due = this.due(level, olderThan);
+            }
+        }
+        return marked;
+    }
+
+    /**
+     * Удаляет результаты детей родителя, на котором отметка уже стоит.
+     *
+     * @param parent родитель
+     */
+    void deleteMarked(final TaskEntityRef parent) {
         final List<UUID> expansions = this.jdbc
                 .sql(EXPANSIONS)
                 .param("executionCreatedAt", TaskSql.parameter(parent.executionCreatedAt()))
@@ -163,7 +193,19 @@ class TaskResultDiscard {
             }
         }
         log.debug("Результаты детей {} {} удалены", parent.level(), parent.id());
-        return true;
+    }
+
+    private List<TaskEntityRef> due(final TaskLevel level, final Duration delay) {
+        return this.jdbc
+                .sql(DUE.replace(TaskRetries.TABLE, level.table()))
+                .param("delay", TaskSql.seconds(delay))
+                .param("limit", SWEEP_LIMIT)
+                .query((rs, rowNum) -> new TaskEntityRef(
+                        level,
+                        rs.getObject("id", UUID.class),
+                        rs.getObject("execution_created_at", OffsetDateTime.class)
+                                .toInstant()))
+                .list();
     }
 
     private void deleteResults(final TaskEntityRef parent, final UUID attemptId, final TaskLevel level) {

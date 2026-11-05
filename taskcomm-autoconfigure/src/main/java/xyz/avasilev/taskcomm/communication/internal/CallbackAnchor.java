@@ -21,7 +21,8 @@ final class CallbackAnchor {
                    c.cancel_requested_at IS NOT NULL AS cancelled,
                    EXISTS (SELECT 1 FROM tc_communication_attempt a
                             WHERE a.execution_created_at = c.execution_created_at AND a.communication_id = c.id
-                              AND a.phase = 'HANDLE_RESPONSE') AS answered
+                              AND a.phase = 'HANDLE_RESPONSE'
+                              AND (a.finished_at IS NULL OR a.created_at >= c.retry_cycle_started_at)) AS answered
               FROM tc_communication c
              WHERE c.execution_created_at = :executionCreatedAt AND c.id = :id
                FOR UPDATE
@@ -129,7 +130,8 @@ final class CallbackAnchor {
      * @param status статус
      * @param phase фаза
      * @param cancelled стоит ли отметка отмены
-     * @param answered был ли уже колбэк — попытка {@code HANDLE_RESPONSE}
+     * @param answered был ли колбэк в текущем цикле — открытая попытка {@code HANDLE_RESPONSE} или начатая
+     *     после {@code retry_cycle_started_at}: ручной перезапуск начинает цикл заново (docs/adr/0139-restart-api.md)
      */
     record State(
             Direction direction,

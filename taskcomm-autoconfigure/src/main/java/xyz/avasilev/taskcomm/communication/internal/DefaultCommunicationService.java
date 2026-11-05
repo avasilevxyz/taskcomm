@@ -3,13 +3,17 @@ package xyz.avasilev.taskcomm.communication.internal;
 import java.util.List;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.function.SingletonSupplier;
 import xyz.avasilev.taskcomm.communication.api.CallbackRequest;
 import xyz.avasilev.taskcomm.communication.api.Communication;
+import xyz.avasilev.taskcomm.communication.api.CommunicationCancelResult;
 import xyz.avasilev.taskcomm.communication.api.CommunicationProcessor;
+import xyz.avasilev.taskcomm.communication.api.CommunicationRestartResult;
 import xyz.avasilev.taskcomm.communication.api.CommunicationSendOptions;
 import xyz.avasilev.taskcomm.communication.api.CommunicationService;
+import xyz.avasilev.taskcomm.communication.api.CommunicationSnapshot;
 import xyz.avasilev.taskcomm.communication.api.InboundRequest;
 import xyz.avasilev.taskcomm.communication.api.ReceiveAndProcessResult;
 import xyz.avasilev.taskcomm.communication.api.ReceiveResponseResult;
@@ -35,6 +39,8 @@ public class DefaultCommunicationService implements CommunicationService {
 
     private final CommunicationCallbacks callbacks;
 
+    private final CommunicationAdministration administration;
+
     /**
      * Собирает сервис.
      *
@@ -45,6 +51,7 @@ public class DefaultCommunicationService implements CommunicationService {
      * @param codec кодек доменных форм
      * @param ids генератор идентификаторов
      * @param dataSource {@code DataSource} стартера
+     * @param transactionManager менеджер транзакций стартера — для отмены и перезапуска
      */
     public DefaultCommunicationService(
             final Supplier<CommunicationProcessorRegistry> registry,
@@ -53,7 +60,8 @@ public class DefaultCommunicationService implements CommunicationService {
             final CommunicationCreator creator,
             final CommunicationCodec codec,
             final UuidV7 ids,
-            final DataSource dataSource) {
+            final DataSource dataSource,
+            final PlatformTransactionManager transactionManager) {
         this.registry = SingletonSupplier.of(registry);
         final Supplier<CommunicationSettings> resolved = SingletonSupplier.of(settings);
         this.reader = new CommunicationReader(dataSource, codec);
@@ -64,6 +72,7 @@ public class DefaultCommunicationService implements CommunicationService {
                 this.reader,
                 new SyncReception(resolved, SingletonSupplier.of(engine), creator, this.reader, ids));
         this.callbacks = new CommunicationCallbacks(dataSource, creator, codec, this.reader, resolved, ids);
+        this.administration = new CommunicationAdministration(dataSource, transactionManager, resolved, ids);
     }
 
     @Override
@@ -136,5 +145,29 @@ public class DefaultCommunicationService implements CommunicationService {
         return this.reader.inExecution(execution, this.registry.get().forCreate(processor)).stream()
                 .map(communication -> (Communication<C>) communication)
                 .toList();
+    }
+
+    @Override
+    public CommunicationCancelResult cancel(final Communication<?> communication) {
+        return this.administration.cancel(new CommunicationRef(
+                communication.id(), communication.executionRef().createdAt()));
+    }
+
+    @Override
+    public CommunicationCancelResult cancel(final CommunicationSnapshot communication) {
+        return this.administration.cancel(new CommunicationRef(
+                communication.id(), communication.executionRef().createdAt()));
+    }
+
+    @Override
+    public CommunicationRestartResult restart(final Communication<?> communication) {
+        return this.administration.restart(new CommunicationRef(
+                communication.id(), communication.executionRef().createdAt()));
+    }
+
+    @Override
+    public CommunicationRestartResult restart(final CommunicationSnapshot communication) {
+        return this.administration.restart(new CommunicationRef(
+                communication.id(), communication.executionRef().createdAt()));
     }
 }
