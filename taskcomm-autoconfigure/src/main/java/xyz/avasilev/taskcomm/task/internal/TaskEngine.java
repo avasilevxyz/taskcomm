@@ -65,6 +65,8 @@ public class TaskEngine implements SmartLifecycle {
 
     private boolean running;
 
+    private volatile long lastHeartbeat = System.nanoTime();
+
     /**
      * Собирает движок.
      *
@@ -77,6 +79,7 @@ public class TaskEngine implements SmartLifecycle {
      * @param threadFactory фабрика потоков воркеров потребителя или {@code null}
      * @param decorator декоратор запусков воркеров потребителя или {@code null}
      * @param scheduler планировщик потребителя или {@code null} — тогда движок заводит свой
+     * @param observation MDC и метрики попыток
      */
     public TaskEngine(
             final DataSource dataSource,
@@ -87,7 +90,8 @@ public class TaskEngine implements SmartLifecycle {
             final TaskPayloadCodec codec,
             final ThreadFactory threadFactory,
             final TaskDecorator decorator,
-            final TaskScheduler scheduler) {
+            final TaskScheduler scheduler,
+            final TaskObservation observation) {
         final PollerLayout layout = settings.pollers();
         final String instance = ManagementFactory.getRuntimeMXBean().getName();
         final TaskClaimer claimer = new TaskClaimer(
@@ -121,6 +125,7 @@ public class TaskEngine implements SmartLifecycle {
         this.externalScheduler = scheduler;
         final TaskWorker worker = new TaskWorker(
                 registry, codec, closer, this.heartbeat, children, new TaskCollector(dataSource, codec), ids);
+        final TaskAttemptObserver observer = new TaskAttemptObserver(observation);
         final List<PollerSettings> all = new ArrayList<>();
         all.add(layout.main());
         all.addAll(layout.dedicated());
@@ -130,6 +135,7 @@ public class TaskEngine implements SmartLifecycle {
                         claimable(layout, poller, registry),
                         claimer,
                         worker,
+                        observer,
                         threadFactory != null ? threadFactory : workerThreads(poller),
                         decorator))
                 .toList();
@@ -141,6 +147,7 @@ public class TaskEngine implements SmartLifecycle {
             return;
         }
         final TaskScheduler scheduler = this.externalScheduler != null ? this.externalScheduler : this.createOwn();
+        this.lastHeartbeat = System.nanoTime();
         for (final TaskPoller poller : this.pollers) {
             final Duration interval = poller.settings().interval();
             this.futures.add(scheduler.scheduleWithFixedDelay(poller::poll, Instant.now(), interval));
@@ -190,6 +197,26 @@ public class TaskEngine implements SmartLifecycle {
     }
 
     /**
+     * Живость собственных потоков экземпляра (docs/adr/0051-engine-health.md): по каждому поллеру и heartbeat —
+     * интервал и сколько прошло с последнего такта. Остановленный движок не отвечает ничем.
+     *
+     * @return механизмы движка; пусто, если движок не запущен
+     */
+    public synchronized List<Liveness> liveness() {
+        if (!this.running) {
+            return List.of();
+        }
+        final List<Liveness> result = new ArrayList<>();
+        for (final TaskPoller poller : this.pollers) {
+            result.add(new Liveness(
+                    "poller." + poller.settings().name(), poller.settings().interval(), poller.silence()));
+        }
+        result.add(new Liveness(
+                "heartbeat", this.heartbeatTick, Duration.ofNanos(System.nanoTime() - this.lastHeartbeat)));
+        return result;
+    }
+
+    /**
      * Ручное удаление результатов детей (docs/adr/0139-restart-api.md): отметка — в потоке вызывающего,
      * удаление строк — в фоне на планировщике движка. Движок остановлен — строки отмеченных родителей
      * лежат до удаления партиции, как хвост прерванного удаления (docs/adr/0122-child-results-discard-sweep.md).
@@ -235,6 +262,8 @@ public class TaskEngine implements SmartLifecycle {
             this.heartbeat.refreshCancellations();
         } catch (final RuntimeException failure) {
             log.warn("Heartbeat задач: продление аренд не удалось, повтор на следующем такте", failure);
+        } finally {
+            this.lastHeartbeat = System.nanoTime();
         }
     }
 
@@ -278,4 +307,13 @@ public class TaskEngine implements SmartLifecycle {
         factory.setDaemon(true);
         return factory;
     }
+
+    /**
+     * Живость одного механизма движка.
+     *
+     * @param name механизм: {@code poller.<имя>} или {@code heartbeat}
+     * @param interval его интервал
+     * @param silence сколько прошло с последнего такта
+     */
+    public record Liveness(String name, Duration interval, Duration silence) {}
 }

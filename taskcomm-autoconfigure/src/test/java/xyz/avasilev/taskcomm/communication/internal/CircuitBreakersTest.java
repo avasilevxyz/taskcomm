@@ -2,6 +2,7 @@ package xyz.avasilev.taskcomm.communication.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
@@ -25,6 +26,8 @@ class CircuitBreakersTest {
 
     private final AtomicLong clock = new AtomicLong();
 
+    private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
+
     private final CircuitBreakers breakers = new CircuitBreakers(
             CommunicationSettings.resolve(
                     CommunicationTestSettings.global(3, Duration.ZERO, Duration.ofSeconds(30)),
@@ -41,7 +44,35 @@ class CircuitBreakersTest {
                             2,
                             Duration.ofMinutes(1))),
             this.clock::get,
-            () -> 0.5);
+            () -> 0.5,
+            new MicrometerCommunicationMetrics(this.meters));
+
+    @Test
+    void stateGaugeAndTransitionsCounter() {
+        this.breakers.record("stock", true);
+        assertThat(this.meters
+                        .get("tc.communication.breaker.state")
+                        .tag("system", "stock")
+                        .gauge()
+                        .value())
+                .isEqualTo(0.0);
+        this.breakers.record("stock", true);
+        this.breakers.record("stock", true);
+        this.breakers.record("stock", true);
+
+        assertThat(this.meters
+                        .get("tc.communication.breaker.state")
+                        .tag("system", "stock")
+                        .gauge()
+                        .value())
+                .isEqualTo(2.0);
+        assertThat(this.meters
+                        .get("tc.communication.breaker.transitions")
+                        .tags("system", "stock", "to", "open")
+                        .counter()
+                        .count())
+                .isEqualTo(1.0);
+    }
 
     @Test
     void opensOnlyWhenMinimumCallsReachedAndRateExceeded() {

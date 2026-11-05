@@ -30,6 +30,10 @@ import xyz.avasilev.taskcomm.communication.api.CircuitBreakerSnapshot;
  * </ul>
  *
  * <p>Не считаются вовсе исключение после {@code doNotRetry}, исключение вне списка и потеря аренды.
+ *
+ * <p>Каждый переход — WARN с системой, причиной и долей отказов и счётчик переходов; состояние видно метрикой
+ * (docs/rules/observability.md). Проба, отложенная за отсутствием свободных воркеров, переходом не считается:
+ * размыкатель остаётся разомкнутым.
  */
 @Slf4j
 class CircuitBreakers {
@@ -40,12 +44,19 @@ class CircuitBreakers {
 
     private final DoubleSupplier random;
 
+    private final CommunicationMetrics metrics;
+
     private final Map<String, Breaker> breakers = new ConcurrentHashMap<>();
 
-    CircuitBreakers(final CommunicationSettings settings, final LongSupplier nanoClock, final DoubleSupplier random) {
+    CircuitBreakers(
+            final CommunicationSettings settings,
+            final LongSupplier nanoClock,
+            final DoubleSupplier random,
+            final CommunicationMetrics metrics) {
         this.settings = settings;
         this.nanoClock = nanoClock;
         this.random = random;
+        this.metrics = metrics;
     }
 
     /**
@@ -113,7 +124,7 @@ class CircuitBreakers {
         final BreakerPolicy policy = this.settings.breaker(system);
         if (policy.enabled()) {
             this.breakers
-                    .computeIfAbsent(system, key -> new Breaker(key, policy.settings()))
+                    .computeIfAbsent(system, key -> this.create(key, policy.settings()))
                     .record(failure, this.nanoClock.getAsLong());
         }
     }
@@ -131,6 +142,12 @@ class CircuitBreakers {
                 .map(breaker -> breaker.snapshot(instance, now, wall))
                 .sorted(Comparator.comparing(CircuitBreakerSnapshot::externalSystem))
                 .toList();
+    }
+
+    private Breaker create(final String system, final BreakerSettings breakerSettings) {
+        final Breaker breaker = new Breaker(system, breakerSettings);
+        this.metrics.breaker(system, breaker::stateCode);
+        return breaker;
     }
 
     /** Состояние размыкателя одной системы. */
@@ -155,6 +172,14 @@ class CircuitBreakers {
         Breaker(final String system, final BreakerSettings settings) {
             this.system = system;
             this.settings = settings;
+        }
+
+        synchronized int stateCode() {
+            return switch (this.state) {
+                case CLOSED -> 0;
+                case PROBING -> 1;
+                case OPEN -> 2;
+            };
         }
 
         synchronized boolean claimable(final long now) {
@@ -183,7 +208,6 @@ class CircuitBreakers {
             this.state = State.PROBING;
             this.probeDeadline = now + this.settings.probeTimeout().toNanos();
             this.probeRemaining = this.settings.probeCalls();
-            log.info("Размыкатель системы '{}': проба", this.system);
             return true;
         }
 
@@ -198,6 +222,13 @@ class CircuitBreakers {
                 this.probeRemaining = claimed;
                 if (claimed == 0) {
                     this.close("пробовать нечего — отправок нет");
+                } else {
+                    this.transition("probing");
+                    log.warn(
+                            "Размыкатель системы '{}': проба на {} отправках; доля отказов {}.",
+                            this.system,
+                            claimed,
+                            this.rate());
                 }
             }
         }
@@ -231,7 +262,7 @@ class CircuitBreakers {
                     this.window.stream().filter(entry -> entry[1] == 1).count();
             final double rate = (double) failures / this.window.size();
             if (this.window.size() >= this.settings.minimumCalls() && rate >= this.settings.failureRateThreshold()) {
-                this.open(now, String.format(Locale.ROOT, "доля отказов %.2f за окно", rate));
+                this.open(now, "доля отказов за окно не меньше порога");
             }
         }
 
@@ -242,23 +273,46 @@ class CircuitBreakers {
         }
 
         private void open(final long now, final String reason) {
+            final String rate = this.rate();
             this.openings++;
             final Duration wait = this.settings.backoff().delay(this.openings, CircuitBreakers.this.random);
             this.state = State.OPEN;
             this.nextProbeAt = now + wait.toNanos();
             this.window.clear();
+            this.transition("open");
             log.warn(
-                    "Размыкатель системы '{}' разомкнут: {}; проба через {} (docs/adr/0065-communication-circuit-breaker.md).",
+                    "Размыкатель системы '{}' разомкнут: {}; доля отказов {}; проба через {} "
+                            + "(docs/adr/0065-communication-circuit-breaker.md).",
                     this.system,
                     reason,
+                    rate,
                     wait);
         }
 
         private void close(final String reason) {
+            final String rate = this.rate();
             this.state = State.CLOSED;
             this.openings = 0;
             this.window.clear();
-            log.warn("Размыкатель системы '{}' замкнут: {}.", this.system, reason);
+            this.transition("closed");
+            log.warn("Размыкатель системы '{}' замкнут: {}; доля отказов {}.", this.system, reason, rate);
+        }
+
+        private void transition(final String to) {
+            CircuitBreakers.this.metrics.breakerTransition(this.system, to);
+        }
+
+        /** Доля отказов в текущем окне; окно пусто — «нет вызовов». */
+        private String rate() {
+            final long failures =
+                    this.window.stream().filter(entry -> entry[1] == 1).count();
+            return this.window.isEmpty()
+                    ? "— (вызовов в окне нет)"
+                    : String.format(
+                            Locale.ROOT,
+                            "%.2f из %d вызовов",
+                            (double) failures / this.window.size(),
+                            this.window.size());
         }
     }
 

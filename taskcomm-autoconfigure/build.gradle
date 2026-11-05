@@ -18,6 +18,8 @@ dependencies {
     compileOnly libs.jackson.dataformat.xml
     compileOnly libs.spring.webmvc
     compileOnly libs.spring.security.web
+    compileOnly libs.micrometer.core
+    compileOnly libs.spring.boot.health
     annotationProcessor libs.spring.boot.configuration.processor
     annotationProcessor libs.spring.boot.autoconfigure.processor
 
@@ -42,6 +44,8 @@ dependencies {
     testImplementation libs.jackson.dataformat.xml
     testImplementation libs.spring.boot.starter.webmvc
     testImplementation libs.spring.security.web
+    testImplementation libs.micrometer.core
+    testImplementation libs.spring.boot.health
     testImplementation libs.archunit.junit5
     testImplementation libs.testcontainers.postgresql
     testImplementation libs.testcontainers.junit.jupiter

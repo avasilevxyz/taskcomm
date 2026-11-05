@@ -1,5 +1,6 @@
 package xyz.avasilev.taskcomm.autoconfigure;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.concurrent.ThreadFactory;
 import javax.sql.DataSource;
 import org.springframework.beans.factory.ListableBeanFactory;
@@ -10,6 +11,7 @@ import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration;
 import org.springframework.boot.transaction.autoconfigure.TransactionAutoConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.core.task.TaskDecorator;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -22,11 +24,14 @@ import xyz.avasilev.taskcomm.communication.api.CommunicationService;
 import xyz.avasilev.taskcomm.communication.internal.CommunicationCodec;
 import xyz.avasilev.taskcomm.communication.internal.CommunicationCreator;
 import xyz.avasilev.taskcomm.communication.internal.CommunicationEngine;
+import xyz.avasilev.taskcomm.communication.internal.CommunicationMetrics;
+import xyz.avasilev.taskcomm.communication.internal.CommunicationObservation;
 import xyz.avasilev.taskcomm.communication.internal.CommunicationProcessorRegistry;
 import xyz.avasilev.taskcomm.communication.internal.CommunicationSettings;
 import xyz.avasilev.taskcomm.communication.internal.CommunicationStartup;
 import xyz.avasilev.taskcomm.communication.internal.DefaultCommunicationInspection;
 import xyz.avasilev.taskcomm.communication.internal.DefaultCommunicationService;
+import xyz.avasilev.taskcomm.communication.internal.MicrometerCommunicationMetrics;
 import xyz.avasilev.taskcomm.execution.internal.ExecutionRepository;
 import xyz.avasilev.taskcomm.execution.internal.UuidV7;
 
@@ -232,7 +237,8 @@ public class TaskcommCommunicationAutoConfiguration {
      * @param dataSources все {@code DataSource}
      * @param qualifiedManagers менеджер транзакций под {@code @TaskcommTransactionManager}
      * @param managers все менеджеры транзакций
-     * @param beanFactory фабрика бинов
+     * @param beanFactory фабрика бинов; из неё же — наблюдаемость {@link CommunicationObservation}: параметров у метода
+     *     и так предел
      * @param ids генератор идентификаторов
      * @param settings итоговые настройки
      * @param registry реестр процессоров
@@ -267,6 +273,40 @@ public class TaskcommCommunicationAutoConfiguration {
                 codec,
                 TaskcommBeanSelection.replacement(threadFactories, ThreadFactory.class, "@TaskcommWorkerThreadFactory"),
                 TaskcommBeanSelection.replacement(decorators, TaskDecorator.class, "@TaskcommWorkerTaskDecorator"),
-                TaskcommBeanSelection.scheduler(schedulers));
+                TaskcommBeanSelection.scheduler(schedulers),
+                beanFactory.getBean(CommunicationObservation.class));
+    }
+
+    /**
+     * Наблюдаемость движка: префикс ключей MDC, метрики попыток и размыкателей. Без Micrometer или его
+     * реестра — без метрик (docs/rules/observability.md).
+     *
+     * @param properties свойства стартера
+     * @param metrics метрики, если Micrometer на classpath
+     * @return наблюдаемость движка
+     */
+    @Bean
+    public CommunicationObservation taskcommCommunicationObservation(
+            final TaskcommProperties properties, final ObjectProvider<CommunicationMetrics> metrics) {
+        return new CommunicationObservation(
+                TaskcommObservability.mdcPrefix(properties), metrics.getIfAvailable(() -> CommunicationMetrics.NONE));
+    }
+
+    /** Метрики — только при Micrometer на classpath (docs/adr/0015-observability.md). */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(MeterRegistry.class)
+    static class Metrics {
+
+        /**
+         * Метрики в реестре потребителя; реестра нет — без метрик.
+         *
+         * @param registries реестры Micrometer
+         * @return метрики коммуникаций
+         */
+        @Bean
+        public CommunicationMetrics taskcommCommunicationMetrics(final ObjectProvider<MeterRegistry> registries) {
+            final MeterRegistry registry = registries.getIfUnique();
+            return registry == null ? CommunicationMetrics.NONE : new MicrometerCommunicationMetrics(registry);
+        }
     }
 }

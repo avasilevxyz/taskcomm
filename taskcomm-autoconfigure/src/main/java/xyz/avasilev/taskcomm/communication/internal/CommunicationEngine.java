@@ -63,6 +63,8 @@ public class CommunicationEngine implements SmartLifecycle {
 
     private boolean running;
 
+    private volatile long lastHeartbeat = System.nanoTime();
+
     /**
      * Собирает движок.
      *
@@ -75,6 +77,7 @@ public class CommunicationEngine implements SmartLifecycle {
      * @param threadFactory фабрика потоков воркеров потребителя или {@code null}
      * @param decorator декоратор запусков воркеров потребителя или {@code null}
      * @param scheduler планировщик потребителя или {@code null}
+     * @param observation MDC и метрики
      */
     public CommunicationEngine(
             final DataSource dataSource,
@@ -85,7 +88,8 @@ public class CommunicationEngine implements SmartLifecycle {
             final CommunicationCodec codec,
             final ThreadFactory threadFactory,
             final TaskDecorator decorator,
-            final TaskScheduler scheduler) {
+            final TaskScheduler scheduler,
+            final CommunicationObservation observation) {
         this.instance = ManagementFactory.getRuntimeMXBean().getName();
         final CommunicationRetries retries = new CommunicationRetries(
                 settings, () -> ThreadLocalRandom.current().nextDouble(), ids);
@@ -100,7 +104,7 @@ public class CommunicationEngine implements SmartLifecycle {
         this.heartbeatTick = settings.heartbeatTick();
         this.externalScheduler = scheduler;
         this.breakers = new CircuitBreakers(
-                settings, System::nanoTime, () -> ThreadLocalRandom.current().nextDouble());
+                settings, System::nanoTime, () -> ThreadLocalRandom.current().nextDouble(), observation.metrics());
         this.worker = new CommunicationWorker(
                 registry,
                 codec,
@@ -109,7 +113,8 @@ public class CommunicationEngine implements SmartLifecycle {
                 new CommunicationExchange(dataSource, transactionManager, codec),
                 settings,
                 new ProcessorKeys(dataSource, transactionManager, ids),
-                new SendGuards(new RateLimiters(settings, System::nanoTime), this.breakers));
+                new SendGuards(new RateLimiters(settings, System::nanoTime), this.breakers),
+                observation);
         this.safety =
                 new CommunicationSafetyPoller(dataSource, transactionManager, settings, retries, registry.systems());
         this.safetyInterval = settings.safetyInterval();
@@ -136,6 +141,7 @@ public class CommunicationEngine implements SmartLifecycle {
             return;
         }
         final TaskScheduler scheduler = this.externalScheduler != null ? this.externalScheduler : this.createOwn();
+        this.lastHeartbeat = System.nanoTime();
         for (final CommunicationPoller poller : this.pollers) {
             this.futures.add(scheduler.scheduleWithFixedDelay(
                     poller::poll, Instant.now(), poller.settings().interval()));
@@ -195,6 +201,26 @@ public class CommunicationEngine implements SmartLifecycle {
     }
 
     /**
+     * Живость собственных потоков экземпляра (docs/adr/0051-engine-health.md): по каждому поллеру и heartbeat —
+     * интервал и сколько прошло с последнего такта. Остановленный движок не отвечает ничем.
+     *
+     * @return механизмы движка; пусто, если движок не запущен
+     */
+    public synchronized List<Liveness> liveness() {
+        if (!this.running) {
+            return List.of();
+        }
+        final List<Liveness> result = new ArrayList<>();
+        for (final CommunicationPoller poller : this.pollers) {
+            result.add(new Liveness(
+                    "poller." + poller.settings().name(), poller.settings().interval(), poller.silence()));
+        }
+        result.add(new Liveness(
+                "heartbeat", this.heartbeatTick, Duration.ofNanos(System.nanoTime() - this.lastHeartbeat)));
+        return result;
+    }
+
+    /**
      * Размыкатели этого экземпляра.
      *
      * @return размыкатели
@@ -209,6 +235,8 @@ public class CommunicationEngine implements SmartLifecycle {
             this.heartbeat.refreshCancellations();
         } catch (final RuntimeException failure) {
             log.warn("Heartbeat коммуникаций: продление аренд не удалось, повтор на следующем такте", failure);
+        } finally {
+            this.lastHeartbeat = System.nanoTime();
         }
     }
 
@@ -244,4 +272,13 @@ public class CommunicationEngine implements SmartLifecycle {
         factory.setDaemon(true);
         return factory;
     }
+
+    /**
+     * Живость одного механизма движка.
+     *
+     * @param name механизм: {@code poller.<имя>} или {@code heartbeat}
+     * @param interval его интервал
+     * @param silence сколько прошло с последнего такта
+     */
+    public record Liveness(String name, Duration interval, Duration silence) {}
 }

@@ -52,6 +52,9 @@ dependencyResolutionManagement {
             // версии — из BOM.
             library('spring-webmvc', 'org.springframework', 'spring-webmvc').withoutVersion()
             library('spring-security-web', 'org.springframework.security', 'spring-security-web').withoutVersion()
+            // Наблюдаемость (docs/adr/0141): метрики и health — только у тех, у кого Micrometer и Actuator свои.
+            library('micrometer-core', 'io.micrometer', 'micrometer-core').withoutVersion()
+            library('spring-boot-health', 'org.springframework.boot', 'spring-boot-health').withoutVersion()
             library('spring-boot-starter-webmvc', 'org.springframework.boot', 'spring-boot-starter-webmvc').versionRef('spring-boot')
             library('spring-boot-starter-test', 'org.springframework.boot', 'spring-boot-starter-test').versionRef('spring-boot')
             library('spring-boot-configuration-processor', 'org.springframework.boot', 'spring-boot-configuration-processor').versionRef('spring-boot')

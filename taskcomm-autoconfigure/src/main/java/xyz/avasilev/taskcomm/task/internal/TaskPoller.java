@@ -37,6 +37,8 @@ class TaskPoller {
 
     private final TaskWorker worker;
 
+    private final TaskAttemptObserver observer;
+
     private final ThreadPoolExecutor pool;
 
     private final Semaphore free;
@@ -49,6 +51,8 @@ class TaskPoller {
 
     private volatile boolean running = true;
 
+    private volatile long lastTick = System.nanoTime();
+
     /**
      * Собирает поллер.
      *
@@ -56,6 +60,7 @@ class TaskPoller {
      * @param types типы, которые поллер вправе захватывать, с формами контрактов
      * @param claimer захват
      * @param worker воркер
+     * @param observer MDC и метрики попытки
      * @param threadFactory фабрика потоков пула
      * @param decorator обёртка каждого запуска работы или {@code null}
      */
@@ -64,12 +69,14 @@ class TaskPoller {
             final Map<String, ContractShape> types,
             final TaskClaimer claimer,
             final TaskWorker worker,
+            final TaskAttemptObserver observer,
             final ThreadFactory threadFactory,
             final TaskDecorator decorator) {
         this.settings = settings;
         this.types = Map.copyOf(types);
         this.claimer = claimer;
         this.worker = worker;
+        this.observer = observer;
         this.free = new Semaphore(settings.workers());
         this.pool =
                 new ThreadPoolExecutor(
@@ -88,6 +95,16 @@ class TaskPoller {
 
     PollerSettings settings() {
         return this.settings;
+    }
+
+    /**
+     * Сколько прошло с последнего такта захвата — для health indicator (docs/adr/0051-engine-health.md).
+     * Такт — каждый проход захвата, в том числе без свободных воркеров и неудавшийся: поток жив.
+     *
+     * @return время с последнего такта
+     */
+    Duration silence() {
+        return Duration.ofNanos(System.nanoTime() - this.lastTick);
     }
 
     /**
@@ -126,7 +143,9 @@ class TaskPoller {
 
     private void claimWhileFull() {
         boolean full = true;
+        this.lastTick = System.nanoTime();
         while (full && this.running && !this.types.isEmpty()) {
+            this.lastTick = System.nanoTime();
             final int ask = Math.min(this.settings.batchSize(), this.free.availablePermits());
             full = ask > 0 && this.free.tryAcquire(ask) && this.claim(ask);
         }
@@ -166,7 +185,7 @@ class TaskPoller {
 
     private void run(final ClaimedAttempt attempt) {
         try {
-            this.worker.execute(attempt);
+            this.observer.execute(attempt, this.worker);
         } finally {
             this.free.release();
             if (this.queueMayHaveMore && this.running) {

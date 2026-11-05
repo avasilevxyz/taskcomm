@@ -1,5 +1,6 @@
 package xyz.avasilev.taskcomm.autoconfigure;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.concurrent.ThreadFactory;
 import javax.sql.DataSource;
 import org.springframework.beans.factory.ListableBeanFactory;
@@ -10,6 +11,7 @@ import org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration;
 import org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration;
 import org.springframework.boot.transaction.autoconfigure.TransactionAutoConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.core.task.TaskDecorator;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -23,9 +25,12 @@ import xyz.avasilev.taskcomm.task.api.TaskProcessor;
 import xyz.avasilev.taskcomm.task.api.TaskService;
 import xyz.avasilev.taskcomm.task.internal.DefaultTaskInspection;
 import xyz.avasilev.taskcomm.task.internal.DefaultTaskService;
+import xyz.avasilev.taskcomm.task.internal.MicrometerTaskMetrics;
 import xyz.avasilev.taskcomm.task.internal.PollerLayout;
 import xyz.avasilev.taskcomm.task.internal.TaskCreator;
 import xyz.avasilev.taskcomm.task.internal.TaskEngine;
+import xyz.avasilev.taskcomm.task.internal.TaskMetrics;
+import xyz.avasilev.taskcomm.task.internal.TaskObservation;
 import xyz.avasilev.taskcomm.task.internal.TaskPayloadCodec;
 import xyz.avasilev.taskcomm.task.internal.TaskProcessorRegistry;
 import xyz.avasilev.taskcomm.task.internal.TaskSettings;
@@ -244,7 +249,8 @@ public class TaskcommTaskAutoConfiguration {
      * @param dataSources все бины {@code DataSource}
      * @param qualifiedManagers менеджеры транзакций под {@link TaskcommTransactionManager}
      * @param managers все менеджеры транзакций
-     * @param beanFactory фабрика бинов
+     * @param beanFactory фабрика бинов; из неё же — наблюдаемость {@link TaskObservation}: параметров у метода
+     *     и так предел
      * @param ids генератор идентификаторов
      * @param settings итоговые настройки с раскладкой поллеров
      * @param registry реестр процессоров
@@ -279,6 +285,40 @@ public class TaskcommTaskAutoConfiguration {
                 codec,
                 TaskcommBeanSelection.replacement(threadFactories, ThreadFactory.class, "@TaskcommWorkerThreadFactory"),
                 TaskcommBeanSelection.replacement(decorators, TaskDecorator.class, "@TaskcommWorkerTaskDecorator"),
-                TaskcommBeanSelection.scheduler(schedulers));
+                TaskcommBeanSelection.scheduler(schedulers),
+                beanFactory.getBean(TaskObservation.class));
+    }
+
+    /**
+     * Наблюдаемость движка: префикс ключей MDC и метрики попыток. Без Micrometer или его реестра —
+     * без метрик (docs/rules/observability.md).
+     *
+     * @param properties свойства стартера
+     * @param metrics метрики попыток, если Micrometer на classpath
+     * @return наблюдаемость движка
+     */
+    @Bean
+    public TaskObservation taskcommTaskObservation(
+            final TaskcommProperties properties, final ObjectProvider<TaskMetrics> metrics) {
+        return new TaskObservation(
+                TaskcommObservability.mdcPrefix(properties), metrics.getIfAvailable(() -> TaskMetrics.NONE));
+    }
+
+    /** Метрики попыток — только при Micrometer на classpath (docs/adr/0015-observability.md). */
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(MeterRegistry.class)
+    static class Metrics {
+
+        /**
+         * Метрики попыток в реестре потребителя; реестра нет — без метрик.
+         *
+         * @param registries реестры Micrometer
+         * @return метрики попыток
+         */
+        @Bean
+        public TaskMetrics taskcommTaskMetrics(final ObjectProvider<MeterRegistry> registries) {
+            final MeterRegistry registry = registries.getIfUnique();
+            return registry == null ? TaskMetrics.NONE : new MicrometerTaskMetrics(registry);
+        }
     }
 }

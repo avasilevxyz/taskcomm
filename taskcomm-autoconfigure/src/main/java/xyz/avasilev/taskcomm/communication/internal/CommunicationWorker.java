@@ -1,5 +1,6 @@
 package xyz.avasilev.taskcomm.communication.internal;
 
+import java.util.Locale;
 import lombok.extern.slf4j.Slf4j;
 import xyz.avasilev.taskcomm.communication.api.Communication;
 import xyz.avasilev.taskcomm.communication.api.CommunicationProcessor;
@@ -22,9 +23,14 @@ import xyz.avasilev.taskcomm.execution.internal.CurrentExecution;
  *
  * <p>На время вызова поток привязан к делу коммуникации: созданное из процессора попадает в то же
  * дело с указателем на создателя (docs/rules/execution.md).
+ *
+ * <p>Вся попытка — вызов, лог неуспеха и закрытие — идёт под ключами MDC попытки ({@link CommunicationMdc}):
+ * лог неуспешной попытки пишется до восстановления снимка. Закрытая попытка попадает в метрики экземпляра.
  */
 @Slf4j
 class CommunicationWorker {
+
+    private static final String LEASE_LOST = "lease_lost";
 
     private final CommunicationProcessorRegistry registry;
 
@@ -42,6 +48,10 @@ class CommunicationWorker {
 
     private final SendGuards guards;
 
+    private final CommunicationMdc mdc;
+
+    private final CommunicationMetrics metrics;
+
     CommunicationWorker(
             final CommunicationProcessorRegistry registry,
             final CommunicationCodec codec,
@@ -50,7 +60,8 @@ class CommunicationWorker {
             final CommunicationExchange exchange,
             final CommunicationSettings settings,
             final ProcessorKeys keys,
-            final SendGuards guards) {
+            final SendGuards guards,
+            final CommunicationObservation observation) {
         this.registry = registry;
         this.codec = codec;
         this.closer = closer;
@@ -58,6 +69,8 @@ class CommunicationWorker {
         this.exchange = exchange;
         this.settings = settings;
         this.keys = keys;
+        this.mdc = new CommunicationMdc(observation.mdcPrefix());
+        this.metrics = observation.metrics();
         this.guards = guards;
     }
 
@@ -83,7 +96,24 @@ class CommunicationWorker {
     }
 
     private SyncOutcome run(final ClaimedCommunication attempt, final boolean sync) {
+        final long started = System.nanoTime();
         this.heartbeat.track(attempt);
+        try (CommunicationMdc.Scope _ = this.mdc.open(attempt)) {
+            final SyncOutcome outcome = this.closeOrWarn(attempt, sync);
+            if (outcome.metric() != null) {
+                this.observe(attempt, outcome.metric(), started);
+            }
+            return outcome;
+        } finally {
+            this.heartbeat.release(attempt);
+        }
+    }
+
+    /**
+     * Вызов и закрытие. Попытка, которую не удалось закрыть, в метрики не идёт: её исход узнает только
+     * переподхват.
+     */
+    private SyncOutcome closeOrWarn(final ClaimedCommunication attempt, final boolean sync) {
         try {
             final RegisteredProcessor processor = this.registry
                     .find(attempt.system())
@@ -99,9 +129,7 @@ class CommunicationWorker {
                     attempt.target().id(),
                     attempt.system(),
                     failure);
-            return SyncOutcome.failed("попытку не удалось закрыть: " + CommunicationSql.describe(failure));
-        } finally {
-            this.heartbeat.release(attempt);
+            return SyncOutcome.failed("попытку не удалось закрыть: " + CommunicationSql.describe(failure), null);
         }
     }
 
@@ -196,7 +224,9 @@ class CommunicationWorker {
                     : this.closer.fail(
                             attempt, failure, invocation.failure() == null ? null : context.doNotRetryReason());
             this.recordBreaker(attempt, closed, context, invocation, true);
-            return SyncOutcome.failed(closed ? failure : "аренда потеряна, исход не сохранён: " + failure);
+            return closed
+                    ? SyncOutcome.failed(failure, "failed")
+                    : SyncOutcome.failed("аренда потеряна, исход не сохранён: " + failure, LEASE_LOST);
         }
         final String response = this.codec.write(invocation.result());
         closed = context.skipReason() != null
@@ -204,8 +234,19 @@ class CommunicationWorker {
                 : this.closer.succeed(attempt, response, context.doNotAwait());
         this.recordBreaker(attempt, closed, context, invocation, false);
         return closed
-                ? SyncOutcome.processed(invocation.result())
-                : SyncOutcome.failed("аренда потеряна раньше, чем обработка закончилась; исход не сохранён");
+                ? SyncOutcome.processed(invocation.result(), context.skipReason() != null ? "skipped" : "succeeded")
+                : SyncOutcome.failed(
+                        "аренда потеряна раньше, чем обработка закончилась; исход не сохранён", LEASE_LOST);
+    }
+
+    private void observe(final ClaimedCommunication attempt, final String outcome, final long started) {
+        this.metrics.attempt(
+                attempt.system(),
+                attempt.direction().name().toLowerCase(Locale.ROOT),
+                attempt.phase().name().toLowerCase(Locale.ROOT),
+                outcome,
+                attempt.history().retry(),
+                System.nanoTime() - started);
     }
 
     /**
@@ -290,15 +331,16 @@ class CommunicationWorker {
      * @param processed {@code true}, если обработка успешна или пропущена
      * @param response что вернул процессор
      * @param failure причина неуспеха или {@code null}
+     * @param metric исход для метрик или {@code null}, если попытку закрыть не удалось
      */
-    record SyncOutcome(boolean processed, Object response, String failure) {
+    record SyncOutcome(boolean processed, Object response, String failure, String metric) {
 
-        static SyncOutcome processed(final Object response) {
-            return new SyncOutcome(true, response, null);
+        static SyncOutcome processed(final Object response, final String metric) {
+            return new SyncOutcome(true, response, null, metric);
         }
 
-        static SyncOutcome failed(final String failure) {
-            return new SyncOutcome(false, null, failure);
+        static SyncOutcome failed(final String failure, final String metric) {
+            return new SyncOutcome(false, null, failure, metric);
         }
     }
 }

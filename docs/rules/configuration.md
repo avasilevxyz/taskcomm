@@ -64,6 +64,8 @@ taskcomm:
     discard-after: 7d
   logging:
     mdc-prefix: tc.                 # префикс ключей MDC: tc.executionId, tc.taskId, ...
+  health:
+    missed-intervals: 10            # сколько своих интервалов поток поллера или heartbeat молчит до DOWN
   metrics:
     interval: 30s                   # такт снимка метрик на всю схему
   rest:
@@ -184,7 +186,8 @@ taskcomm:
 `@TaskcommScheduler`, `@TaskcommWorkerThreadFactory`, `@TaskcommWorkerTaskDecorator`
 ([ADR 0096](../adr/0096-no-foreign-type-beans.md)). `rest.search-window` не положительный
 ([ADR 0101](../adr/0101-active-partition-horizon.md)). `metrics.interval` не положительный
-([ADR 0102](../adr/0102-schema-wide-metrics-snapshot.md)).
+([ADR 0102](../adr/0102-schema-wide-metrics-snapshot.md)). `health.missed-intervals` меньше 2; `logging.mdc-prefix`
+не задан ([ADR 0141](../adr/0141-observability-instance.md)).
 
 **Предупреждение:** `heartbeat-interval > duration / 3` (но меньше `duration`) — громко
 и с рекомендуемым значением, тоже по каждому итоговому `duration`;

@@ -47,6 +47,42 @@ public class TaskcommProperties {
     /** REST API. */
     private Rest rest = new Rest();
 
+    /** Логи. */
+    private Logging logging = new Logging();
+
+    /** Health indicator. */
+    private Health health = new Health();
+
+    /**
+     * Свойства {@code taskcomm.logging.*} (docs/adr/0034-mdc-business-id.md).
+     */
+    @Getter
+    @Setter
+    public static class Logging {
+
+        /**
+         * Префикс ключей MDC, которые стартер кладёт вокруг вызова процессора: tc.executionId, tc.taskId,
+         * tc.batchId, tc.unitId, tc.communicationId, tc.attempt. Нужен, чтобы ключи стартера не столкнулись
+         * с ключами, которые кладёт процессор. Сменив его, обновите и запросы к логам.
+         */
+        private String mdcPrefix = "tc.";
+    }
+
+    /**
+     * Свойства {@code taskcomm.health.*} (docs/adr/0051-engine-health.md, docs/adr/0141-observability-instance.md).
+     */
+    @Getter
+    @Setter
+    public static class Health {
+
+        /**
+         * Сколько своих интервалов поток поллера или heartbeat может не тикать, прежде чем health indicator
+         * станет DOWN. Заметно больше одного: паузы сборщика мусора и занятый планировщик не должны давать
+         * ложных срабатываний.
+         */
+        private int missedIntervals = 10;
+    }
+
     /**
      * Свойства {@code taskcomm.rest.*} (docs/adr/0091-rest-disabled-by-default.md,
      * docs/adr/0140-rest-controllers.md).

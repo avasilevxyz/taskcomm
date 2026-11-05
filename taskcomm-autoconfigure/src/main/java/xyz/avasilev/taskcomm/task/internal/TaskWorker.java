@@ -32,6 +32,9 @@ import xyz.avasilev.taskcomm.task.api.UnitTaskProcessor;
  * <p>На время вызова поток привязан к делу сущности (docs/rules/execution.md): задача,
  * поставленная из процессора в этом потоке, попадает в то же дело и получает указатель
  * на создателя.
+ *
+ * <p>Вызывается из {@link TaskAttemptObserver}: вся попытка — вызов, лог неуспеха и закрытие — идёт под
+ * ключами MDC попытки, и лог неуспешной попытки пишется до восстановления снимка.
  */
 @Slf4j
 class TaskWorker {
@@ -72,15 +75,30 @@ class TaskWorker {
      * а ошибка закрытия — WARN; попытку тогда закроет переподхват истёкшей аренды.
      *
      * @param attempt захваченная работа
+     * @return исход для метрик или {@code null}, если закрыть не удалось
      */
-    void execute(final ClaimedAttempt attempt) {
+    String execute(final ClaimedAttempt attempt) {
         this.heartbeat.track(attempt);
+        try {
+            return this.closeOrWarn(attempt);
+        } finally {
+            this.heartbeat.release(attempt);
+        }
+    }
+
+    /**
+     * Вызов и закрытие. Попытка, которую не удалось закрыть, в метрики не идёт: её закроет переподхват,
+     * и исход станет известен только ему.
+     *
+     * @return исход для метрик или {@code null}, если закрыть не удалось
+     */
+    private String closeOrWarn(final ClaimedAttempt attempt) {
         try {
             final RegisteredProcessor processor = this.registry
                     .find(attempt.taskType())
                     .orElseThrow(() -> new IllegalStateException(
                             "Захвачена задача типа без процессора '" + attempt.taskType() + "'"));
-            this.close(this.invoke(this.prepare(attempt, processor)));
+            return this.close(this.invoke(this.prepare(attempt, processor)));
         } catch (final RuntimeException failure) {
             log.warn(
                     "Попытку {} ({} {} '{}') не удалось закрыть; её закроет переподхват истёкшей аренды.",
@@ -89,8 +107,7 @@ class TaskWorker {
                     attempt.target().id(),
                     attempt.taskType(),
                     failure);
-        } finally {
-            this.heartbeat.release(attempt);
+            return null;
         }
     }
 
@@ -223,27 +240,39 @@ class TaskWorker {
                         call.processor().types().unit()));
     }
 
-    private void close(final Outcome outcome) {
+    /**
+     * Закрывает попытку исходом вызова.
+     *
+     * @return исход для метрик: {@code succeeded}, {@code failed}, {@code skipped} или {@code lease_lost},
+     *     если аренду потеряли раньше закрытия
+     */
+    private String close(final Outcome outcome) {
         final Call call = outcome.call();
         final ClaimedAttempt attempt = call.attempt();
         final TaskEmitter emitter = call.children().emitter();
+        final boolean closed;
+        final String kind;
         if (outcome.failure() != null || call.context().skipReason() != null) {
             if (emitter != null) {
                 emitter.discard();
             }
             if (outcome.failure() != null) {
-                this.closer.fail(
+                kind = "failed";
+                closed = this.closer.fail(
                         attempt, describe(outcome.failure()), call.context().doNotRetryReason());
             } else {
-                this.closer.skip(attempt, call.context().skipReason(), this.codec.writeResult(outcome.result()));
+                kind = "skipped";
+                closed = this.closer.skip(
+                        attempt, call.context().skipReason(), this.codec.writeResult(outcome.result()));
             }
         } else {
+            kind = "succeeded";
             final String result = this.codec.writeResult(outcome.result());
-            switch (attempt.phase()) {
+            closed = switch (attempt.phase()) {
                 case PROCESS -> this.closer.succeed(attempt, result);
                 case EXPAND -> {
                     emitter.finish();
-                    this.closer.expanded(attempt, emitter.flushed());
+                    yield this.closer.expanded(attempt, emitter.flushed());
                 }
                 case COLLECT ->
                     this.closer.collected(
@@ -251,8 +280,9 @@ class TaskWorker {
                             result,
                             call.children().level(),
                             call.children().expansion());
-            }
+            };
         }
+        return closed ? kind : "lease_lost";
     }
 
     /**

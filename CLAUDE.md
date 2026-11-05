@@ -102,7 +102,7 @@ toolchain** (а не только toolchain нацелен на неё) — ли
 
 **Не пиним** — версии приходят из BOM Spring Boot: Micrometer и его реестры, драйвер PostgreSQL,
 Tomcat, Jackson 3, Liquibase (только в тестах). `jackson-dataformat-xml` — тоже из BOM и только `compileOnly`:
-потребителю она не приезжает, SOAP-потребитель подключает её сам ([ADR 0135](docs/adr/0135-communication-engine.md)). Так же `spring-webmvc` и `spring-security-web`: REST включает потребитель, MVC и Security у него свои ([ADR 0140](docs/adr/0140-rest-controllers.md)). Явный пин старой ветки Micrometer против Boot ломает Actuator, а пин драйвера
+потребителю она не приезжает, SOAP-потребитель подключает её сам ([ADR 0135](docs/adr/0135-communication-engine.md)). Так же `spring-webmvc` и `spring-security-web`: REST включает потребитель, MVC и Security у него свои ([ADR 0140](docs/adr/0140-rest-controllers.md)). Так же `micrometer-core` и `spring-boot-health`: метрики и health indicator появляются только у того, у кого Micrometer и Actuator свои ([ADR 0141](docs/adr/0141-observability-instance.md)). Явный пин старой ветки Micrometer против Boot ломает Actuator, а пин драйвера
 вниз нарушает наше же правило «не понижать версии зависимостей».
 
 Checkstyle обязан **разбирать синтаксис Java 25**: `sealed` с `permits` и pattern matching
@@ -238,8 +238,9 @@ gradlew.bat loadTest
   (`TaskDecorator`). Отдельно — квалификаторы **выбора** `@TaskcommDataSource`
   и `@TaskcommTransactionManager` ([ADR 0094](docs/adr/0094-creation-always-in-transaction.md)):
   у них своего бина по умолчанию нет. Все квалификаторы — в `autoconfigure`.
-- **`RequestMatcher` — единственный бин чужого типа**, и стартер его отдаёт, а не потребляет:
-  имя `taskcommRequestMatcher`, без условий, только вместе с REST и при Spring Security на classpath.
+- **Бинов чужих типов два, и стартер их отдаёт, а не потребляет**: `RequestMatcher` с именем
+  `taskcommRequestMatcher` — только вместе с REST и при Spring Security на classpath; `HealthIndicator`
+  с именем `taskcommHealthIndicator` — только при Actuator ([ADR 0141](docs/adr/0141-observability-instance.md)).
 - Каждая подсистема выключается свойством `taskcomm.<подсистема>.enabled`, а **все сразу —
   `taskcomm.enabled`** ([ADR 0090](docs/adr/0090-root-switch-disables-everything.md)). Автоконфигурация
   подсистемы стоит под **составным условием** «корень и подсистема», оба по умолчанию `true`;

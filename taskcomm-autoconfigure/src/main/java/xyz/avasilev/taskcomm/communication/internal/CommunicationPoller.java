@@ -48,6 +48,8 @@ class CommunicationPoller {
 
     private volatile boolean running = true;
 
+    private volatile long lastTick = System.nanoTime();
+
     CommunicationPoller(
             final PollerSettings settings,
             final Map<String, ContractShape> systems,
@@ -83,6 +85,16 @@ class CommunicationPoller {
         return this.settings;
     }
 
+    /**
+     * Сколько прошло с последнего такта захвата — для health indicator (docs/adr/0051-engine-health.md).
+     * Такт — каждый проход захвата, в том числе без свободных воркеров и неудавшийся: поток жив.
+     *
+     * @return время с последнего такта
+     */
+    Duration silence() {
+        return Duration.ofNanos(System.nanoTime() - this.lastTick);
+    }
+
     /** Захватывает работу, пока есть свободные воркеры и полные захваты. */
     void poll() {
         this.requested.set(true);
@@ -116,7 +128,9 @@ class CommunicationPoller {
     private void claimWhileFull() {
         this.breakers.dueProbes(this.systems.keySet()).forEach(this::probe);
         boolean full = true;
+        this.lastTick = System.nanoTime();
         while (full && this.running) {
+            this.lastTick = System.nanoTime();
             final Map<String, ContractShape> claimable = this.claimable();
             final int ask = Math.min(this.settings.batchSize(), this.free.availablePermits());
             full = !claimable.isEmpty() && ask > 0 && this.free.tryAcquire(ask) && this.claim(claimable, ask);
