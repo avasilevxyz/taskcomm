@@ -97,6 +97,8 @@ public class CommunicationEngine implements SmartLifecycle {
         this.heartbeat = new CommunicationHeartbeat(dataSource, transactionManager);
         this.heartbeatTick = settings.heartbeatTick();
         this.externalScheduler = scheduler;
+        final CircuitBreakers breakers = new CircuitBreakers(
+                settings, System::nanoTime, () -> ThreadLocalRandom.current().nextDouble());
         this.worker = new CommunicationWorker(
                 registry,
                 codec,
@@ -104,7 +106,8 @@ public class CommunicationEngine implements SmartLifecycle {
                 this.heartbeat,
                 new CommunicationExchange(dataSource, transactionManager, codec),
                 settings,
-                new ProcessorKeys(dataSource, transactionManager, ids));
+                new ProcessorKeys(dataSource, transactionManager, ids),
+                new SendGuards(new RateLimiters(settings, System::nanoTime), breakers));
         this.safety =
                 new CommunicationSafetyPoller(dataSource, transactionManager, settings, retries, registry.systems());
         this.safetyInterval = settings.safetyInterval();
@@ -119,7 +122,9 @@ public class CommunicationEngine implements SmartLifecycle {
                         claimer,
                         this.worker,
                         threadFactory != null ? threadFactory : workerThreads(poller),
-                        decorator))
+                        decorator,
+                        breakers,
+                        system -> settings.breaker(system).settings().probeCalls()))
                 .toList();
     }
 

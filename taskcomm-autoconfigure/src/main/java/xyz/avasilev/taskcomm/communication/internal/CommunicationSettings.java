@@ -1,6 +1,7 @@
 package xyz.avasilev.taskcomm.communication.internal;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -26,6 +27,10 @@ public final class CommunicationSettings {
 
     private final Timing timing;
 
+    private final Map<String, Double> rateLimits;
+
+    private final Map<String, BreakerPolicy> breakers;
+
     private final Duration heartbeatTick;
 
     private final PollerLayout pollers;
@@ -37,6 +42,7 @@ public final class CommunicationSettings {
             final Map<String, FailureStatuses> failureStatuses,
             final Map<String, Duration> responseTimeouts,
             final Timing timing,
+            final Guards guards,
             final Duration heartbeatTick,
             final PollerLayout pollers) {
         this.global = global;
@@ -45,6 +51,8 @@ public final class CommunicationSettings {
         this.failureStatuses = Map.copyOf(failureStatuses);
         this.responseTimeouts = Map.copyOf(responseTimeouts);
         this.timing = timing;
+        this.rateLimits = Map.copyOf(guards.rateLimits());
+        this.breakers = Map.copyOf(guards.breakers());
         this.heartbeatTick = heartbeatTick;
         this.pollers = pollers;
     }
@@ -66,7 +74,48 @@ public final class CommunicationSettings {
             final CommunicationProcessorRegistry registry,
             final PollerLayout pollers,
             final Timing timing) {
-        return new CommunicationSettingsResolver(global, yaml, pollers, timing).resolve(registry);
+        return resolve(global, yaml, registry, pollers, timing, BreakerSettings.DEFAULT);
+    }
+
+    /**
+     * Разрешает настройки вместе с порогами размыкателя.
+     *
+     * @param global глобальные значения подсистемы — уровень 5
+     * @param yaml переопределения систем из {@code yaml} — уровни 1 и 2
+     * @param registry процессоры — их аннотации дают уровни 3 и 4
+     * @param pollers раскладка поллеров
+     * @param timing срок ожидания ответа по умолчанию и такт подстраховки
+     * @param breaker пороги размыкателя подсистемы
+     * @return итоговые настройки
+     */
+    public static CommunicationSettings resolve(
+            final AttemptSettings global,
+            final Map<String, SystemOverrides> yaml,
+            final CommunicationProcessorRegistry registry,
+            final PollerLayout pollers,
+            final Timing timing,
+            final BreakerSettings breaker) {
+        return new CommunicationSettingsResolver(global, yaml, pollers, timing, breaker).resolve(registry);
+    }
+
+    /**
+     * Лимит отправок в секунду на экземпляр.
+     *
+     * @param system внешняя система
+     * @return лимит или {@code null} — не ограничено
+     */
+    Double rateLimit(final String system) {
+        return this.rateLimits.get(system);
+    }
+
+    /**
+     * Размыкатель системы.
+     *
+     * @param system внешняя система
+     * @return размыкатель; у системы без процессора — выключенный
+     */
+    BreakerPolicy breaker(final String system) {
+        return this.breakers.getOrDefault(system, new BreakerPolicy(BreakerSettings.DEFAULT, false, List.of()));
     }
 
     /**
@@ -145,4 +194,12 @@ public final class CommunicationSettings {
      * @param phase фаза
      */
     record Key(String system, CommunicationPhase phase) {}
+
+    /**
+     * Лимиты скорости и размыкатели по системам.
+     *
+     * @param rateLimits лимит отправок в секунду; системы без лимита нет в отображении
+     * @param breakers размыкатели
+     */
+    record Guards(Map<String, Double> rateLimits, Map<String, BreakerPolicy> breakers) {}
 }

@@ -40,6 +40,8 @@ class CommunicationWorker {
 
     private final ProcessorKeys keys;
 
+    private final SendGuards guards;
+
     CommunicationWorker(
             final CommunicationProcessorRegistry registry,
             final CommunicationCodec codec,
@@ -47,7 +49,8 @@ class CommunicationWorker {
             final CommunicationHeartbeat heartbeat,
             final CommunicationExchange exchange,
             final CommunicationSettings settings,
-            final ProcessorKeys keys) {
+            final ProcessorKeys keys,
+            final SendGuards guards) {
         this.registry = registry;
         this.codec = codec;
         this.closer = closer;
@@ -55,6 +58,7 @@ class CommunicationWorker {
         this.exchange = exchange;
         this.settings = settings;
         this.keys = keys;
+        this.guards = guards;
     }
 
     /**
@@ -156,7 +160,26 @@ class CommunicationWorker {
             return null;
         }
         processor.beforeProcess(communication, context);
-        return context.skipReason() != null ? null : processor.process(communication, context);
+        if (context.skipReason() != null) {
+            return null;
+        }
+        if (attempt.direction() == Direction.OUTBOUND) {
+            this.awaitRate(attempt, context);
+        }
+        return processor.process(communication, context);
+    }
+
+    /** Ждёт ограничителя скорости отправки (docs/adr/0137-rate-limit-and-circuit-breaker.md). */
+    private void awaitRate(final ClaimedCommunication attempt, final CommunicationProcessingContext context) {
+        try {
+            if (!this.guards.rates().acquire(attempt.system(), context::shouldStop)) {
+                throw new IllegalStateException(
+                        "ожидание ограничителя скорости прервано: аренда потеряна или " + "коммуникация отменена");
+            }
+        } catch (final InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("ожидание ограничителя скорости прервано", interrupted);
+        }
     }
 
     private SyncOutcome close(
@@ -172,15 +195,49 @@ class CommunicationWorker {
                     ? this.closer.failWithoutRetry(attempt, failure)
                     : this.closer.fail(
                             attempt, failure, invocation.failure() == null ? null : context.doNotRetryReason());
+            this.recordBreaker(attempt, closed, context, invocation, true);
             return SyncOutcome.failed(closed ? failure : "аренда потеряна, исход не сохранён: " + failure);
         }
         final String response = this.codec.write(invocation.result());
         closed = context.skipReason() != null
                 ? this.closer.skip(attempt, context.skipReason(), response)
                 : this.closer.succeed(attempt, response, context.doNotAwait());
+        this.recordBreaker(attempt, closed, context, invocation, false);
         return closed
                 ? SyncOutcome.processed(invocation.result())
                 : SyncOutcome.failed("аренда потеряна раньше, чем обработка закончилась; исход не сохранён");
+    }
+
+    /**
+     * Исход отправки для размыкателя (docs/adr/0065-communication-circuit-breaker.md): отказ — исключение
+     * из списка без {@code doNotRetry} или отказной статус; успех — нормальный возврат. Пропуск, потеря
+     * аренды, входящие и обработка ответа не считаются.
+     */
+    private void recordBreaker(
+            final ClaimedCommunication attempt,
+            final boolean closed,
+            final CommunicationProcessingContext context,
+            final Invocation invocation,
+            final boolean failed) {
+        if (!closed
+                || attempt.direction() != Direction.OUTBOUND
+                || attempt.phase() != CommunicationPhase.PROCESS
+                || context.skipReason() != null) {
+            return;
+        }
+        final Throwable thrown = invocation.failure();
+        if (!failed) {
+            this.guards.breakers().record(attempt.system(), false);
+        } else if (thrown == null || this.counts(attempt, context, thrown)) {
+            this.guards.breakers().record(attempt.system(), true);
+        }
+    }
+
+    /** Исключение — отказ для размыкателя: без {@code doNotRetry} и в его списке. */
+    private boolean counts(
+            final ClaimedCommunication attempt, final CommunicationProcessingContext context, final Throwable thrown) {
+        return context.doNotRetryReason() == null
+                && this.settings.breaker(attempt.system()).counts(thrown);
     }
 
     /** Причина неуспеха попытки или {@code null}, если попытка успешна или пропущена. */

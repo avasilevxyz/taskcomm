@@ -4,6 +4,8 @@
 - **Статус:** принято
 - **Изменено:** [0135](0135-communication-engine.md) — `jackson-dataformat-xml` транзитивно не приезжает: SOAP-потребитель
   подключает её сам, без неё SOAP-процессор с разбором по умолчанию — падение при старте.
+- **Изменено:** [0137](0137-rate-limit-and-circuit-breaker.md) — в `@CommunicationProcessorSettings` добавлен атрибут
+  `rateLimitPerInstance`: вызовов в секунду на экземпляр.
 
 ## Контекст
 

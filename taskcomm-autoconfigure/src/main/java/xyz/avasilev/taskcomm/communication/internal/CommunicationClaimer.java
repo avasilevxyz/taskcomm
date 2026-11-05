@@ -56,19 +56,6 @@ class CommunicationClaimer {
                FOR UPDATE OF c, a SKIP LOCKED
             """.formatted(RANGE.formatted("c"), RANGE.formatted("a"));
 
-    private static final String CANDIDATES = """
-            SELECT c.id, c.execution_created_at, c.execution_id, c.direction,
-                   coalesce(c.source, c.destination) AS system, c.phase, c.contract_shape, c.priority, c.created_at,
-                   c.request_payload::text AS payload, c.origin_type, c.origin_id, c.origin_attempt_id,
-                   c.origin_relation, a.id AS attempt_id, a.request_payload::text AS callback
-              FROM tc_communication c
-              JOIN tc_communication_attempt a ON a.execution_created_at = c.execution_created_at
-                   AND a.communication_id = c.id AND a.phase = c.phase AND a.finished_at IS NULL
-                   AND a.locked_until IS NULL %2$s
-             WHERE c.status = 'PENDING' AND c.next_attempt_at <= now() %1$s
-               AND coalesce(c.source, c.destination) = ANY(:systems)
-            """.formatted(RANGE.formatted("c"), RANGE.formatted("a"));
-
     private static final String CLOSE_EXPIRED = """
             UPDATE tc_communication_attempt
                SET status = 'LEASE_LOST', status_description = :reason, finished_at = now(), updated_at = now()
@@ -115,6 +102,8 @@ class CommunicationClaimer {
                SET status = 'SKIPPED', status_description = :reason, finished_at = now(), updated_at = now()
              WHERE execution_created_at = :executionCreatedAt AND id = :attemptId AND finished_at IS NULL
             """;
+
+    private final CommunicationClaimQuery query = new CommunicationClaimQuery();
 
     private final JdbcClient jdbc;
 
@@ -177,14 +166,16 @@ class CommunicationClaimer {
                 .query((rs, rowNum) -> expired(rs))
                 .list()
                 .forEach(this::closeExpired);
-        final List<Candidate> candidates = this.jdbc
-                .sql(CANDIDATES + " ORDER BY " + order + " LIMIT :limit FOR UPDATE OF c, a SKIP LOCKED")
+        final JdbcClient.StatementSpec statement = this.jdbc
+                .sql(this.query.text(order, known.length))
                 .param("activeFrom", CommunicationSql.parameter(range.from()))
                 .param("activeTo", CommunicationSql.parameter(range.to()))
-                .param("systems", known)
-                .param("limit", limit)
-                .query((rs, rowNum) -> candidate(rs))
-                .list();
+                .param("limit", limit);
+        for (int n = 0; n < known.length; n++) {
+            statement.param("system" + n, known[n]);
+        }
+        final List<Candidate> candidates =
+                statement.query((rs, rowNum) -> candidate(rs)).list();
         final List<Candidate> matching = new ArrayList<>();
         for (final Candidate candidate : candidates) {
             final ContractShape current = systems.get(candidate.system());
@@ -309,10 +300,12 @@ class CommunicationClaimer {
 
     private String order(final PollerSettings poller) {
         return switch (poller.form()) {
-            case DEADLINE -> "c.claim_order_at";
-            case PRIORITY -> "c.priority, c.next_attempt_at";
+            case DEADLINE -> CommunicationClaimQuery.DEADLINE;
+            case PRIORITY -> CommunicationClaimQuery.PRIORITY;
             case QUOTA ->
-                this.random.getAsDouble() < poller.fifoShare() ? "c.next_attempt_at" : "c.priority, c.next_attempt_at";
+                this.random.getAsDouble() < poller.fifoShare()
+                        ? CommunicationClaimQuery.FIFO
+                        : CommunicationClaimQuery.PRIORITY;
         };
     }
 

@@ -1,0 +1,240 @@
+package xyz.avasilev.taskcomm.communication.internal;
+
+import java.time.Duration;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.DoubleSupplier;
+import java.util.function.LongSupplier;
+import lombok.extern.slf4j.Slf4j;
+
+/**
+ * Размыкатели исходящих по системам — <b>в памяти экземпляра</b> (docs/adr/0065-communication-circuit-breaker.md).
+ *
+ * <ul>
+ *   <li><b>Замкнут</b>: исходы отправок за окно; доля отказов не меньше порога при минимальном числе
+ *       вызовов — размыкается.
+ *   <li><b>Разомкнут</b>: система не захватывается. Ожидание до пробы растёт по правилам backoff
+ *       с джиттером.
+ *   <li><b>Проба</b>: отдельный захват не больше {@code probe.calls} строк системы; удалась, только если
+ *       все взятые вызовы успешны — тогда замыкается. Любой отказ или истёкший срок пробы — снова
+ *       разомкнут, следующее ожидание длиннее. Взять оказалось нечего — замыкается: отправлять нечего.
+ * </ul>
+ *
+ * <p>Не считаются вовсе исключение после {@code doNotRetry}, исключение вне списка и потеря аренды.
+ */
+@Slf4j
+class CircuitBreakers {
+
+    private final CommunicationSettings settings;
+
+    private final LongSupplier nanoClock;
+
+    private final DoubleSupplier random;
+
+    private final Map<String, Breaker> breakers = new ConcurrentHashMap<>();
+
+    CircuitBreakers(final CommunicationSettings settings, final LongSupplier nanoClock, final DoubleSupplier random) {
+        this.settings = settings;
+        this.nanoClock = nanoClock;
+        this.random = random;
+    }
+
+    /**
+     * Можно ли захватывать систему основным захватом: замкнут или размыкатель выключен.
+     *
+     * @param system внешняя система
+     * @return {@code true}, если можно
+     */
+    boolean claimable(final String system) {
+        final Breaker breaker = this.breakers.get(system);
+        return breaker == null || breaker.claimable(this.nanoClock.getAsLong());
+    }
+
+    /**
+     * Системы, чья проба наступила: размыкатель переводится в пробу.
+     *
+     * @param systems системы поллера
+     * @return системы, которым нужен пробный захват
+     */
+    List<String> dueProbes(final Set<String> systems) {
+        final List<String> due = new ArrayList<>();
+        final long now = this.nanoClock.getAsLong();
+        for (final String system : systems) {
+            final Breaker breaker = this.breakers.get(system);
+            if (breaker != null && breaker.startProbe(now)) {
+                due.add(system);
+            }
+        }
+        return due;
+    }
+
+    /**
+     * Пробу не на чем выполнить — свободных воркеров нет: остаётся разомкнутым, проба — в следующем
+     * такте, без удлинения ожидания.
+     *
+     * @param system внешняя система
+     */
+    void postponeProbe(final String system) {
+        final Breaker breaker = this.breakers.get(system);
+        if (breaker != null) {
+            breaker.postpone();
+        }
+    }
+
+    /**
+     * Пробный захват выполнен.
+     *
+     * @param system внешняя система
+     * @param claimed сколько строк взято
+     */
+    void probeClaimed(final String system, final int claimed) {
+        final Breaker breaker = this.breakers.get(system);
+        if (breaker != null) {
+            breaker.probeClaimed(claimed);
+        }
+    }
+
+    /**
+     * Исход отправки.
+     *
+     * @param system внешняя система
+     * @param failure отказ ли это
+     */
+    void record(final String system, final boolean failure) {
+        final BreakerPolicy policy = this.settings.breaker(system);
+        if (policy.enabled()) {
+            this.breakers
+                    .computeIfAbsent(system, key -> new Breaker(key, policy.settings()))
+                    .record(failure, this.nanoClock.getAsLong());
+        }
+    }
+
+    /** Состояние размыкателя одной системы. */
+    private final class Breaker {
+
+        private final String system;
+
+        private final BreakerSettings settings;
+
+        private final Deque<long[]> window = new ArrayDeque<>();
+
+        private State state = State.CLOSED;
+
+        private int openings;
+
+        private long nextProbeAt;
+
+        private long probeDeadline;
+
+        private int probeRemaining;
+
+        Breaker(final String system, final BreakerSettings settings) {
+            this.system = system;
+            this.settings = settings;
+        }
+
+        synchronized boolean claimable(final long now) {
+            this.expireProbe(now);
+            return this.state == State.CLOSED;
+        }
+
+        synchronized boolean startProbe(final long now) {
+            this.expireProbe(now);
+            if (this.state != State.OPEN || now < this.nextProbeAt) {
+                return false;
+            }
+            this.state = State.PROBING;
+            this.probeDeadline = now + this.settings.probeTimeout().toNanos();
+            this.probeRemaining = this.settings.probeCalls();
+            log.info("Размыкатель системы '{}': проба", this.system);
+            return true;
+        }
+
+        synchronized void postpone() {
+            if (this.state == State.PROBING) {
+                this.state = State.OPEN;
+            }
+        }
+
+        synchronized void probeClaimed(final int claimed) {
+            if (this.state == State.PROBING) {
+                this.probeRemaining = claimed;
+                if (claimed == 0) {
+                    this.close("пробовать нечего — отправок нет");
+                }
+            }
+        }
+
+        synchronized void record(final boolean failure, final long now) {
+            switch (this.state) {
+                case CLOSED -> this.count(failure, now);
+                case PROBING -> {
+                    if (failure) {
+                        this.open(now, "отказ в пробе");
+                    } else {
+                        this.probeRemaining--;
+                        if (this.probeRemaining <= 0) {
+                            this.close("проба удалась");
+                        }
+                    }
+                }
+                case OPEN -> {
+                    // исход отправки, начатой до размыкания, — не в счёт
+                }
+            }
+        }
+
+        private void count(final boolean failure, final long now) {
+            this.window.addLast(new long[] {now, failure ? 1 : 0});
+            final long horizon = now - this.settings.window().toNanos();
+            while (!this.window.isEmpty() && this.window.peekFirst()[0] < horizon) {
+                this.window.removeFirst();
+            }
+            final long failures =
+                    this.window.stream().filter(entry -> entry[1] == 1).count();
+            final double rate = (double) failures / this.window.size();
+            if (this.window.size() >= this.settings.minimumCalls() && rate >= this.settings.failureRateThreshold()) {
+                this.open(now, String.format(Locale.ROOT, "доля отказов %.2f за окно", rate));
+            }
+        }
+
+        private void expireProbe(final long now) {
+            if (this.state == State.PROBING && now > this.probeDeadline) {
+                this.open(now, "срок пробы истёк");
+            }
+        }
+
+        private void open(final long now, final String reason) {
+            this.openings++;
+            final Duration wait = this.settings.backoff().delay(this.openings, CircuitBreakers.this.random);
+            this.state = State.OPEN;
+            this.nextProbeAt = now + wait.toNanos();
+            this.window.clear();
+            log.warn(
+                    "Размыкатель системы '{}' разомкнут: {}; проба через {} (docs/adr/0065-communication-circuit-breaker.md).",
+                    this.system,
+                    reason,
+                    wait);
+        }
+
+        private void close(final String reason) {
+            this.state = State.CLOSED;
+            this.openings = 0;
+            this.window.clear();
+            log.warn("Размыкатель системы '{}' замкнут: {}.", this.system, reason);
+        }
+    }
+
+    /** Состояние размыкателя. */
+    private enum State {
+        CLOSED,
+        OPEN,
+        PROBING
+    }
+}

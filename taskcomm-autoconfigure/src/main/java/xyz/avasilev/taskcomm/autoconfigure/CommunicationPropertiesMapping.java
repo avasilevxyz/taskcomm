@@ -8,6 +8,8 @@ import java.util.Set;
 import java.util.function.Supplier;
 import xyz.avasilev.taskcomm.TaskcommConfigurationException;
 import xyz.avasilev.taskcomm.communication.internal.AttemptSettings;
+import xyz.avasilev.taskcomm.communication.internal.BreakerOverride;
+import xyz.avasilev.taskcomm.communication.internal.BreakerSettings;
 import xyz.avasilev.taskcomm.communication.internal.ClaimForm;
 import xyz.avasilev.taskcomm.communication.internal.LeaseOverride;
 import xyz.avasilev.taskcomm.communication.internal.LeaseSettings;
@@ -72,7 +74,9 @@ final class CommunicationPropertiesMapping {
                                     lease(phaseSettings.getLease()),
                                     retry(phaseSettings.getRetry()),
                                     phaseSettings.getFailureStatuses(),
-                                    phaseSettings.getResponseTimeout())));
+                                    phaseSettings.getResponseTimeout(),
+                                    phaseSettings.getRateLimitPerInstance(),
+                                    breaker(phaseSettings.getCircuitBreaker()))));
             result.put(
                     system,
                     new SystemOverrides(
@@ -81,7 +85,9 @@ final class CommunicationPropertiesMapping {
                                     lease(settings.getLease()),
                                     retry(settings.getRetry()),
                                     settings.getFailureStatuses(),
-                                    settings.getResponseTimeout()),
+                                    settings.getResponseTimeout(),
+                                    settings.getRateLimitPerInstance(),
+                                    breaker(settings.getCircuitBreaker())),
                             phases));
         });
         return result;
@@ -127,6 +133,28 @@ final class CommunicationPropertiesMapping {
     }
 
     /**
+     * Пороги размыкателя подсистемы.
+     *
+     * @param communication свойства коммуникаций
+     * @return пороги
+     */
+    static BreakerSettings breaker(final TaskcommProperties.Communication communication) {
+        final TaskcommProperties.CommunicationBreaker breaker = communication.getCircuitBreaker();
+        final TaskcommProperties.BreakerWait wait = breaker.getWait();
+        return withPath(
+                PREFIX + "circuit-breaker",
+                () -> new BreakerSettings(
+                        breaker.isEnabled(),
+                        breaker.getWindow(),
+                        breaker.getMinimumCalls(),
+                        breaker.getFailureRateThreshold(),
+                        new RetryPolicy(
+                                1, wait.getInitialDelay(), wait.getMultiplier(), wait.getMaxDelay(), wait.getJitter()),
+                        breaker.getProbe().getCalls(),
+                        breaker.getProbe().getTimeout()));
+    }
+
+    /**
      * Детализация партиций для {@code date_trunc} — для оживления старой партиции при записи.
      *
      * @param period период партиций из свойств
@@ -153,6 +181,10 @@ final class CommunicationPropertiesMapping {
                                         .name()),
                         poller.getDeadlineStep() != null ? poller.getDeadlineStep() : main.getDeadlineStep(),
                         poller.getFifoShare() != null ? poller.getFifoShare() : main.getFifoShare()));
+    }
+
+    private static BreakerOverride breaker(final TaskcommProperties.CommunicationSystemBreaker breaker) {
+        return new BreakerOverride(breaker.getEnabled(), breaker.getExceptions());
     }
 
     private static LeaseOverride lease(final TaskcommProperties.LeaseOverride lease) {

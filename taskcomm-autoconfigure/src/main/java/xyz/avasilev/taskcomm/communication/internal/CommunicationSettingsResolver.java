@@ -35,6 +35,8 @@ final class CommunicationSettingsResolver {
 
     private final Timing timing;
 
+    private final BreakerSettings breaker;
+
     private final Map<String, Map<CommunicationPhase, SettingsOverride>> phases = new HashMap<>();
 
     private final List<String> report = new ArrayList<>();
@@ -43,8 +45,10 @@ final class CommunicationSettingsResolver {
             final AttemptSettings global,
             final Map<String, SystemOverrides> yaml,
             final PollerLayout pollers,
-            final Timing timing) {
+            final Timing timing,
+            final BreakerSettings breaker) {
         this.timing = timing;
+        this.breaker = breaker;
         this.global = global;
         this.yaml = Map.copyOf(yaml);
         this.pollers = pollers;
@@ -56,6 +60,8 @@ final class CommunicationSettingsResolver {
         final Map<String, Integer> priorities = new HashMap<>();
         final Map<String, FailureStatuses> statuses = new HashMap<>();
         final Map<String, Duration> timeouts = new HashMap<>();
+        final Map<String, Double> rateLimits = new HashMap<>();
+        final Map<String, BreakerPolicy> breakers = new HashMap<>();
         for (final RegisteredProcessor processor : registry.all()) {
             final String system = processor.system();
             final SettingsOverride onClass = ProcessorSettingsAnnotations.onClass(processor.processorClass());
@@ -73,6 +79,13 @@ final class CommunicationSettingsResolver {
                 attempts.put(
                         new CommunicationSettings.Key(system, phase), this.attempt(system, phase, onMethod, onClass));
             }
+            this.guards(
+                    system,
+                    onClass,
+                    attempts.get(new CommunicationSettings.Key(system, CommunicationPhase.PROCESS))
+                            .lease(),
+                    rateLimits,
+                    breakers);
         }
         for (final String system : this.yaml.keySet()) {
             if (registry.find(system).isEmpty()) {
@@ -96,8 +109,28 @@ final class CommunicationSettingsResolver {
                 statuses,
                 timeouts,
                 this.timing,
+                new CommunicationSettings.Guards(rateLimits, breakers),
                 this.heartbeatTick(attempts),
                 this.pollers);
+    }
+
+    /** Лимит скорости и размыкатель системы (docs/adr/0137-rate-limit-and-circuit-breaker.md). */
+    private void guards(
+            final String system,
+            final SettingsOverride onClass,
+            final LeaseSettings sendLease,
+            final Map<String, Double> rateLimits,
+            final Map<String, BreakerPolicy> breakers) {
+        final SettingsOverride yamlSystem =
+                this.yaml.getOrDefault(system, SystemOverrides.NONE).system();
+        final Double rate = GuardResolution.rateLimit(system, yamlSystem, onClass);
+        if (rate != null) {
+            rateLimits.put(system, rate);
+        }
+        final BreakerPolicy policy = GuardResolution.breaker(system, this.breaker, yamlSystem, onClass, sendLease);
+        breakers.put(system, policy);
+        this.report.add("  лимит скорости " + (rate == null ? "нет" : rate + " в секунду") + ", размыкатель "
+                + (policy.enabled() ? "включён" : "выключен"));
     }
 
     private void readPhases(final String system, final SystemOverrides overrides) {
@@ -109,11 +142,10 @@ final class CommunicationSettingsResolver {
                 throw new TaskcommConfigurationException(
                         path + ": фазы '" + key + "' нет. Фазы — process, handle-response.");
             }
-            if (settings.priority() != null
-                    || settings.failureStatuses() != null
-                    || settings.responseTimeout() != null) {
+            if (settings.hasSystemSettings()) {
                 throw new TaskcommConfigurationException(
-                        path + ": приоритет, отказные статусы и срок ожидания ответа на фазе запрещены — "
+                        path + ": приоритет, отказные статусы, срок ожидания ответа, лимит скорости и размыкатель "
+                                + "на фазе запрещены — "
                                 + "это настройки системы. Задайте их в " + SYSTEMS + system + ".");
             }
             byPhase.put(phase, settings);

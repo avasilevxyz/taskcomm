@@ -30,8 +30,8 @@ final class ProcessorSettingsAnnotations {
     /** Имя аннотации настроек задач — чужой подсистемы. */
     static final String FOREIGN = "xyz.avasilev.taskcomm.task.api.TaskProcessorSettings";
 
-    private static final List<String> SYSTEM_ONLY =
-            List.of("priority", "responseTimeout", "failureStatuses", "circuitBreakerExceptions");
+    private static final List<String> SYSTEM_ONLY = List.of(
+            "priority", "responseTimeout", "failureStatuses", "rateLimitPerInstance", "circuitBreakerExceptions");
 
     private ProcessorSettingsAnnotations() {}
 
@@ -114,6 +114,7 @@ final class ProcessorSettingsAnnotations {
             this.put("jitter", annotation.getDouble("jitter"), source);
             this.put("responseTimeout", annotation.getString("responseTimeout"), source);
             this.put("failureStatuses", List.of(annotation.getStringArray("failureStatuses")), source);
+            this.put("rateLimitPerInstance", annotation.getDouble("rateLimitPerInstance"), source);
             this.put("circuitBreakerExceptions", List.of(annotation.getClassArray("circuitBreakerExceptions")), source);
         }
 
@@ -136,7 +137,9 @@ final class ProcessorSettingsAnnotations {
                             this.duration("maxDelay"),
                             (Double) this.values.get("jitter")),
                     (List<String>) this.values.get("failureStatuses"),
-                    this.duration("responseTimeout"));
+                    this.duration("responseTimeout"),
+                    (Double) this.values.get("rateLimitPerInstance"),
+                    new BreakerOverride(null, this.exceptionNames()));
         }
 
         private void put(final String attribute, final Object value, final String source) {
@@ -149,6 +152,12 @@ final class ProcessorSettingsAnnotations {
                         + "): в " + previous + " и в " + source + ". Оставьте одно значение.");
             }
             this.values.put(attribute, value);
+        }
+
+        @SuppressWarnings("unchecked")
+        private List<String> exceptionNames() {
+            final List<Class<?>> classes = (List<Class<?>>) this.values.get("circuitBreakerExceptions");
+            return classes == null ? null : classes.stream().map(Class::getName).toList();
         }
 
         private Duration duration(final String attribute) {

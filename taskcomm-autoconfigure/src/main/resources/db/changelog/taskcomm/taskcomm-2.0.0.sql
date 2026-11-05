@@ -254,11 +254,11 @@ CREATE TABLE IF NOT EXISTS tc_communication (
         AND (origin_attempt_id IS NULL OR origin_type IS NOT NULL))
 ) PARTITION BY RANGE (execution_created_at);
 
-CREATE INDEX IF NOT EXISTS tc_communication_claim_deadline_idx ON tc_communication (status, claim_order_at)
+CREATE INDEX IF NOT EXISTS tc_communication_claim_deadline_idx ON tc_communication (status, (coalesce(source, destination)), claim_order_at)
     WHERE status IN ('PENDING', 'RUNNING');
-CREATE INDEX IF NOT EXISTS tc_communication_claim_priority_idx ON tc_communication (status, priority, next_attempt_at)
+CREATE INDEX IF NOT EXISTS tc_communication_claim_priority_idx ON tc_communication (status, (coalesce(source, destination)), priority, next_attempt_at)
     WHERE status IN ('PENDING', 'RUNNING');
-CREATE INDEX IF NOT EXISTS tc_communication_claim_fifo_idx ON tc_communication (status, next_attempt_at)
+CREATE INDEX IF NOT EXISTS tc_communication_claim_fifo_idx ON tc_communication (status, (coalesce(source, destination)), next_attempt_at)
     WHERE status IN ('PENDING', 'RUNNING');
 CREATE INDEX IF NOT EXISTS tc_communication_awaiting_response_idx ON tc_communication (next_attempt_at)
     WHERE status = 'AWAITING_RESPONSE';

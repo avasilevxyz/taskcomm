@@ -400,8 +400,77 @@ public class TaskcommProperties {
         /** Подстраховочный поллер: такт проверки истёкших ожиданий ответа. */
         private CommunicationSafety safety = new CommunicationSafety();
 
+        /** Размыкатель исходящих: пороги и выключатель по умолчанию для всех систем. */
+        private CommunicationBreaker circuitBreaker = new CommunicationBreaker();
+
         /** Переопределения по внешним системам; ключ — имя системы, по нему же ищется процессор. */
         private Map<String, CommunicationSystem> systems = new LinkedHashMap<>();
+    }
+
+    /** Размыкатель исходящих: пороги — отправная точка, проверять нагрузкой. */
+    @Getter
+    @Setter
+    public static class CommunicationBreaker {
+
+        /** Включён ли размыкатель для всех систем; по умолчанию выключен. */
+        private boolean enabled;
+
+        /** Окно, за которое считается доля отказов. */
+        private Duration window = Duration.ofSeconds(60);
+
+        /** Минимальное число вызовов в окне для размыкания. */
+        private int minimumCalls = 10;
+
+        /** Доля отказов, при которой система размыкается, в (0, 1]. */
+        private double failureRateThreshold = 0.5;
+
+        /** Ожидание до пробы — растёт по правилам backoff. */
+        private BreakerWait wait = new BreakerWait();
+
+        /** Проба после ожидания. */
+        private BreakerProbe probe = new BreakerProbe();
+    }
+
+    /** Ожидание размыкателя до пробы. */
+    @Getter
+    @Setter
+    public static class BreakerWait {
+
+        /** Первое ожидание. */
+        private Duration initialDelay = Duration.ofSeconds(30);
+
+        /** Множитель ожидания. */
+        private double multiplier = 2.0;
+
+        /** Верхняя граница ожидания. */
+        private Duration maxDelay = Duration.ofMinutes(10);
+
+        /** Доля джиттера в (0, 1]; джиттер обязателен. */
+        private double jitter = 0.2;
+    }
+
+    /** Проба размыкателя. */
+    @Getter
+    @Setter
+    public static class BreakerProbe {
+
+        /** Сколько вызовов в пробе; проба удалась, только если все успешны. */
+        private int calls = 3;
+
+        /** Срок пробы: не получены все исходы — снова размыкается. */
+        private Duration timeout = Duration.ofMinutes(1);
+    }
+
+    /** Размыкатель внешней системы. */
+    @Getter
+    @Setter
+    public static class CommunicationSystemBreaker {
+
+        /** Включён ли у системы; не задано — как у подсистемы. */
+        private Boolean enabled;
+
+        /** Считающиеся исключения — полные имена классов; пусто — все. */
+        private List<String> exceptions;
     }
 
     /** Подстраховочный поллер коммуникаций. */
@@ -499,6 +568,12 @@ public class TaskcommProperties {
         /** Срок ожидания асинхронного ответа от системы. */
         private Duration responseTimeout;
 
+        /** Отправок исходящих в секунду на экземпляр; не задано — без ограничения. */
+        private Double rateLimitPerInstance;
+
+        /** Размыкатель системы: включён ли и какие исключения считает. */
+        private CommunicationSystemBreaker circuitBreaker = new CommunicationSystemBreaker();
+
         /** Переопределения по фазам: process, handle-response. */
         private Map<String, CommunicationSystemPhase> phases = new LinkedHashMap<>();
     }
@@ -516,6 +591,12 @@ public class TaskcommProperties {
 
         /** На фазе запрещён: свойство системы — падение при старте. */
         private Duration responseTimeout;
+
+        /** На фазе запрещён: свойство системы — падение при старте. */
+        private Double rateLimitPerInstance;
+
+        /** На фазе запрещён: свойство системы — падение при старте. */
+        private CommunicationSystemBreaker circuitBreaker = new CommunicationSystemBreaker();
 
         /** Аренда фазы. */
         private LeaseOverride lease = new LeaseOverride();

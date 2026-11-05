@@ -50,11 +50,11 @@ taskcomm:
     systems:                        # ключ — имя внешней системы
       supplier-b:
         priority: 50
-        rate-limit-per-instance: 10
+        rate-limit-per-instance: 10      # отправок исходящих в секунду на экземпляр
         retry: { max-attempts: 8 }
         response-timeout: 4h
         failure-statuses: [5xx, 429]  # исход попытки, а не только размыкатель
-        circuit-breaker: { enabled: true }
+        circuit-breaker: { enabled: true, exceptions: [java.io.IOException] }
     pollers:                        # дополнительные к основному, по именам внешних систем
       supplier-b: { systems: [supplier-b], workers: 2 }
   search:

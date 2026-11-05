@@ -300,7 +300,8 @@
   ([ADR 0129](../adr/0129-claim-by-type-share-locking.md)): `(status, task_type, claim_order_at)`
   под `deadline`, `(status, task_type, priority, next_attempt_at)` под `priority`,
   `(status, task_type, next_attempt_at)` под проход `quota` по чистому FIFO. У `tc_communication`
-  до этапа 5 — без внешней системы: `(status, claim_order_at)` и соседи. Прочие читатели активных
+  на втором месте — внешняя сторона выражением `coalesce(source, destination)`, захват спрашивает каждую систему
+  поллера своей пробой ([ADR 0137](../adr/0137-rate-limit-and-circuit-breaker.md)). Прочие читатели активных
   статусов — поиск осиротевших типов при старте, подстраховочный поллер — идут по тем же индексам:
   `status` в них первый. Держатся **все три всегда**: форма выбирается конфигурацией,
   а индексы создаются миграцией, и связывать DDL с `application.yml` мы отказываемся. Платит
