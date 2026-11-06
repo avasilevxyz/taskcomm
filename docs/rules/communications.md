@@ -71,7 +71,7 @@ sealed interface HttpCommunicationProcessor<C, R, A> extends CommunicationProces
 - **Повтор после смерти вызывающего** — по общим правилам: переподхват закрывает попытку `LEASE_LOST`,
   и стартер синхронную коммуникацию не отличает. Предел в одну попытку для системы, принимаемой
   синхронно, задаёт потребитель — аннотацией или в `yaml`; стартер это **не проверяет**, требование
-  живёт в Javadoc и в [consumer-contract.md](../consumer-contract.md).
+  живёт в Javadoc и в [guide/compatibility.md](../guide/compatibility.md).
 
 **Повторная доставка — своя коммуникация**, а не новая попытка на существующей
 ([ADR 0076](../adr/0076-communication-deduplication.md)). Совпал ключ дедупликации — она
@@ -335,5 +335,5 @@ sealed interface HttpCommunicationProcessor<C, R, A> extends CommunicationProces
   не исправляется — её сообщения действительно опаздывают.
 - Поток процессора не прерывается никогда: «прервали по времени» значит «закрыли попытку».
   От зависания без таймаута размыкатель не защищает — таймаут на клиенте обязан ставить
-  потребитель, см. [consumer-contract.md](../consumer-contract.md).
+  потребитель, см. [guide/compatibility.md](../guide/compatibility.md).
 

@@ -8,7 +8,7 @@ import java.util.Objects;
  * Пространство ключа — направление и внешняя система.
  *
  * <p>Формулу ключа у работающей системы не меняют: новые ключи не совпадут со старыми, и на переходе
- * дубликаты пройдут (docs/consumer-contract.md).
+ * дубликаты пройдут (docs/guide/compatibility.md).
  */
 public sealed interface DedupKey {
 

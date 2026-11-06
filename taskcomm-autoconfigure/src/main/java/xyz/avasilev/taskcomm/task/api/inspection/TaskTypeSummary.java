@@ -2,7 +2,7 @@ package xyz.avasilev.taskcomm.task.api.inspection;
 
 /**
  * Строка сводки по типам: сколько сущностей уровня и типа в статусе (docs/adr/0138-inspection-api.md).
- * На сводке держится шаг миграции контракта «дождаться обнуления» (docs/consumer-contract.md).
+ * На сводке держится шаг миграции контракта «дождаться обнуления» (docs/guide/compatibility.md).
  *
  * @param level уровень
  * @param taskType тип задачи
