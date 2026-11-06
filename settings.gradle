@@ -92,3 +92,4 @@ dependencyResolutionManagement {
 
 include 'taskcomm-autoconfigure'
 include 'taskcomm-spring-boot-starter'
+include 'taskcomm-bom'

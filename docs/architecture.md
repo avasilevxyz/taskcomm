@@ -43,6 +43,16 @@ Spring Boot стартер, который берёт на себя две ве�
 implementation 'xyz.avasilev:taskcomm-spring-boot-starter:2.0.0'
 ```
 
+Третий артефакт, `taskcomm-bom`, ничего не подтягивает и подключается по желанию. Он задаёт версии
+стартера и необязательных зависимостей, которые включают функции (драйвер, REST, метрики, SOAP):
+их можно писать без версий.
+
+```groovy
+implementation platform('xyz.avasilev:taskcomm-bom:2.0.0')
+implementation 'xyz.avasilev:taskcomm-spring-boot-starter'
+runtimeOnly 'org.postgresql:postgresql'
+```
+
 Настройки — под префиксом `taskcomm.*`:
 
 ```yaml

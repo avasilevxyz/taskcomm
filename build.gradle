@@ -1,12 +1,14 @@
-// Корневой проект не содержит кода — только общие настройки для двух модулей
-// (docs/adr/0001-module-layout.md). Каждый модуль остаётся java-library: у стартера просто
-// не будет исходников.
+// Корневой проект не содержит кода — только общие настройки модулей
+// (docs/adr/0001-module-layout.md). Библиотечные модули — java-library: у стартера просто
+// не будет исходников. taskcomm-bom — java-platform (docs/adr/0144-taskcomm-bom.md), эти два
+// плагина несовместимы, поэтому общие настройки ниже его не касаются: сборка и проверки BOM —
+// в его собственном build.gradle.
 allprojects {
     group = 'xyz.avasilev'
     version = '2.0.0'
 }
 
-subprojects {
+configure(subprojects.findAll { it.name != 'taskcomm-bom' }) {
     apply plugin: 'java-library'
     apply plugin: 'maven-publish'
 
@@ -33,7 +35,7 @@ subprojects {
     }
 
     // Публикация в Nexus пока не настроена (CLAUDE.md) — только publishToMavenLocal для отладки
-    // в приложении-потребителе. Оба модуля публикуются под одной и той же version/group.
+    // в приложении-потребителе. Все модули публикуются под одной и той же version/group.
     publishing {
         publications {
             maven(MavenPublication) {
@@ -42,8 +44,9 @@ subprojects {
         }
     }
 
-    // Опубликованные метаданные не должны тянуть потребителю ничью платформу
-    // (docs/adr/0106-starter-does-not-export-bom.md): BOM в Gradle Module Metadata поднимает
+    // Опубликованные метаданные библиотечных модулей не должны тянуть потребителю ничью платформу
+    // (docs/adr/0106-starter-does-not-export-bom.md; собственный BOM подключается потребителем
+    // сознательно и проверяется своей задачей — docs/adr/0144-taskcomm-bom.md): BOM в Gradle Module Metadata поднимает
     // все его зависимости у Gradle-потребителя, а импорт в dependencyManagement POM — признак
     // того же. Проверка читает сгенерированные файлы, а не build.gradle: платформа может прийти
     // и не из явной строки.

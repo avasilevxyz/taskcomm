@@ -1,0 +1,117 @@
+// BOM taskcomm (docs/adr/0144-taskcomm-bom.md): только версии, ничего не подтягивает. Потребитель
+// подключает его сознательно — platform(...) в Gradle или import в dependencyManagement Maven —
+// и получает согласованные версии стартера и всего, что стартеру нужно напрямую или по желанию.
+//
+// BOM Spring Boot сюда не импортировать: он зафиксировал бы у потребителя сотни чужих библиотек
+// (docs/adr/0106-starter-does-not-export-bom.md). Список ниже — явный и закрытый.
+plugins {
+    id 'java-platform'
+    id 'maven-publish'
+}
+
+// Необязательные зависимости: стартер их не везёт, потребитель добавляет сам, если нужна функция.
+// Версии — из BOM Spring Boot той версии, на которой собран стартер; вычисляются при сборке, чтобы
+// каталог версий их не дублировал.
+def bootManaged = [
+        // Драйвер — выбор потребителя (taskcomm-spring-boot-starter/build.gradle).
+        libs.postgresql,
+        // REST (docs/adr/0140-rest-controllers.md).
+        libs.spring.webmvc,
+        libs.spring.security.web,
+        // Метрики и health indicator (docs/adr/0141-observability-instance.md).
+        libs.micrometer.core,
+        libs.spring.boot.health,
+        // Разбор SOAP по умолчанию (docs/adr/0135-communication-engine.md).
+        libs.jackson.dataformat.xml,
+].collect { it.get().module }
+
+def bootVersions = configurations.detachedConfiguration(
+        [dependencies.platform(libs.spring.boot.bom.get())]
+                + bootManaged.collect { dependencies.create("${it.group}:${it.name}") } as Dependency[])
+        .incoming.resolutionResult.allComponents
+        .collect { it.moduleVersion }
+        .findAll { it != null }
+        .collectEntries { [("${it.group}:${it.name}".toString()): it.version] }
+
+dependencies {
+    constraints {
+        api project(':taskcomm-autoconfigure')
+        api project(':taskcomm-spring-boot-starter')
+
+        // Прямые зависимости стартера — те же версии, что в его опубликованных метаданных.
+        api libs.spring.boot.starter
+        api libs.spring.boot.starter.jdbc
+        api libs.spring.boot.starter.jackson
+
+        bootManaged.each { module ->
+            def coordinates = "${module.group}:${module.name}".toString()
+            def resolved = bootVersions[coordinates]
+            if (resolved == null) {
+                throw new GradleException("BOM Spring Boot не дал версии для ${coordinates}.")
+            }
+            api "${coordinates}:${resolved}"
+        }
+    }
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.javaPlatform
+        }
+    }
+}
+
+// Проверка опубликованного BOM, а не build.gradle (docs/adr/0144-taskcomm-bom.md):
+// - BOM не тянет ни зависимостей, ни чужой платформы — только ограничения версий;
+// - каждая зависимость из опубликованных метаданных стартера есть в BOM и с той же версией,
+//   иначе BOM и стартер разошлись бы и потребитель получил бы не то, с чем стартер собран.
+def verifyBom = tasks.register('verifyBom') {
+    group = 'verification'
+    description = 'Проверяет, что BOM содержит только ограничения версий и покрывает зависимости стартера.'
+    def moduleTask = tasks.named('generateMetadataFileForMavenPublication')
+    def pomTask = tasks.named('generatePomFileForMavenPublication')
+    dependsOn moduleTask, pomTask, ':taskcomm-spring-boot-starter:generateMetadataFileForMavenPublication'
+    def moduleFile = moduleTask.flatMap { it.outputFile }
+    def pomFile = pomTask.map { it.destination }
+    def starterModuleFile = project(':taskcomm-spring-boot-starter').layout.buildDirectory
+            .file('publications/maven/module.json')
+    inputs.file(moduleFile)
+    inputs.file(pomFile)
+    inputs.file(starterModuleFile)
+    def projectPath = path
+    doLast {
+        def slurper = new groovy.json.JsonSlurper()
+        def bom = slurper.parse(moduleFile.get().asFile)
+        def pulled = bom.variants.collectMany { variant ->
+            (variant.dependencies ?: []).collect { "${it.group}:${it.module} (${variant.name})" }
+        }
+        if (!pulled.isEmpty()) {
+            throw new GradleException(
+                    "${projectPath}: BOM объявляет зависимости, а не только версии: ${pulled.join(', ')}. "
+                            + 'См. docs/adr/0144-taskcomm-bom.md.')
+        }
+        if (pomFile.get().text.contains('<scope>import</scope>')) {
+            throw new GradleException(
+                    "${projectPath}: BOM импортирует чужой BOM. См. docs/adr/0144-taskcomm-bom.md.")
+        }
+
+        def constraints = bom.variants.collectMany { it.dependencyConstraints ?: [] }
+                .collectEntries { [("${it.group}:${it.module}".toString()): it.version?.requires] }
+        def starter = slurper.parse(starterModuleFile.get().asFile)
+        def mismatches = starter.variants.collectMany { it.dependencies ?: [] }
+                .collect { [coordinates: "${it.group}:${it.module}".toString(), version: it.version?.requires] }
+                .unique()
+                .findAll { constraints[it.coordinates] != it.version }
+                .collect { "${it.coordinates}: стартер ${it.version}, BOM ${constraints[it.coordinates] ?: 'нет'}" }
+        if (!mismatches.isEmpty()) {
+            throw new GradleException(
+                    "${projectPath}: BOM расходится с зависимостями стартера: ${mismatches.join('; ')}. "
+                            + 'См. docs/adr/0144-taskcomm-bom.md.')
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn verifyBom
+}
