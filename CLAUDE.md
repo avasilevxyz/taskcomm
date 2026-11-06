@@ -115,8 +115,11 @@ taskcomm/
 xyz.avasilev.taskcomm          TaskcommException и его общие наследники — публичный API,
 │                              доступный всем пакетам без связи между подсистемами
 ├── execution/{api,internal}   агрегат Execution
-├── task/{api,internal}        подсистема задач
-├── communication/{api,internal}  подсистема коммуникаций
+├── task/                      подсистема задач
+│   ├── api/                   модель и сервис; api/processor — контракты процессоров,
+│   │                          api/inspection — чтение
+│   └── internal/              корень — общая модель и SQL, дальше группы слоями
+├── communication/             подсистема коммуникаций — так же, своей раскладкой
 ├── schema/internal/           проверка схемы, initialize, партиции и их граница — общее для
 │                              подсистем, без api (ADR 0107)
 ├── rest/                      контроллеры и DTO (внутренняя реализация, не публичный Java API)
@@ -125,6 +128,12 @@ xyz.avasilev.taskcomm          TaskcommException и его общие насле
 
 **Публичный API — это всё, что лежит вне пакетов `internal`.** Изменение сигнатуры такого типа —
 ломающее изменение, см. раздел «Совместимость».
+
+**Внутри `internal` подсистемы — группы по обязанностям, выстроенные слоями**
+([ADR 0143](docs/adr/0143-internal-subpackages.md)): группа зависит только от групп ниже себя.
+Порядок слоёв — в `ArchitectureTest`, это и есть правило. Новый класс кладётся в группу своей
+обязанности; `public` получает только то, что пересекает границу группы, внутри группы —
+package-private. Тест лежит в подпакете своего предмета.
 
 ## Команды
 
@@ -145,7 +154,7 @@ gradlew.bat test
 Только unit-тесты, без Docker.
 
 ```powershell
-gradlew.bat test --tests "xyz.avasilev.taskcomm.task.internal.TaskSettingsTest"
+gradlew.bat test --tests "xyz.avasilev.taskcomm.task.internal.settings.TaskSettingsTest"
 ```
 
 ```powershell

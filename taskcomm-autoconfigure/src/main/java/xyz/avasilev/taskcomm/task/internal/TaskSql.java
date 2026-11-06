@@ -15,7 +15,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * Мелкие приёмы SQL подсистемы задач. Похожие есть у кода схемы, но общего кода у подсистемы
  * со схемой нет (docs/adr/0107-schema-internal-package.md).
  */
-final class TaskSql {
+public final class TaskSql {
 
     private TaskSql() {}
 
@@ -27,7 +27,7 @@ final class TaskSql {
      * @param moment момент
      * @return тот же момент со смещением UTC
      */
-    static OffsetDateTime parameter(final Instant moment) {
+    public static OffsetDateTime parameter(final Instant moment) {
         return Instant.MIN.equals(moment) ? OffsetDateTime.MIN : moment.atOffset(ZoneOffset.UTC);
     }
 
@@ -40,7 +40,7 @@ final class TaskSql {
      * @param <T> тип строки пачки
      * @return столбец
      */
-    static <T> String[] column(final List<T> items, final Function<T, ?> value) {
+    public static <T> String[] column(final List<T> items, final Function<T, ?> value) {
         return items.stream()
                 .map(value)
                 .map(item -> item == null ? null : String.valueOf(item))
@@ -54,7 +54,7 @@ final class TaskSql {
      * @param duration длительность
      * @return секунды с долями
      */
-    static double seconds(final Duration duration) {
+    public static double seconds(final Duration duration) {
         return duration.toNanos() / 1e9;
     }
 
@@ -65,7 +65,7 @@ final class TaskSql {
      * @param transactionManager менеджер транзакций стартера
      * @return шаблон транзакций
      */
-    static TransactionTemplate transactions(final PlatformTransactionManager transactionManager) {
+    public static TransactionTemplate transactions(final PlatformTransactionManager transactionManager) {
         final TransactionTemplate transactions = new TransactionTemplate(transactionManager);
         transactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         transactions.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
@@ -80,7 +80,7 @@ final class TaskSql {
      *
      * @param jdbc клиент в открытой транзакции
      */
-    static void forceCustomPlan(final JdbcClient jdbc) {
+    public static void forceCustomPlan(final JdbcClient jdbc) {
         jdbc.sql("SELECT set_config('plan_cache_mode', 'force_custom_plan', true)")
                 .query(String.class)
                 .single();

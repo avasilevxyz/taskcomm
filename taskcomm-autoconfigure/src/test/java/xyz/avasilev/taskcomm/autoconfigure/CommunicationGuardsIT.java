@@ -18,10 +18,10 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import xyz.avasilev.taskcomm.TestPostgres;
 import xyz.avasilev.taskcomm.communication.api.Communication;
-import xyz.avasilev.taskcomm.communication.api.CommunicationContext;
-import xyz.avasilev.taskcomm.communication.api.CommunicationProcessorSettings;
 import xyz.avasilev.taskcomm.communication.api.CommunicationService;
-import xyz.avasilev.taskcomm.communication.api.KafkaCommunicationProcessor;
+import xyz.avasilev.taskcomm.communication.api.processor.CommunicationContext;
+import xyz.avasilev.taskcomm.communication.api.processor.CommunicationProcessorSettings;
+import xyz.avasilev.taskcomm.communication.api.processor.KafkaCommunicationProcessor;
 
 /**
  * Ограничение скорости и размыкатель на настоящем движке (docs/adr/0137-rate-limit-and-circuit-breaker.md):

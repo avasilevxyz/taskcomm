@@ -10,7 +10,7 @@ import xyz.avasilev.taskcomm.execution.api.OriginRelation;
 import xyz.avasilev.taskcomm.execution.api.OriginType;
 
 /** Разбор колонок строки запроса захвата: моменты, указатель на создателя и родство ребёнка. */
-final class ClaimRows {
+public final class ClaimRows {
 
     private ClaimRows() {}
 
@@ -22,7 +22,7 @@ final class ClaimRows {
      * @return момент
      * @throws SQLException если колонку не прочитать
      */
-    static Instant instant(final ResultSet rs, final String column) throws SQLException {
+    public static Instant instant(final ResultSet rs, final String column) throws SQLException {
         return rs.getObject(column, OffsetDateTime.class).toInstant();
     }
 
@@ -33,7 +33,7 @@ final class ClaimRows {
      * @return указатель или {@code null}, если сущность корневая или это не задача
      * @throws SQLException если колонку не прочитать
      */
-    static Origin origin(final ResultSet rs) throws SQLException {
+    public static Origin origin(final ResultSet rs) throws SQLException {
         final String type = rs.getString("origin_type");
         return type == null
                 ? null
@@ -51,7 +51,7 @@ final class ClaimRows {
      * @return родство или {@code null} у задачи
      * @throws SQLException если колонку не прочитать
      */
-    static ClaimedEntity.Parent parent(final ResultSet rs) throws SQLException {
+    public static ClaimedEntity.Parent parent(final ResultSet rs) throws SQLException {
         final UUID attemptId = rs.getObject("parent_attempt_id", UUID.class);
         return attemptId == null
                 ? null

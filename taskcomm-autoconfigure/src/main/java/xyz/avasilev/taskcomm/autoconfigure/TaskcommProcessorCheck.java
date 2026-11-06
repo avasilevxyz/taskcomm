@@ -2,10 +2,10 @@ package xyz.avasilev.taskcomm.autoconfigure;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ListableBeanFactory;
-import xyz.avasilev.taskcomm.communication.api.CommunicationProcessor;
-import xyz.avasilev.taskcomm.communication.internal.CommunicationEngine;
-import xyz.avasilev.taskcomm.task.api.TaskProcessor;
-import xyz.avasilev.taskcomm.task.internal.TaskEngine;
+import xyz.avasilev.taskcomm.communication.api.processor.CommunicationProcessor;
+import xyz.avasilev.taskcomm.communication.internal.engine.CommunicationEngine;
+import xyz.avasilev.taskcomm.task.api.processor.TaskProcessor;
+import xyz.avasilev.taskcomm.task.internal.engine.TaskEngine;
 
 /**
  * Проверка при старте: есть ли процессоры у включённых подсистем (docs/adr/0051-engine-health.md).

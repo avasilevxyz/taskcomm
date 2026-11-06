@@ -1,10 +1,10 @@
 /**
- * Публичный API подсистемы коммуникаций: {@code Communication} с направлениями {@code Inbound}
- * и {@code Outbound}, запечатанная по транспортам иерархия {@code CommunicationProcessor},
+ * Публичный API подсистемы коммуникаций: модель — {@code Communication} с направлениями
+ * {@code Inbound} и {@code Outbound}, статус, сообщение обмена и нейтральные заголовки — и
  * {@code CommunicationService} с созданием исходящих, двумя методами приёма входящих и приёмом
- * колбэка, значения-запросы и итоги этих методов, {@code CommunicationContext}, нейтральные
- * заголовки и {@code @CommunicationProcessorSettings}. Модель у коммуникаций плоская и намеренно
- * не унифицирована с иерархией задач (docs/adr/0010-separate-engines.md); контекст обработки здесь
- * свой, а не общий с задачами.
+ * колбэка, значения-запросы, ключи дедупликации и корреляции и итоги этих методов. Контракты
+ * процессоров — в {@code processor}, чтение — в {@code inspection}
+ * (docs/adr/0143-internal-subpackages.md). Модель у коммуникаций плоская и намеренно
+ * не унифицирована с иерархией задач (docs/adr/0010-separate-engines.md).
  */
 package xyz.avasilev.taskcomm.communication.api;

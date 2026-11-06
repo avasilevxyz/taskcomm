@@ -6,19 +6,19 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 import xyz.avasilev.taskcomm.TaskcommConfigurationException;
-import xyz.avasilev.taskcomm.task.internal.AttemptSettings;
-import xyz.avasilev.taskcomm.task.internal.ClaimForm;
-import xyz.avasilev.taskcomm.task.internal.LeaseOverride;
-import xyz.avasilev.taskcomm.task.internal.LeaseSettings;
 import xyz.avasilev.taskcomm.task.internal.PartitionRange;
-import xyz.avasilev.taskcomm.task.internal.PollerLayout;
-import xyz.avasilev.taskcomm.task.internal.PollerSettings;
-import xyz.avasilev.taskcomm.task.internal.ResultDiscard;
-import xyz.avasilev.taskcomm.task.internal.RetryOverride;
-import xyz.avasilev.taskcomm.task.internal.RetryPolicy;
-import xyz.avasilev.taskcomm.task.internal.SafetySettings;
-import xyz.avasilev.taskcomm.task.internal.SettingsOverride;
-import xyz.avasilev.taskcomm.task.internal.TypeOverrides;
+import xyz.avasilev.taskcomm.task.internal.settings.AttemptSettings;
+import xyz.avasilev.taskcomm.task.internal.settings.ClaimForm;
+import xyz.avasilev.taskcomm.task.internal.settings.LeaseOverride;
+import xyz.avasilev.taskcomm.task.internal.settings.LeaseSettings;
+import xyz.avasilev.taskcomm.task.internal.settings.PollerLayout;
+import xyz.avasilev.taskcomm.task.internal.settings.PollerSettings;
+import xyz.avasilev.taskcomm.task.internal.settings.ResultDiscard;
+import xyz.avasilev.taskcomm.task.internal.settings.RetryOverride;
+import xyz.avasilev.taskcomm.task.internal.settings.RetryPolicy;
+import xyz.avasilev.taskcomm.task.internal.settings.SafetySettings;
+import xyz.avasilev.taskcomm.task.internal.settings.SettingsOverride;
+import xyz.avasilev.taskcomm.task.internal.settings.TypeOverrides;
 
 /**
  * Перевод свойств {@code taskcomm.task.*} во внутренние значения подсистемы задач. Проверки

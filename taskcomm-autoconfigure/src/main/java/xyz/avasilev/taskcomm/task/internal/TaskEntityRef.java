@@ -11,4 +11,4 @@ import java.util.UUID;
  * @param id идентификатор сущности
  * @param executionCreatedAt ключ партиционирования — время создания дела
  */
-record TaskEntityRef(TaskLevel level, UUID id, Instant executionCreatedAt) {}
+public record TaskEntityRef(TaskLevel level, UUID id, Instant executionCreatedAt) {}

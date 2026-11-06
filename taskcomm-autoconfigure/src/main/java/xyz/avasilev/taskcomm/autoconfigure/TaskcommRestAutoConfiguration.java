@@ -12,8 +12,8 @@ import org.springframework.security.web.servlet.util.matcher.PathPatternRequestM
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.web.servlet.DispatcherServlet;
 import xyz.avasilev.taskcomm.TaskcommConfigurationException;
-import xyz.avasilev.taskcomm.communication.api.CommunicationInspection;
 import xyz.avasilev.taskcomm.communication.api.CommunicationService;
+import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationInspection;
 import xyz.avasilev.taskcomm.execution.api.ExecutionService;
 import xyz.avasilev.taskcomm.rest.CommunicationController;
 import xyz.avasilev.taskcomm.rest.ExecutionController;
@@ -21,8 +21,8 @@ import xyz.avasilev.taskcomm.rest.RestMapper;
 import xyz.avasilev.taskcomm.rest.RestMapperImpl;
 import xyz.avasilev.taskcomm.rest.RestWindows;
 import xyz.avasilev.taskcomm.rest.TaskController;
-import xyz.avasilev.taskcomm.task.api.TaskInspection;
 import xyz.avasilev.taskcomm.task.api.TaskService;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskInspection;
 
 /**
  * REST API стартера (docs/adr/0014-rest-api.md, docs/adr/0091-rest-disabled-by-default.md,

@@ -9,4 +9,4 @@ package xyz.avasilev.taskcomm.task.internal;
  * @param retry {@code true}, если у сущности была более ранняя попытка той же фазы за всю историю,
  *     включая время до ручного перезапуска
  */
-record AttemptHistory(int number, boolean retry) {}
+public record AttemptHistory(int number, boolean retry) {}

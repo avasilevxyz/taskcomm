@@ -13,17 +13,5 @@ import java.util.UUID;
  * @param heartbeatInterval как часто аренда продлевается
  * @param maxRenewals предел обработки в продлениях
  */
-record AttemptLease(UUID attemptId, UUID token, Duration duration, Duration heartbeatInterval, int maxRenewals) {
-
-    /**
-     * Новая аренда по настройкам фазы.
-     *
-     * @param attemptId идентификатор попытки
-     * @param lease настройки аренды
-     * @return аренда с новым токеном
-     */
-    static AttemptLease of(final UUID attemptId, final LeaseSettings lease) {
-        return new AttemptLease(
-                attemptId, UUID.randomUUID(), lease.duration(), lease.heartbeatInterval(), lease.maxRenewals());
-    }
-}
+public record AttemptLease(
+        UUID attemptId, UUID token, Duration duration, Duration heartbeatInterval, int maxRenewals) {}

@@ -21,7 +21,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import xyz.avasilev.taskcomm.TaskcommException;
 import xyz.avasilev.taskcomm.TestPostgres;
 import xyz.avasilev.taskcomm.communication.api.Communication;
-import xyz.avasilev.taskcomm.communication.api.CommunicationContext;
 import xyz.avasilev.taskcomm.communication.api.CommunicationHeaders;
 import xyz.avasilev.taskcomm.communication.api.CommunicationService;
 import xyz.avasilev.taskcomm.communication.api.CommunicationStatus;
@@ -29,9 +28,10 @@ import xyz.avasilev.taskcomm.communication.api.ExchangeMessage;
 import xyz.avasilev.taskcomm.communication.api.InboundRequest;
 import xyz.avasilev.taskcomm.communication.api.ReceiveAndProcessResult;
 import xyz.avasilev.taskcomm.communication.api.ReceiveResult;
-import xyz.avasilev.taskcomm.communication.api.RestCommunicationProcessor;
 import xyz.avasilev.taskcomm.communication.api.SendResult;
-import xyz.avasilev.taskcomm.communication.api.SoapCommunicationProcessor;
+import xyz.avasilev.taskcomm.communication.api.processor.CommunicationContext;
+import xyz.avasilev.taskcomm.communication.api.processor.RestCommunicationProcessor;
+import xyz.avasilev.taskcomm.communication.api.processor.SoapCommunicationProcessor;
 
 /**
  * Коммуникации проходят путь до терминального статуса через публичный API и настоящий движок

@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
+import xyz.avasilev.taskcomm.communication.api.processor.CommunicationContext;
 
 /**
  * Одно сообщение обмена — запрос или ответ, как он ушёл или пришёл по проводу

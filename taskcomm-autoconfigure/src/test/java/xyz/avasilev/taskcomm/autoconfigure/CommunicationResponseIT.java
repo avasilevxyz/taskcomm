@@ -25,7 +25,6 @@ import xyz.avasilev.taskcomm.TestPostgres;
 import xyz.avasilev.taskcomm.communication.api.CallbackRequest;
 import xyz.avasilev.taskcomm.communication.api.Communication;
 import xyz.avasilev.taskcomm.communication.api.CommunicationCancelResult;
-import xyz.avasilev.taskcomm.communication.api.CommunicationContext;
 import xyz.avasilev.taskcomm.communication.api.CommunicationRestartResult;
 import xyz.avasilev.taskcomm.communication.api.CommunicationSendOptions;
 import xyz.avasilev.taskcomm.communication.api.CommunicationService;
@@ -33,8 +32,9 @@ import xyz.avasilev.taskcomm.communication.api.ExchangeMessage;
 import xyz.avasilev.taskcomm.communication.api.InboundRequest;
 import xyz.avasilev.taskcomm.communication.api.ReceiveResponseResult;
 import xyz.avasilev.taskcomm.communication.api.ReceiveResult;
-import xyz.avasilev.taskcomm.communication.api.RestCommunicationProcessor;
 import xyz.avasilev.taskcomm.communication.api.SendResult;
+import xyz.avasilev.taskcomm.communication.api.processor.CommunicationContext;
+import xyz.avasilev.taskcomm.communication.api.processor.RestCommunicationProcessor;
 import xyz.avasilev.taskcomm.execution.api.OriginRelation;
 
 /**

@@ -1,10 +1,10 @@
 package xyz.avasilev.taskcomm.communication.internal;
 
-import xyz.avasilev.taskcomm.communication.api.CommunicationProcessor;
-import xyz.avasilev.taskcomm.communication.api.KafkaCommunicationProcessor;
-import xyz.avasilev.taskcomm.communication.api.RawCommunicationProcessor;
-import xyz.avasilev.taskcomm.communication.api.RestCommunicationProcessor;
-import xyz.avasilev.taskcomm.communication.api.SoapCommunicationProcessor;
+import xyz.avasilev.taskcomm.communication.api.processor.CommunicationProcessor;
+import xyz.avasilev.taskcomm.communication.api.processor.KafkaCommunicationProcessor;
+import xyz.avasilev.taskcomm.communication.api.processor.RawCommunicationProcessor;
+import xyz.avasilev.taskcomm.communication.api.processor.RestCommunicationProcessor;
+import xyz.avasilev.taskcomm.communication.api.processor.SoapCommunicationProcessor;
 
 /**
  * Форма транспортного контракта — колонка {@code contract_shape}
@@ -31,7 +31,7 @@ public enum ContractShape {
      * @param processor процессор
      * @return форма его контракта
      */
-    static ContractShape of(final CommunicationProcessor<?, ?, ?> processor) {
+    public static ContractShape of(final CommunicationProcessor<?, ?, ?> processor) {
         return switch (processor) {
             case RestCommunicationProcessor<?, ?, ?> _ -> REST;
             case SoapCommunicationProcessor<?, ?, ?> _ -> SOAP;
@@ -45,7 +45,7 @@ public enum ContractShape {
      *
      * @return {@code true} у HTTP-транспортов
      */
-    boolean http() {
+    public boolean http() {
         return this == REST || this == SOAP;
     }
 }

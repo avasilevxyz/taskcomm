@@ -32,15 +32,15 @@ import tools.jackson.databind.json.JsonMapper;
 import xyz.avasilev.taskcomm.TaskcommConfigurationException;
 import xyz.avasilev.taskcomm.TestPostgres;
 import xyz.avasilev.taskcomm.execution.api.ExecutionService;
-import xyz.avasilev.taskcomm.task.api.FlatTaskProcessor;
-import xyz.avasilev.taskcomm.task.api.ProcessingContext;
 import xyz.avasilev.taskcomm.task.api.Task;
-import xyz.avasilev.taskcomm.task.api.TaskInspection;
-import xyz.avasilev.taskcomm.task.api.TaskRetry;
 import xyz.avasilev.taskcomm.task.api.TaskService;
-import xyz.avasilev.taskcomm.task.internal.TaskEngine;
-import xyz.avasilev.taskcomm.task.internal.TaskProcessorRegistry;
-import xyz.avasilev.taskcomm.task.internal.TaskStartup;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskInspection;
+import xyz.avasilev.taskcomm.task.api.processor.FlatTaskProcessor;
+import xyz.avasilev.taskcomm.task.api.processor.ProcessingContext;
+import xyz.avasilev.taskcomm.task.api.processor.TaskRetry;
+import xyz.avasilev.taskcomm.task.internal.engine.TaskEngine;
+import xyz.avasilev.taskcomm.task.internal.processor.TaskProcessorRegistry;
+import xyz.avasilev.taskcomm.task.internal.processor.TaskStartup;
 
 /**
  * Обязательные сценарии автоконфигурации задач (CLAUDE.md, раздел «Тесты») на настоящем

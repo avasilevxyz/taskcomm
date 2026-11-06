@@ -13,8 +13,8 @@ import org.springframework.boot.health.autoconfigure.contributor.ConditionalOnEn
 import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import xyz.avasilev.taskcomm.communication.internal.CommunicationEngine;
-import xyz.avasilev.taskcomm.task.internal.TaskEngine;
+import xyz.avasilev.taskcomm.communication.internal.engine.CommunicationEngine;
+import xyz.avasilev.taskcomm.task.internal.engine.TaskEngine;
 
 /**
  * Наблюдаемость экземпляра поверх обеих подсистем: health indicator {@code taskcomm} и предупреждение

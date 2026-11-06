@@ -17,6 +17,7 @@ import xyz.avasilev.taskcomm.communication.api.CommunicationStatus;
 import xyz.avasilev.taskcomm.execution.api.OriginRelation;
 import xyz.avasilev.taskcomm.execution.api.OriginType;
 import xyz.avasilev.taskcomm.schema.internal.TaskcommSchemaInitializer;
+import xyz.avasilev.taskcomm.task.api.processor.FieldType;
 
 /**
  * {@code CHECK} в схеме дублирует публичные перечисления, и копии могут разойтись

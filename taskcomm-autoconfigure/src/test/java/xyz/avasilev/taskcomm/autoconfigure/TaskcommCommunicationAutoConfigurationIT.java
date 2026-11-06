@@ -25,16 +25,16 @@ import tools.jackson.databind.json.JsonMapper;
 import xyz.avasilev.taskcomm.TaskcommConfigurationException;
 import xyz.avasilev.taskcomm.TestPostgres;
 import xyz.avasilev.taskcomm.communication.api.Communication;
-import xyz.avasilev.taskcomm.communication.api.CommunicationContext;
-import xyz.avasilev.taskcomm.communication.api.CommunicationInspection;
-import xyz.avasilev.taskcomm.communication.api.CommunicationProcessorSettings;
 import xyz.avasilev.taskcomm.communication.api.CommunicationService;
-import xyz.avasilev.taskcomm.communication.api.KafkaCommunicationProcessor;
-import xyz.avasilev.taskcomm.communication.internal.CommunicationEngine;
-import xyz.avasilev.taskcomm.communication.internal.CommunicationProcessorRegistry;
-import xyz.avasilev.taskcomm.communication.internal.CommunicationStartup;
+import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationInspection;
+import xyz.avasilev.taskcomm.communication.api.processor.CommunicationContext;
+import xyz.avasilev.taskcomm.communication.api.processor.CommunicationProcessorSettings;
+import xyz.avasilev.taskcomm.communication.api.processor.KafkaCommunicationProcessor;
+import xyz.avasilev.taskcomm.communication.internal.engine.CommunicationEngine;
+import xyz.avasilev.taskcomm.communication.internal.processor.CommunicationProcessorRegistry;
+import xyz.avasilev.taskcomm.communication.internal.processor.CommunicationStartup;
 import xyz.avasilev.taskcomm.execution.api.ExecutionService;
-import xyz.avasilev.taskcomm.task.api.TaskProcessorSettings;
+import xyz.avasilev.taskcomm.task.api.processor.TaskProcessorSettings;
 
 /**
  * Обязательные сценарии автоконфигурации коммуникаций (CLAUDE.md, раздел «Тесты») на настоящем

@@ -12,17 +12,17 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import xyz.avasilev.taskcomm.communication.api.CommunicationInspection;
-import xyz.avasilev.taskcomm.communication.api.CommunicationQuery;
+import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationInspection;
+import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationQuery;
 import xyz.avasilev.taskcomm.execution.api.Execution;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.api.ExecutionService;
 import xyz.avasilev.taskcomm.execution.api.HistoryWindow;
 import xyz.avasilev.taskcomm.execution.api.Page;
 import xyz.avasilev.taskcomm.execution.api.PageRequest;
-import xyz.avasilev.taskcomm.task.api.TaskInspection;
-import xyz.avasilev.taskcomm.task.api.TaskQuery;
-import xyz.avasilev.taskcomm.task.api.TaskSnapshot;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskInspection;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskQuery;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskSnapshot;
 
 /**
  * Дело одной выдачей (docs/adr/0064-entity-origin-links.md, docs/adr/0140-rest-controllers.md): все задачи,

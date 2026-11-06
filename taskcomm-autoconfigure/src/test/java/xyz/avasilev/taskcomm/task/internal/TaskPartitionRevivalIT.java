@@ -20,9 +20,13 @@ import xyz.avasilev.taskcomm.execution.api.OriginRelation;
 import xyz.avasilev.taskcomm.execution.api.OriginType;
 import xyz.avasilev.taskcomm.execution.internal.CurrentExecution;
 import xyz.avasilev.taskcomm.schema.internal.RangeCalendar;
-import xyz.avasilev.taskcomm.task.api.FlatTaskProcessor;
-import xyz.avasilev.taskcomm.task.api.ProcessingContext;
 import xyz.avasilev.taskcomm.task.api.Task;
+import xyz.avasilev.taskcomm.task.api.processor.FlatTaskProcessor;
+import xyz.avasilev.taskcomm.task.api.processor.ProcessingContext;
+import xyz.avasilev.taskcomm.task.internal.creation.CreatedTask;
+import xyz.avasilev.taskcomm.task.internal.processor.TaskProcessorRegistry;
+import xyz.avasilev.taskcomm.task.internal.service.DefaultTaskService;
+import xyz.avasilev.taskcomm.task.internal.settings.TaskSettings;
 
 /**
  * Оживление старой партиции на путях записи подсистемы задач

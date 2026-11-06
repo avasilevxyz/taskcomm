@@ -24,10 +24,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import xyz.avasilev.taskcomm.TaskcommConfigurationException;
 import xyz.avasilev.taskcomm.TestPostgres;
-import xyz.avasilev.taskcomm.task.api.FlatTaskProcessor;
-import xyz.avasilev.taskcomm.task.api.ProcessingContext;
 import xyz.avasilev.taskcomm.task.api.Task;
 import xyz.avasilev.taskcomm.task.api.TaskService;
+import xyz.avasilev.taskcomm.task.api.processor.FlatTaskProcessor;
+import xyz.avasilev.taskcomm.task.api.processor.ProcessingContext;
 
 /**
  * Наблюдаемость экземпляра (docs/adr/0141-observability-instance.md): MDC вокруг процессора снимается

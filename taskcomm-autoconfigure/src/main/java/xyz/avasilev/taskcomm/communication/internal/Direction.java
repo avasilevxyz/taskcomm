@@ -1,7 +1,7 @@
 package xyz.avasilev.taskcomm.communication.internal;
 
 /** Направление коммуникации — колонка {@code direction}; в публичном API это тип, а не значение. */
-enum Direction {
+public enum Direction {
 
     /** Входящая: внешняя сторона — {@code source}. */
     INBOUND,

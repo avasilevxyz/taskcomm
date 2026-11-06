@@ -16,6 +16,10 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 import xyz.avasilev.taskcomm.TestPostgres;
+import xyz.avasilev.taskcomm.communication.internal.claim.CommunicationClaimer;
+import xyz.avasilev.taskcomm.communication.internal.creation.CommunicationCreator;
+import xyz.avasilev.taskcomm.communication.internal.lifecycle.CommunicationRetries;
+import xyz.avasilev.taskcomm.communication.internal.settings.CommunicationSettings;
 import xyz.avasilev.taskcomm.execution.internal.ExecutionRepository;
 import xyz.avasilev.taskcomm.execution.internal.UuidV7;
 import xyz.avasilev.taskcomm.schema.internal.PartitionMaintenance;
@@ -27,7 +31,7 @@ import xyz.avasilev.taskcomm.schema.internal.TaskcommSchemaInitializer;
  * Схема taskcomm в отдельной схеме общего контейнера PostgreSQL, с партициями на текущий месяц
  * и запасом, и сборка компонентов подсистемы коммуникаций поверх неё.
  */
-final class CommunicationTestDatabase {
+public final class CommunicationTestDatabase {
 
     /** Партиционированные таблицы — для заведения старых диапазонов. */
     static final List<String> PARTITIONED = List.of(
@@ -41,15 +45,16 @@ final class CommunicationTestDatabase {
             "tc_task_result",
             "tc_communication_dedup");
 
-    final DataSource dataSource;
+    public final DataSource dataSource;
 
-    final JdbcClient jdbc;
+    public final JdbcClient jdbc;
 
-    final PlatformTransactionManager transactionManager;
+    public final PlatformTransactionManager transactionManager;
 
-    final UuidV7 ids = new UuidV7(Clock.systemUTC());
+    public final UuidV7 ids = new UuidV7(Clock.systemUTC());
 
-    final CommunicationCodec codec = new CommunicationCodec(JsonMapper.builder().build());
+    public final CommunicationCodec codec =
+            new CommunicationCodec(JsonMapper.builder().build());
 
     private final PartitionMaintenance maintenance;
 
@@ -72,7 +77,7 @@ final class CommunicationTestDatabase {
      *
      * @return база для одного теста
      */
-    static CommunicationTestDatabase create() {
+    public static CommunicationTestDatabase create() {
         return new CommunicationTestDatabase(TestPostgres.dataSource(TestPostgres.newSchema()));
     }
 
@@ -81,7 +86,7 @@ final class CommunicationTestDatabase {
      *
      * @return база для нагрузочного сценария
      */
-    static CommunicationTestDatabase createPooled() {
+    public static CommunicationTestDatabase createPooled() {
         final HikariDataSource pool = new HikariDataSource();
         pool.setJdbcUrl(TestPostgres.jdbcUrl(TestPostgres.newSchema()));
         pool.setUsername(TestPostgres.username());
@@ -95,7 +100,7 @@ final class CommunicationTestDatabase {
      *
      * @param lower нижняя граница месяца
      */
-    void createMonth(final Instant lower) {
+    public void createMonth(final Instant lower) {
         for (final String table : PARTITIONED) {
             this.jdbc
                     .sql("CREATE TABLE " + RangeCalendar.partitionName(table, lower) + " PARTITION OF " + table
@@ -106,7 +111,7 @@ final class CommunicationTestDatabase {
     }
 
     /** Такт обслуживания партиций: сдвигает границу активных партиций. */
-    void advanceHorizon() {
+    public void advanceHorizon() {
         this.maintenance.startup();
     }
 
@@ -115,7 +120,7 @@ final class CommunicationTestDatabase {
      *
      * @return нижняя граница текущего месяца
      */
-    Instant currentMonth() {
+    public Instant currentMonth() {
         return RangeCalendar.MONTH.floor(this.now());
     }
 
@@ -124,7 +129,7 @@ final class CommunicationTestDatabase {
      *
      * @return {@code now()}
      */
-    Instant now() {
+    public Instant now() {
         return this.jdbc
                 .sql("SELECT now()")
                 .query(OffsetDateTime.class)
@@ -137,7 +142,7 @@ final class CommunicationTestDatabase {
      *
      * @return создание
      */
-    CommunicationCreator creator() {
+    public CommunicationCreator creator() {
         return new CommunicationCreator(
                 this.dataSource,
                 this.transactionManager,
@@ -153,7 +158,7 @@ final class CommunicationTestDatabase {
      * @param settings итоговые настройки
      * @return захват с экземпляром {@code test-instance}
      */
-    CommunicationClaimer claimer(final CommunicationSettings settings) {
+    public CommunicationClaimer claimer(final CommunicationSettings settings) {
         return new CommunicationClaimer(
                 this.dataSource,
                 this.transactionManager,

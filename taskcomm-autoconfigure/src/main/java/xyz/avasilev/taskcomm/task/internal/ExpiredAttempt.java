@@ -13,7 +13,7 @@ import java.util.UUID;
  * @param leaseRenewals сколько раз аренда продлевалась
  * @param parent родство ребёнка раскрытия или {@code null} у задачи
  */
-record ExpiredAttempt(
+public record ExpiredAttempt(
         TaskEntityRef entity,
         String taskType,
         TaskPhase phase,

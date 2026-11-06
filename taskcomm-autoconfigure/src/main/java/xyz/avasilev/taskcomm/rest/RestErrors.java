@@ -5,7 +5,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import xyz.avasilev.taskcomm.TaskcommException;
-import xyz.avasilev.taskcomm.task.api.UnknownSearchFieldException;
+import xyz.avasilev.taskcomm.task.api.inspection.UnknownSearchFieldException;
 
 /**
  * Ответы на ошибки запроса — только для контроллеров стартера (docs/adr/0140-rest-controllers.md).

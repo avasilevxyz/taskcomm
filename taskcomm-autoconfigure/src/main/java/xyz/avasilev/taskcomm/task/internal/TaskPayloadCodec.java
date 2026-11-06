@@ -34,7 +34,7 @@ public final class TaskPayloadCodec {
      * @return JSON
      * @throws TaskcommException если значение не сериализуется
      */
-    String write(final Object value) {
+    public String write(final Object value) {
         try {
             return this.mapper.writeValueAsString(value);
         } catch (final JacksonException failure) {
@@ -52,7 +52,7 @@ public final class TaskPayloadCodec {
      * @param result результат метода процессора
      * @return JSON или {@code null}, если хранить нечего
      */
-    String writeResult(final Object result) {
+    public String writeResult(final Object result) {
         return result == null ? null : this.write(result);
     }
 
@@ -64,7 +64,7 @@ public final class TaskPayloadCodec {
      * @return значение
      * @throws TaskcommException если JSON не разбирается в этот тип
      */
-    Object read(final String json, final ResolvableType type) {
+    public Object read(final String json, final ResolvableType type) {
         try {
             return this.mapper.readValue(json, this.mapper.getTypeFactory().constructType(type.getType()));
         } catch (final JacksonException failure) {

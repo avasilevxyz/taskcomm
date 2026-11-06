@@ -1,6 +1,7 @@
 package xyz.avasilev.taskcomm.communication.api;
 
 import java.util.Objects;
+import xyz.avasilev.taskcomm.communication.api.processor.CommunicationProcessor;
 
 /**
  * Чем кончился приём колбэка — {@link CommunicationService#receiveResponse}

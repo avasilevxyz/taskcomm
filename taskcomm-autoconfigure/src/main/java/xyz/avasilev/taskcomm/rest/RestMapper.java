@@ -3,13 +3,13 @@ package xyz.avasilev.taskcomm.rest;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.ReportingPolicy;
-import xyz.avasilev.taskcomm.communication.api.CommunicationAttemptSnapshot;
-import xyz.avasilev.taskcomm.communication.api.CommunicationSnapshot;
 import xyz.avasilev.taskcomm.communication.api.ExchangeMessage;
+import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationAttemptSnapshot;
+import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSnapshot;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.api.HistoryWindow;
-import xyz.avasilev.taskcomm.task.api.TaskAttemptSnapshot;
-import xyz.avasilev.taskcomm.task.api.TaskSnapshot;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskAttemptSnapshot;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskSnapshot;
 
 /**
  * Снимки API чтения в формы ответов REST (docs/adr/0140-rest-controllers.md). Снимки — интерфейсы с

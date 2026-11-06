@@ -4,9 +4,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
-import xyz.avasilev.taskcomm.task.api.TaskQuery;
-import xyz.avasilev.taskcomm.task.api.TaskSnapshot;
 import xyz.avasilev.taskcomm.task.api.TaskSubmitOptions;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskQuery;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskSnapshot;
 
 /** Условия выдачи и опции постановки задач из параметров запроса. */
 final class TaskRequests {

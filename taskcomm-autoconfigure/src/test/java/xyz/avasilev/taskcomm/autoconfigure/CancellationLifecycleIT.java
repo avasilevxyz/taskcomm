@@ -21,16 +21,16 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import xyz.avasilev.taskcomm.TestPostgres;
-import xyz.avasilev.taskcomm.task.api.CollectedUnit;
-import xyz.avasilev.taskcomm.task.api.Emitter;
-import xyz.avasilev.taskcomm.task.api.FlatTaskProcessor;
-import xyz.avasilev.taskcomm.task.api.ProcessingContext;
 import xyz.avasilev.taskcomm.task.api.Task;
 import xyz.avasilev.taskcomm.task.api.TaskCancelResult;
 import xyz.avasilev.taskcomm.task.api.TaskService;
 import xyz.avasilev.taskcomm.task.api.TaskSubmitOptions;
 import xyz.avasilev.taskcomm.task.api.TaskUnit;
-import xyz.avasilev.taskcomm.task.api.UnitTaskProcessor;
+import xyz.avasilev.taskcomm.task.api.processor.CollectedUnit;
+import xyz.avasilev.taskcomm.task.api.processor.Emitter;
+import xyz.avasilev.taskcomm.task.api.processor.FlatTaskProcessor;
+import xyz.avasilev.taskcomm.task.api.processor.ProcessingContext;
+import xyz.avasilev.taskcomm.task.api.processor.UnitTaskProcessor;
 
 /**
  * Отмена на любой сущности через публичный API и настоящий движок

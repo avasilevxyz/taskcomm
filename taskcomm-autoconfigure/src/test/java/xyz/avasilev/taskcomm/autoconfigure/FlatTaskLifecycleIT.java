@@ -22,12 +22,12 @@ import xyz.avasilev.taskcomm.TestPostgres;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.api.OriginRelation;
 import xyz.avasilev.taskcomm.execution.api.OriginType;
-import xyz.avasilev.taskcomm.task.api.FlatTaskProcessor;
-import xyz.avasilev.taskcomm.task.api.ProcessingContext;
 import xyz.avasilev.taskcomm.task.api.Task;
-import xyz.avasilev.taskcomm.task.api.TaskPriority;
 import xyz.avasilev.taskcomm.task.api.TaskService;
 import xyz.avasilev.taskcomm.task.api.TaskStatus;
+import xyz.avasilev.taskcomm.task.api.processor.FlatTaskProcessor;
+import xyz.avasilev.taskcomm.task.api.processor.ProcessingContext;
+import xyz.avasilev.taskcomm.task.api.processor.TaskPriority;
 
 /**
  * Плоская задача проходит путь до терминального статуса через публичный API и настоящий движок:

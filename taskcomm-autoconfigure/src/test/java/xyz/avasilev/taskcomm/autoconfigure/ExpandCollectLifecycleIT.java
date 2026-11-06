@@ -23,18 +23,18 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import xyz.avasilev.taskcomm.TestPostgres;
-import xyz.avasilev.taskcomm.task.api.BatchTaskProcessor;
-import xyz.avasilev.taskcomm.task.api.CollectedBatch;
-import xyz.avasilev.taskcomm.task.api.CollectedUnit;
-import xyz.avasilev.taskcomm.task.api.Emitter;
-import xyz.avasilev.taskcomm.task.api.ProcessingContext;
 import xyz.avasilev.taskcomm.task.api.Task;
 import xyz.avasilev.taskcomm.task.api.TaskBatch;
 import xyz.avasilev.taskcomm.task.api.TaskBatchStatus;
 import xyz.avasilev.taskcomm.task.api.TaskService;
 import xyz.avasilev.taskcomm.task.api.TaskUnit;
 import xyz.avasilev.taskcomm.task.api.TaskUnitStatus;
-import xyz.avasilev.taskcomm.task.api.UnitTaskProcessor;
+import xyz.avasilev.taskcomm.task.api.processor.BatchTaskProcessor;
+import xyz.avasilev.taskcomm.task.api.processor.CollectedBatch;
+import xyz.avasilev.taskcomm.task.api.processor.CollectedUnit;
+import xyz.avasilev.taskcomm.task.api.processor.Emitter;
+import xyz.avasilev.taskcomm.task.api.processor.ProcessingContext;
+import xyz.avasilev.taskcomm.task.api.processor.UnitTaskProcessor;
 
 /**
  * Задачи с подзадачами и с группами проходят каскад до терминального статуса через публичный API

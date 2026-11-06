@@ -4,6 +4,10 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskInspection;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskSnapshot;
+import xyz.avasilev.taskcomm.task.api.processor.ProcessingContext;
+import xyz.avasilev.taskcomm.task.api.processor.TaskProcessor;
 
 /**
  * Постановка задач и чтение задач дела (docs/adr/0111-task-public-api-shape.md).

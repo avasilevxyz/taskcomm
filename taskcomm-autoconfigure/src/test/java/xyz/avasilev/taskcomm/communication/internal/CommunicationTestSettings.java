@@ -3,12 +3,18 @@ package xyz.avasilev.taskcomm.communication.internal;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
+import xyz.avasilev.taskcomm.communication.internal.settings.AttemptSettings;
+import xyz.avasilev.taskcomm.communication.internal.settings.ClaimForm;
+import xyz.avasilev.taskcomm.communication.internal.settings.LeaseSettings;
+import xyz.avasilev.taskcomm.communication.internal.settings.PollerLayout;
+import xyz.avasilev.taskcomm.communication.internal.settings.PollerSettings;
+import xyz.avasilev.taskcomm.communication.internal.settings.RetryPolicy;
 
 /** Настройки подсистемы коммуникаций для тестов. */
-final class CommunicationTestSettings {
+public final class CommunicationTestSettings {
 
     /** Основной поллер: форма {@code deadline}, четыре воркера. */
-    static final PollerSettings MAIN = new PollerSettings(
+    public static final PollerSettings MAIN = new PollerSettings(
             PollerSettings.MAIN,
             Set.of(),
             Duration.ofSeconds(1),
@@ -19,7 +25,7 @@ final class CommunicationTestSettings {
             0.1);
 
     /** Раскладка из одного основного поллера. */
-    static final PollerLayout POLLERS = new PollerLayout(MAIN, List.of());
+    public static final PollerLayout POLLERS = new PollerLayout(MAIN, List.of());
 
     private CommunicationTestSettings() {}
 
@@ -31,7 +37,8 @@ final class CommunicationTestSettings {
      * @param maxExecutionTime предел обработки
      * @return настройки попыток
      */
-    static AttemptSettings global(final int maxAttempts, final Duration initialDelay, final Duration maxExecutionTime) {
+    public static AttemptSettings global(
+            final int maxAttempts, final Duration initialDelay, final Duration maxExecutionTime) {
         return new AttemptSettings(
                 new RetryPolicy(maxAttempts, initialDelay, 2, initialDelay.plusHours(1), 0.2),
                 new LeaseSettings(Duration.ofSeconds(6), Duration.ofSeconds(1), maxExecutionTime));

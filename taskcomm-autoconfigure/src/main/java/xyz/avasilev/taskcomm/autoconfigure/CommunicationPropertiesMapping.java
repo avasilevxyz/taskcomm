@@ -7,19 +7,19 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 import xyz.avasilev.taskcomm.TaskcommConfigurationException;
-import xyz.avasilev.taskcomm.communication.internal.AttemptSettings;
-import xyz.avasilev.taskcomm.communication.internal.BreakerOverride;
-import xyz.avasilev.taskcomm.communication.internal.BreakerSettings;
-import xyz.avasilev.taskcomm.communication.internal.ClaimForm;
-import xyz.avasilev.taskcomm.communication.internal.LeaseOverride;
-import xyz.avasilev.taskcomm.communication.internal.LeaseSettings;
-import xyz.avasilev.taskcomm.communication.internal.PollerLayout;
-import xyz.avasilev.taskcomm.communication.internal.PollerSettings;
-import xyz.avasilev.taskcomm.communication.internal.RetryOverride;
-import xyz.avasilev.taskcomm.communication.internal.RetryPolicy;
-import xyz.avasilev.taskcomm.communication.internal.SettingsOverride;
-import xyz.avasilev.taskcomm.communication.internal.SystemOverrides;
-import xyz.avasilev.taskcomm.communication.internal.Timing;
+import xyz.avasilev.taskcomm.communication.internal.settings.AttemptSettings;
+import xyz.avasilev.taskcomm.communication.internal.settings.BreakerOverride;
+import xyz.avasilev.taskcomm.communication.internal.settings.BreakerSettings;
+import xyz.avasilev.taskcomm.communication.internal.settings.ClaimForm;
+import xyz.avasilev.taskcomm.communication.internal.settings.LeaseOverride;
+import xyz.avasilev.taskcomm.communication.internal.settings.LeaseSettings;
+import xyz.avasilev.taskcomm.communication.internal.settings.PollerLayout;
+import xyz.avasilev.taskcomm.communication.internal.settings.PollerSettings;
+import xyz.avasilev.taskcomm.communication.internal.settings.RetryOverride;
+import xyz.avasilev.taskcomm.communication.internal.settings.RetryPolicy;
+import xyz.avasilev.taskcomm.communication.internal.settings.SettingsOverride;
+import xyz.avasilev.taskcomm.communication.internal.settings.SystemOverrides;
+import xyz.avasilev.taskcomm.communication.internal.settings.Timing;
 
 /**
  * Перевод свойств {@code taskcomm.communication.*} во внутренние значения подсистемы коммуникаций.

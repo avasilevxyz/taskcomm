@@ -133,9 +133,8 @@ spotless {
 }
 
 tasks.withType(JavaCompile).configureEach {
-    // net.ltgt.errorprone требует именно эту связку флагов компилятора (см. CLAUDE.md,
-    // «Известные грабли сборки»); add-exports/add-opens для доступа к внутренностям javac
-    // плагин добавляет сам.
+    // net.ltgt.errorprone на Java 25 требует именно эту связку флагов компилятора;
+    // add-exports/add-opens для доступа к внутренностям javac плагин добавляет сам.
     options.compilerArgs << '-XDcompilePolicy=simple' << '--should-stop=ifError=FLOW'
     options.errorprone {
         // Lombok генерирует код в том же раунде компиляции, что видит Error Prone — точечно

@@ -13,4 +13,5 @@ import java.util.UUID;
  * @param heartbeatInterval как часто аренда продлевается — свой у метода процессора
  * @param maxRenewals предел обработки в продлениях
  */
-record AttemptLease(UUID attemptId, UUID token, Duration duration, Duration heartbeatInterval, int maxRenewals) {}
+public record AttemptLease(
+        UUID attemptId, UUID token, Duration duration, Duration heartbeatInterval, int maxRenewals) {}

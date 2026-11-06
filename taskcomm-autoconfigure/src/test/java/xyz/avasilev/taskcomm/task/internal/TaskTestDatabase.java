@@ -23,15 +23,25 @@ import xyz.avasilev.taskcomm.schema.internal.PartitionMaintenance;
 import xyz.avasilev.taskcomm.schema.internal.PartitionSettings;
 import xyz.avasilev.taskcomm.schema.internal.RangeCalendar;
 import xyz.avasilev.taskcomm.schema.internal.TaskcommSchemaInitializer;
+import xyz.avasilev.taskcomm.task.internal.claim.TaskClaimer;
+import xyz.avasilev.taskcomm.task.internal.creation.CreatedTask;
+import xyz.avasilev.taskcomm.task.internal.creation.NewTask;
+import xyz.avasilev.taskcomm.task.internal.creation.TaskCreator;
+import xyz.avasilev.taskcomm.task.internal.engine.TaskAttemptCloser;
+import xyz.avasilev.taskcomm.task.internal.lifecycle.TaskChildren;
+import xyz.avasilev.taskcomm.task.internal.lifecycle.TaskResultDiscard;
+import xyz.avasilev.taskcomm.task.internal.settings.AttemptSettings;
+import xyz.avasilev.taskcomm.task.internal.settings.AttemptSettingsSource;
+import xyz.avasilev.taskcomm.task.internal.settings.ResultDiscard;
 
 /**
  * Схема taskcomm в отдельной схеме общего контейнера PostgreSQL, с партициями на текущий месяц
  * и запасом, и сборка компонентов подсистемы задач поверх неё.
  */
-final class TaskTestDatabase {
+public final class TaskTestDatabase {
 
     /** Девять партиционированных таблиц — для заведения старых диапазонов. */
-    static final List<String> PARTITIONED = List.of(
+    public static final List<String> PARTITIONED = List.of(
             "tc_execution",
             "tc_task",
             "tc_task_batch",
@@ -43,17 +53,17 @@ final class TaskTestDatabase {
             "tc_communication_dedup");
 
     /** Тип плоской задачи по умолчанию в тестах. */
-    static final String FLAT_TYPE = "report";
+    public static final String FLAT_TYPE = "report";
 
-    final DataSource dataSource;
+    public final DataSource dataSource;
 
-    final JdbcClient jdbc;
+    public final JdbcClient jdbc;
 
-    final PlatformTransactionManager transactionManager;
+    public final PlatformTransactionManager transactionManager;
 
-    final UuidV7 ids = new UuidV7(java.time.Clock.systemUTC());
+    public final UuidV7 ids = new UuidV7(java.time.Clock.systemUTC());
 
-    final Instant currentMonth;
+    public final Instant currentMonth;
 
     private final PartitionMaintenance maintenance;
 
@@ -76,7 +86,7 @@ final class TaskTestDatabase {
      *
      * @return база для одного теста
      */
-    static TaskTestDatabase create() {
+    public static TaskTestDatabase create() {
         final TaskTestDatabase database = new TaskTestDatabase(TestPostgres.dataSource(TestPostgres.newSchema()));
         database.maintenance.startup();
         return database;
@@ -89,7 +99,7 @@ final class TaskTestDatabase {
      *
      * @return база для нагрузочного сценария
      */
-    static TaskTestDatabase createPooled() {
+    public static TaskTestDatabase createPooled() {
         final HikariDataSource pool = new HikariDataSource();
         pool.setJdbcUrl(TestPostgres.jdbcUrl(TestPostgres.newSchema()));
         pool.setUsername(TestPostgres.username());
@@ -106,7 +116,7 @@ final class TaskTestDatabase {
      *
      * @param lower начало месяца
      */
-    void createMonth(final Instant lower) {
+    public void createMonth(final Instant lower) {
         for (final String table : PARTITIONED) {
             this.jdbc
                     .sql("CREATE TABLE " + RangeCalendar.partitionName(table, lower) + " PARTITION OF " + table
@@ -118,15 +128,15 @@ final class TaskTestDatabase {
     }
 
     /** Такт обслуживания: сдвигает границу вперёд по свободным диапазонам. */
-    void advanceHorizon() {
+    public void advanceHorizon() {
         this.maintenance.startup();
     }
 
-    Instant horizon() {
+    public Instant horizon() {
         return TaskPartitionHorizon.activeFrom(this.jdbc);
     }
 
-    Instant now() {
+    public Instant now() {
         return this.jdbc
                 .sql("SELECT now()")
                 .query(OffsetDateTime.class)
@@ -134,7 +144,7 @@ final class TaskTestDatabase {
                 .toInstant();
     }
 
-    TaskCreator creator() {
+    public TaskCreator creator() {
         return new TaskCreator(
                 this.dataSource,
                 this.transactionManager,
@@ -143,7 +153,7 @@ final class TaskTestDatabase {
                 PartitionRange.MONTH);
     }
 
-    TaskClaimer claimer(final String instance, final AttemptSettings settings, final DoubleSupplier random) {
+    public TaskClaimer claimer(final String instance, final AttemptSettings settings, final DoubleSupplier random) {
         return new TaskClaimer(
                 this.dataSource,
                 this.transactionManager,
@@ -154,11 +164,11 @@ final class TaskTestDatabase {
                 instance);
     }
 
-    TaskAttemptCloser closer(final AttemptSettings settings) {
+    public TaskAttemptCloser closer(final AttemptSettings settings) {
         return this.closer(settings, TaskTestSettings.KEEP_RESULTS);
     }
 
-    TaskAttemptCloser closer(final AttemptSettings settings, final ResultDiscard discard) {
+    public TaskAttemptCloser closer(final AttemptSettings settings, final ResultDiscard discard) {
         return new TaskAttemptCloser(
                 this.dataSource,
                 this.transactionManager,
@@ -170,11 +180,11 @@ final class TaskTestDatabase {
                 this.discard(discard));
     }
 
-    TaskChildren children() {
+    public TaskChildren children() {
         return new TaskChildren(this.dataSource, this.transactionManager, TaskTestSettings.layout());
     }
 
-    TaskResultDiscard discard(final ResultDiscard discard) {
+    public TaskResultDiscard discard(final ResultDiscard discard) {
         return new TaskResultDiscard(this.dataSource, this.transactionManager, discard);
     }
 
@@ -185,7 +195,7 @@ final class TaskTestDatabase {
      * @param priority приоритет
      * @return созданная задача
      */
-    CreatedTask submit(final String type, final int priority) {
+    public CreatedTask submit(final String type, final int priority) {
         return this.creator().create(new NewTask(type, "{\"n\":1}", priority, Duration.ofMinutes(1), null, null, null));
     }
 
@@ -200,7 +210,7 @@ final class TaskTestDatabase {
                 .create(new NewTask(FLAT_TYPE, "{\"n\":1}", 100, Duration.ofMinutes(1), null, execution, null));
     }
 
-    String status(final TaskLevel level, final UUID id) {
+    public String status(final TaskLevel level, final UUID id) {
         return this.jdbc
                 .sql("SELECT status FROM " + level.table() + " WHERE id = :id")
                 .param("id", id)
@@ -208,7 +218,7 @@ final class TaskTestDatabase {
                 .single();
     }
 
-    int count(final String sql, final UUID id) {
+    public int count(final String sql, final UUID id) {
         return this.jdbc.sql(sql).param("id", id).query(Integer.class).single();
     }
 }

@@ -1,11 +1,14 @@
 package xyz.avasilev.taskcomm;
 
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
+import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
+import java.util.List;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Repository;
 import org.springframework.stereotype.Service;
@@ -29,7 +32,11 @@ import org.springframework.stereotype.Service;
  *       (docs/adr/0107-schema-internal-package.md);
  *   <li>{@code rest} зависит только от {@code api};
  *   <li>во внутренней реализации нет стереотипных аннотаций Spring — сканирование в стартере
- *       запрещено.
+ *       запрещено;
+ *   <li>группы внутри {@code internal} каждой подсистемы выстроены слоями: группа зависит только
+ *       от групп ниже себя, циклов между ними нет (docs/adr/0143-internal-subpackages.md). Порядок
+ *       слоёв — списки {@link #TASK_LAYERS} и {@link #COMMUNICATION_LAYERS}; новая группа
+ *       обязана встать в свой список.
  * </ul>
  *
  * <p>Подсистемы перечислены явно. Добавление новой подсистемы требует дописать сюда правила.
@@ -52,6 +59,35 @@ class ArchitectureTest {
     static final String SCHEMA_INTERNAL = "xyz.avasilev.taskcomm.schema.internal..";
     static final String REST = "xyz.avasilev.taskcomm.rest..";
     static final String AUTOCONFIGURE = "xyz.avasilev.taskcomm.autoconfigure..";
+
+    /** Слои {@code task.internal} снизу вверх; пустая строка — корень пакета. */
+    static final List<String> TASK_LAYERS = List.of(
+            "",
+            "processor",
+            "settings",
+            "creation",
+            "lifecycle",
+            "claim",
+            "observation",
+            "engine",
+            "inspection",
+            "service");
+
+    /** Слои {@code communication.internal} снизу вверх; пустая строка — корень пакета. */
+    static final List<String> COMMUNICATION_LAYERS = List.of(
+            "",
+            "processor",
+            "settings",
+            "keys",
+            "creation",
+            "lifecycle",
+            "observation",
+            "guard",
+            "claim",
+            "engine",
+            "inspection",
+            "reception",
+            "service");
 
     @ArchTest
     static final ArchRule TASK_INTERNAL_STAYS_WITHIN_TASK_SUBSYSTEM = noClasses()
@@ -146,4 +182,41 @@ class ArchitectureTest {
             .beAnnotatedWith(Repository.class);
 
     private ArchitectureTest() {}
+
+    @ArchTest
+    static void taskInternalIsLayered(final JavaClasses classes) {
+        checkLayers(classes, "xyz.avasilev.taskcomm.task.internal", TASK_LAYERS);
+    }
+
+    @ArchTest
+    static void communicationInternalIsLayered(final JavaClasses classes) {
+        checkLayers(classes, "xyz.avasilev.taskcomm.communication.internal", COMMUNICATION_LAYERS);
+    }
+
+    /**
+     * Каждый слой не зависит ни от одного слоя выше себя. Отсюда же — отсутствие циклов между
+     * группами, а пакет, не названный в списке, ловит отдельная проверка.
+     */
+    private static void checkLayers(final JavaClasses classes, final String root, final List<String> layers) {
+        final List<String> packages = layers.stream()
+                .map(layer -> layer.isEmpty() ? root : root + "." + layer + "..")
+                .toList();
+        for (int n = 0; n < packages.size() - 1; n++) {
+            noClasses()
+                    .that()
+                    .resideInAPackage(packages.get(n))
+                    .should()
+                    .dependOnClassesThat()
+                    .resideInAnyPackage(packages.subList(n + 1, packages.size()).toArray(String[]::new))
+                    .because("группа " + packages.get(n) + " стоит ниже — docs/adr/0143-internal-subpackages.md")
+                    .check(classes);
+        }
+        classes()
+                .that()
+                .resideInAPackage(root + "..")
+                .should()
+                .resideInAnyPackage(packages.toArray(String[]::new))
+                .because("каждая группа internal названа в списке слоёв — docs/adr/0143-internal-subpackages.md")
+                .check(classes);
+    }
 }

@@ -31,10 +31,10 @@ import xyz.avasilev.taskcomm.TestPostgres;
 import xyz.avasilev.taskcomm.rest.CommunicationController;
 import xyz.avasilev.taskcomm.rest.ExecutionController;
 import xyz.avasilev.taskcomm.rest.TaskController;
-import xyz.avasilev.taskcomm.task.api.FlatTaskProcessor;
-import xyz.avasilev.taskcomm.task.api.ProcessingContext;
-import xyz.avasilev.taskcomm.task.api.SearchableField;
 import xyz.avasilev.taskcomm.task.api.Task;
+import xyz.avasilev.taskcomm.task.api.processor.FlatTaskProcessor;
+import xyz.avasilev.taskcomm.task.api.processor.ProcessingContext;
+import xyz.avasilev.taskcomm.task.api.processor.SearchableField;
 
 /**
  * REST (docs/adr/0091-rest-disabled-by-default.md, docs/adr/0140-rest-controllers.md): выключен по умолчанию,

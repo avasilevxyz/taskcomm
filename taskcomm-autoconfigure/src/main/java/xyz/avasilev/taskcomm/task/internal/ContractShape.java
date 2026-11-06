@@ -1,15 +1,15 @@
 package xyz.avasilev.taskcomm.task.internal;
 
-import xyz.avasilev.taskcomm.task.api.BatchTaskProcessor;
-import xyz.avasilev.taskcomm.task.api.FlatTaskProcessor;
-import xyz.avasilev.taskcomm.task.api.TaskProcessor;
-import xyz.avasilev.taskcomm.task.api.UnitTaskProcessor;
+import xyz.avasilev.taskcomm.task.api.processor.BatchTaskProcessor;
+import xyz.avasilev.taskcomm.task.api.processor.FlatTaskProcessor;
+import xyz.avasilev.taskcomm.task.api.processor.TaskProcessor;
+import xyz.avasilev.taskcomm.task.api.processor.UnitTaskProcessor;
 
 /**
  * Форма контракта процессора — колонка {@code tc_task.contract_shape}
  * (docs/adr/0026-contract-shape-marking.md). Пишется при первом захвате задачи вместе с фазой.
  */
-enum ContractShape {
+public enum ContractShape {
 
     /** {@code FlatTaskProcessor}: первая и единственная фаза — обработка. */
     FLAT(TaskPhase.PROCESS),
@@ -33,7 +33,7 @@ enum ContractShape {
      * @param processor процессор
      * @return форма его контракта
      */
-    static ContractShape of(final TaskProcessor<?> processor) {
+    public static ContractShape of(final TaskProcessor<?> processor) {
         return switch (processor) {
             case FlatTaskProcessor<?, ?> _ -> FLAT;
             case UnitTaskProcessor<?, ?, ?, ?> _ -> UNIT;
@@ -46,7 +46,7 @@ enum ContractShape {
      *
      * @return фаза первого захвата
      */
-    TaskPhase firstPhase() {
+    public TaskPhase firstPhase() {
         return this.firstPhase;
     }
 }

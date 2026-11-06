@@ -29,7 +29,7 @@ public enum CommunicationPhase {
      *
      * @return имя метода
      */
-    String methodName() {
+    public String methodName() {
         return this.methodName;
     }
 
@@ -48,7 +48,7 @@ public enum CommunicationPhase {
      * @param key ключ
      * @return фаза или {@code null}, если такой нет
      */
-    static CommunicationPhase ofYamlKey(final String key) {
+    public static CommunicationPhase ofYamlKey(final String key) {
         for (final CommunicationPhase phase : values()) {
             if (phase.yamlKey.equals(key.toLowerCase(Locale.ROOT))) {
                 return phase;

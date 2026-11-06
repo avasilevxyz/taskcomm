@@ -32,7 +32,7 @@ public final class CommunicationCodec {
      * @return JSON или {@code null}
      * @throws TaskcommException если значение не сериализуется
      */
-    String write(final Object value) {
+    public String write(final Object value) {
         if (value == null) {
             return null;
         }
@@ -54,7 +54,7 @@ public final class CommunicationCodec {
      * @return значение или {@code null}
      * @throws TaskcommException если JSON не разбирается в этот тип
      */
-    Object read(final String json, final ResolvableType type) {
+    public Object read(final String json, final ResolvableType type) {
         if (json == null) {
             return null;
         }
@@ -73,7 +73,7 @@ public final class CommunicationCodec {
      * @param type тип
      * @return значение
      */
-    Object decodeJson(final String body, final ResolvableType type) {
+    public Object decodeJson(final String body, final ResolvableType type) {
         return this.mapper.readValue(body, this.mapper.getTypeFactory().constructType(type.getType()));
     }
 }

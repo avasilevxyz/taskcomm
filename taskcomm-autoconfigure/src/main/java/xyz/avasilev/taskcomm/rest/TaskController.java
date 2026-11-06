@@ -18,15 +18,15 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import xyz.avasilev.taskcomm.execution.api.HistoryWindow;
 import xyz.avasilev.taskcomm.execution.api.Page;
-import xyz.avasilev.taskcomm.task.api.SearchableFieldSnapshot;
 import xyz.avasilev.taskcomm.task.api.Task;
-import xyz.avasilev.taskcomm.task.api.TaskAttemptSnapshot;
 import xyz.avasilev.taskcomm.task.api.TaskCancelResult;
-import xyz.avasilev.taskcomm.task.api.TaskInspection;
 import xyz.avasilev.taskcomm.task.api.TaskRestartResult;
 import xyz.avasilev.taskcomm.task.api.TaskService;
-import xyz.avasilev.taskcomm.task.api.TaskSnapshot;
-import xyz.avasilev.taskcomm.task.api.TaskTypeSummary;
+import xyz.avasilev.taskcomm.task.api.inspection.SearchableFieldSnapshot;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskAttemptSnapshot;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskInspection;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskSnapshot;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskTypeSummary;
 
 /**
  * REST задач (docs/adr/0140-rest-controllers.md): списки и детали, поиск по нагрузке, попытки, поля поиска,

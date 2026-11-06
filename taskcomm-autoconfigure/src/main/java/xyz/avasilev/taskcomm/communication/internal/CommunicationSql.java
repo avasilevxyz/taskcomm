@@ -15,7 +15,7 @@ import org.springframework.transaction.support.TransactionTemplate;
  * Мелкие приёмы SQL подсистемы коммуникаций. Такие же есть у задач, но общего кода у подсистем нет
  * (docs/adr/0010-separate-engines.md).
  */
-final class CommunicationSql {
+public final class CommunicationSql {
 
     /** Внешняя сторона коммуникации — по ней ищется процессор. */
     static final String EXTERNAL_SYSTEM = "coalesce(c.source, c.destination)";
@@ -29,7 +29,7 @@ final class CommunicationSql {
      * @param moment момент
      * @return тот же момент со смещением UTC
      */
-    static OffsetDateTime parameter(final Instant moment) {
+    public static OffsetDateTime parameter(final Instant moment) {
         return Instant.MIN.equals(moment) ? OffsetDateTime.MIN : moment.atOffset(ZoneOffset.UTC);
     }
 
@@ -41,7 +41,7 @@ final class CommunicationSql {
      * @param <T> тип строки пачки
      * @return столбец
      */
-    static <T> String[] column(final List<T> items, final Function<T, ?> value) {
+    public static <T> String[] column(final List<T> items, final Function<T, ?> value) {
         return items.stream()
                 .map(value)
                 .map(item -> item == null ? null : String.valueOf(item))
@@ -54,7 +54,7 @@ final class CommunicationSql {
      * @param duration длительность
      * @return секунды с долями
      */
-    static double seconds(final Duration duration) {
+    public static double seconds(final Duration duration) {
         return duration.toNanos() / 1e9;
     }
 
@@ -64,7 +64,7 @@ final class CommunicationSql {
      * @param transactionManager менеджер транзакций стартера
      * @return шаблон транзакций
      */
-    static TransactionTemplate transactions(final PlatformTransactionManager transactionManager) {
+    public static TransactionTemplate transactions(final PlatformTransactionManager transactionManager) {
         final TransactionTemplate transactions = new TransactionTemplate(transactionManager);
         transactions.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         transactions.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
@@ -77,7 +77,7 @@ final class CommunicationSql {
      *
      * @param jdbc клиент в открытой транзакции
      */
-    static void forceCustomPlan(final JdbcClient jdbc) {
+    public static void forceCustomPlan(final JdbcClient jdbc) {
         jdbc.sql("SELECT set_config('plan_cache_mode', 'force_custom_plan', true)")
                 .query(String.class)
                 .single();
@@ -89,7 +89,7 @@ final class CommunicationSql {
      * @param failure исключение
      * @return класс и сообщение
      */
-    static String describe(final Throwable failure) {
+    public static String describe(final Throwable failure) {
         return failure.getMessage() == null
                 ? failure.getClass().getName()
                 : failure.getClass().getName() + ": " + failure.getMessage();

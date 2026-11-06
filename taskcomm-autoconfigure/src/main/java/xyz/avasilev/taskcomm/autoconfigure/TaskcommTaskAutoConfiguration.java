@@ -20,21 +20,21 @@ import org.springframework.transaction.PlatformTransactionManager;
 import tools.jackson.databind.json.JsonMapper;
 import xyz.avasilev.taskcomm.execution.internal.ExecutionRepository;
 import xyz.avasilev.taskcomm.execution.internal.UuidV7;
-import xyz.avasilev.taskcomm.task.api.TaskInspection;
-import xyz.avasilev.taskcomm.task.api.TaskProcessor;
 import xyz.avasilev.taskcomm.task.api.TaskService;
-import xyz.avasilev.taskcomm.task.internal.DefaultTaskInspection;
-import xyz.avasilev.taskcomm.task.internal.DefaultTaskService;
-import xyz.avasilev.taskcomm.task.internal.MicrometerTaskMetrics;
-import xyz.avasilev.taskcomm.task.internal.PollerLayout;
-import xyz.avasilev.taskcomm.task.internal.TaskCreator;
-import xyz.avasilev.taskcomm.task.internal.TaskEngine;
-import xyz.avasilev.taskcomm.task.internal.TaskMetrics;
-import xyz.avasilev.taskcomm.task.internal.TaskObservation;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskInspection;
+import xyz.avasilev.taskcomm.task.api.processor.TaskProcessor;
 import xyz.avasilev.taskcomm.task.internal.TaskPayloadCodec;
-import xyz.avasilev.taskcomm.task.internal.TaskProcessorRegistry;
-import xyz.avasilev.taskcomm.task.internal.TaskSettings;
-import xyz.avasilev.taskcomm.task.internal.TaskStartup;
+import xyz.avasilev.taskcomm.task.internal.creation.TaskCreator;
+import xyz.avasilev.taskcomm.task.internal.engine.TaskEngine;
+import xyz.avasilev.taskcomm.task.internal.inspection.DefaultTaskInspection;
+import xyz.avasilev.taskcomm.task.internal.observation.MicrometerTaskMetrics;
+import xyz.avasilev.taskcomm.task.internal.observation.TaskMetrics;
+import xyz.avasilev.taskcomm.task.internal.observation.TaskObservation;
+import xyz.avasilev.taskcomm.task.internal.processor.TaskProcessorRegistry;
+import xyz.avasilev.taskcomm.task.internal.processor.TaskStartup;
+import xyz.avasilev.taskcomm.task.internal.service.DefaultTaskService;
+import xyz.avasilev.taskcomm.task.internal.settings.PollerLayout;
+import xyz.avasilev.taskcomm.task.internal.settings.TaskSettings;
 
 /**
  * Подсистема задач: реестр процессоров, итоговые настройки, {@link TaskService} и движок —

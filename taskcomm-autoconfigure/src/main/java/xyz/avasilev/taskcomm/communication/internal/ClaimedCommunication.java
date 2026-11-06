@@ -17,7 +17,7 @@ import xyz.avasilev.taskcomm.execution.api.Origin;
  * @param history номер попытки и признак повтора
  * @param snapshot снимок коммуникации на момент захвата
  */
-record ClaimedCommunication(
+public record ClaimedCommunication(
         AttemptLease lease,
         CommunicationRef target,
         String system,
@@ -31,7 +31,7 @@ record ClaimedCommunication(
      *
      * @return ссылка на дело
      */
-    ExecutionRef execution() {
+    public ExecutionRef execution() {
         return new ExecutionRef(this.snapshot.executionId(), this.target.executionCreatedAt());
     }
 
@@ -45,6 +45,6 @@ record ClaimedCommunication(
      * @param payload доменная форма запроса в JSON
      * @param callback доменная форма колбэка в JSON — у попытки обработки ответа; иначе {@code null}
      */
-    record Snapshot(
+    public record Snapshot(
             UUID executionId, int priority, Instant createdAt, Origin origin, String payload, String callback) {}
 }

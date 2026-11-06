@@ -9,4 +9,4 @@ import java.util.UUID;
  * @param id идентификатор коммуникации
  * @param executionCreatedAt ключ партиционирования — время создания дела
  */
-record CommunicationRef(UUID id, Instant executionCreatedAt) {}
+public record CommunicationRef(UUID id, Instant executionCreatedAt) {}

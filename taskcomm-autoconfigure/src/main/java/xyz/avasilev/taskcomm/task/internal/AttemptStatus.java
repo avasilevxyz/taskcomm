@@ -4,7 +4,7 @@ package xyz.avasilev.taskcomm.task.internal;
  * Исход попытки — колонка {@code tc_task_attempt.status} (docs/adr/0057-attempt-status-columns.md).
  * Пуст, пока попытка открыта. Не путать со статусом сущности.
  */
-enum AttemptStatus {
+public enum AttemptStatus {
 
     /** Метод процессора вернулся нормально. */
     SUCCEEDED,

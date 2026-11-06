@@ -6,11 +6,11 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import xyz.avasilev.taskcomm.communication.api.CommunicationSnapshot;
 import xyz.avasilev.taskcomm.communication.api.CommunicationStatus;
-import xyz.avasilev.taskcomm.communication.api.CorrelationKeySnapshot;
+import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSnapshot;
+import xyz.avasilev.taskcomm.communication.api.inspection.CorrelationKeySnapshot;
 import xyz.avasilev.taskcomm.execution.api.Origin;
-import xyz.avasilev.taskcomm.task.api.TaskSnapshot;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskSnapshot;
 
 /**
  * Формы ответов REST (docs/adr/0140-rest-controllers.md). Нагрузки и результаты — сырой JSON, вставленный

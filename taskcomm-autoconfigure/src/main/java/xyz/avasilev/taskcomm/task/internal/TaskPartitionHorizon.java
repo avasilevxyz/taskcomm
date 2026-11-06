@@ -16,7 +16,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * Java-кода со схемой нет. Разошедшийся ключ молча разрешил бы такту закрыть оживлённую партицию.
  */
 @RequiredArgsConstructor
-class TaskPartitionHorizon {
+public class TaskPartitionHorizon {
 
     /** Первая часть ключа блокировки диапазона — {@code 0x74630002}. */
     static final int HORIZON_RANGE_LOCK = 0x74630002;
@@ -41,7 +41,7 @@ class TaskPartitionHorizon {
      * @param jdbc клиент на {@code DataSource} стартера
      * @return граница
      */
-    static Instant activeFrom(final JdbcClient jdbc) {
+    public static Instant activeFrom(final JdbcClient jdbc) {
         return jdbc.sql("SELECT CASE WHEN isfinite(active_from) THEN active_from END FROM tc_partition_horizon")
                 .query((rs, rowNum) -> {
                     final OffsetDateTime value = rs.getObject(1, OffsetDateTime.class);
@@ -59,7 +59,7 @@ class TaskPartitionHorizon {
      * @param jdbc клиент в транзакции такта
      * @return диапазон
      */
-    static ActiveRange activeRange(final JdbcClient jdbc) {
+    public static ActiveRange activeRange(final JdbcClient jdbc) {
         return jdbc.sql("""
                         SELECT CASE WHEN isfinite(active_from) THEN active_from END AS active_from,
                                now() + interval '1 hour' AS active_to
@@ -84,7 +84,7 @@ class TaskPartitionHorizon {
      *
      * @param executionCreatedAt ключ партиционирования оживляемой сущности
      */
-    void revive(final Instant executionCreatedAt) {
+    public void revive(final Instant executionCreatedAt) {
         final OffsetDateTime lower = this.jdbc
                 .sql(LOCK_RANGE_QUERY)
                 .param("key", HORIZON_RANGE_LOCK)
@@ -105,5 +105,5 @@ class TaskPartitionHorizon {
      * @param from граница активных партиций; {@link Instant#MIN} — активны все
      * @param to верхний предел: {@code now()} базы с запасом
      */
-    record ActiveRange(Instant from, Instant to) {}
+    public record ActiveRange(Instant from, Instant to) {}
 }

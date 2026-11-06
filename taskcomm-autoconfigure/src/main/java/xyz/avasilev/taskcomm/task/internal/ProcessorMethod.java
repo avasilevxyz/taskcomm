@@ -2,18 +2,18 @@ package xyz.avasilev.taskcomm.task.internal;
 
 import java.util.List;
 import java.util.stream.Stream;
-import xyz.avasilev.taskcomm.task.api.Emitter;
-import xyz.avasilev.taskcomm.task.api.ProcessingContext;
 import xyz.avasilev.taskcomm.task.api.Task;
 import xyz.avasilev.taskcomm.task.api.TaskBatch;
 import xyz.avasilev.taskcomm.task.api.TaskUnit;
+import xyz.avasilev.taskcomm.task.api.processor.Emitter;
+import xyz.avasilev.taskcomm.task.api.processor.ProcessingContext;
 
 /**
  * Метод процессора — ключ настроек попыток (docs/adr/0118-attempt-settings-per-processor-method.md).
  * Уровень и фаза попытки однозначно называют метод: у фазы раскрытия группового процессора их
  * два, {@code expand} и {@code expandBatch}, и аннотация на каждом действует только на него.
  */
-enum ProcessorMethod {
+public enum ProcessorMethod {
 
     /** {@code process} плоской задачи. */
     PROCESS_TASK("process", TaskLevel.TASK, TaskPhase.PROCESS),
@@ -53,7 +53,7 @@ enum ProcessorMethod {
      * @return метод
      * @throws IllegalArgumentException если такого сочетания не бывает
      */
-    static ProcessorMethod of(final TaskLevel level, final TaskPhase phase) {
+    public static ProcessorMethod of(final TaskLevel level, final TaskPhase phase) {
         for (final ProcessorMethod method : values()) {
             if (method.level == level && method.phase == phase) {
                 return method;
@@ -68,7 +68,7 @@ enum ProcessorMethod {
      * @param shape форма контракта
      * @return методы
      */
-    static List<ProcessorMethod> of(final ContractShape shape) {
+    public static List<ProcessorMethod> of(final ContractShape shape) {
         return switch (shape) {
             case FLAT -> List.of(PROCESS_TASK);
             case UNIT -> List.of(EXPAND, PROCESS_UNIT, COLLECT);
@@ -76,15 +76,15 @@ enum ProcessorMethod {
         };
     }
 
-    String methodName() {
+    public String methodName() {
         return this.methodName;
     }
 
-    TaskLevel level() {
+    public TaskLevel level() {
         return this.level;
     }
 
-    TaskPhase phase() {
+    public TaskPhase phase() {
         return this.phase;
     }
 
@@ -93,7 +93,7 @@ enum ProcessorMethod {
      *
      * @return типы параметров
      */
-    Class<?>[] parameterTypes() {
+    public Class<?>[] parameterTypes() {
         return switch (this) {
             case PROCESS_TASK -> new Class<?>[] {Task.class, ProcessingContext.class};
             case EXPAND -> new Class<?>[] {Task.class, Emitter.class, ProcessingContext.class};

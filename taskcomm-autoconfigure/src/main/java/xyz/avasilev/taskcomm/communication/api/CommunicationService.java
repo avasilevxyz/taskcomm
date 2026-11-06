@@ -1,6 +1,10 @@
 package xyz.avasilev.taskcomm.communication.api;
 
 import java.util.List;
+import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationInspection;
+import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSnapshot;
+import xyz.avasilev.taskcomm.communication.api.processor.CommunicationProcessor;
+import xyz.avasilev.taskcomm.communication.api.processor.CommunicationProcessorSettings;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 
 /**

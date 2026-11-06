@@ -11,7 +11,7 @@ package xyz.avasilev.taskcomm.task.internal;
  * @param history номер попытки и признак повтора
  * @param entity снимок сущности на момент захвата
  */
-record ClaimedAttempt(
+public record ClaimedAttempt(
         AttemptLease lease,
         TaskEntityRef target,
         String taskType,
@@ -24,7 +24,7 @@ record ClaimedAttempt(
      *
      * @return метод
      */
-    ProcessorMethod method() {
+    public ProcessorMethod method() {
         return ProcessorMethod.of(this.target.level(), this.phase);
     }
 }
