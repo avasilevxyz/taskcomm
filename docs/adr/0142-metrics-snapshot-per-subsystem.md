@@ -87,14 +87,14 @@
 
 ### Имена и метки
 
-| Метрика | Задачи | Коммуникации | Метки |
-|---|---|---|---|
-| Очередь | `tc.task.queue` | `tc.communication.queue` | `type` / `system`, `poller` |
-| Отложенные | `tc.task.delayed` | `tc.communication.delayed` | `type` / `system`, `poller`, `reason` |
-| Возраст старейшей, с | `tc.task.oldest.claimable.age` | `tc.communication.oldest.claimable.age` | `type` / `system`, `poller` |
-| Просрочка, с | `tc.task.overdue` | `tc.communication.overdue` | `type` / `system`, `poller` |
-| Незавершённые | `tc.task.unfinished` | `tc.communication.unfinished` | `type` / `system` |
-| Осиротевшие | `tc.task.orphaned` | `tc.communication.orphaned` | `type` / `system` |
+| Метрика              | Задачи                         | Коммуникации                            | Метки                                 |
+|----------------------|--------------------------------|-----------------------------------------|---------------------------------------|
+| Очередь              | `tc.task.queue`                | `tc.communication.queue`                | `type` / `system`, `poller`           |
+| Отложенные           | `tc.task.delayed`              | `tc.communication.delayed`              | `type` / `system`, `poller`, `reason` |
+| Возраст старейшей, с | `tc.task.oldest.claimable.age` | `tc.communication.oldest.claimable.age` | `type` / `system`, `poller`           |
+| Просрочка, с         | `tc.task.overdue`              | `tc.communication.overdue`              | `type` / `system`, `poller`           |
+| Незавершённые        | `tc.task.unfinished`           | `tc.communication.unfinished`           | `type` / `system`                     |
+| Осиротевшие          | `tc.task.orphaned`             | `tc.communication.orphaned`             | `type` / `system`                     |
 
 Описание каждой — «значение на всю схему, агрегировать `max()`, не `sum()`».
 

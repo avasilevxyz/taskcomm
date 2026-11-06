@@ -64,10 +64,10 @@
 
 Две аннотации:
 
-| Аннотация | Пакет | Вешается на |
-|---|---|---|
-| `@TaskProcessorSettings` | `xyz.avasilev.taskcomm.task.api` | класс или метод любого из трёх наследников `TaskProcessor` |
-| `@CommunicationProcessorSettings` | `xyz.avasilev.taskcomm.communication.api` | класс или метод наследника `CommunicationProcessor` |
+| Аннотация                         | Пакет                                     | Вешается на                                                |
+|-----------------------------------|-------------------------------------------|------------------------------------------------------------|
+| `@TaskProcessorSettings`          | `xyz.avasilev.taskcomm.task.api`          | класс или метод любого из трёх наследников `TaskProcessor` |
+| `@CommunicationProcessorSettings` | `xyz.avasilev.taskcomm.communication.api` | класс или метод наследника `CommunicationProcessor`        |
 
 Смысл и порядок разрешения — по [0061](0061-processor-configuration-annotations.md) без изменений:
 любое значение из `yaml` сильнее любой аннотации, метод перекрывает класс.

@@ -139,11 +139,11 @@ claim_order_at = next_attempt_at + priority × K
 
 Выбираются в настройках поллера, по умолчанию `deadline`:
 
-| Форма | `ORDER BY` | Индекс |
-|---|---|---|
-| `deadline` | `claim_order_at` | `(status, claim_order_at)` |
-| `priority` | `priority, next_attempt_at` | `(status, priority, next_attempt_at)` |
-| `quota` | `priority, next_attempt_at` плюс заданная доля захватов по чистому FIFO | плюс `(status, next_attempt_at)` |
+| Форма      | `ORDER BY`                                                              | Индекс                                |
+|------------|-------------------------------------------------------------------------|---------------------------------------|
+| `deadline` | `claim_order_at`                                                        | `(status, claim_order_at)`            |
+| `priority` | `priority, next_attempt_at`                                             | `(status, priority, next_attempt_at)` |
+| `quota`    | `priority, next_attempt_at` плюс заданная доля захватов по чистому FIFO | плюс `(status, next_attempt_at)`      |
 
 Все три индекса частичные по активным статусам, как и прежний ([0030](0030-active-status-index.md)),
 и держатся **всегда**: форма выбирается конфигурацией, а индексы создаются миграцией, и связывать

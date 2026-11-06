@@ -118,12 +118,12 @@
 
 Перечислений четыре, каждое в `api` своей подсистемы:
 
-| Перечисление | Значения |
-|---|---|
-| `TaskStatus` | `PENDING`, `RUNNING`, `AWAITING_CHILDREN`, `SUCCEEDED`, `WARNING`, `FAILED`, `CANCELLED`, `SKIPPED` |
-| `TaskBatchStatus` | те же плюс `AWAITING_PARENT`, `ABANDONED` |
-| `TaskUnitStatus` | `AWAITING_PARENT`, `PENDING`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`, `SKIPPED`, `ABANDONED` |
-| `CommunicationStatus` | `PENDING`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`, `SKIPPED` |
+| Перечисление          | Значения                                                                                            |
+|-----------------------|-----------------------------------------------------------------------------------------------------|
+| `TaskStatus`          | `PENDING`, `RUNNING`, `AWAITING_CHILDREN`, `SUCCEEDED`, `WARNING`, `FAILED`, `CANCELLED`, `SKIPPED` |
+| `TaskBatchStatus`     | те же плюс `AWAITING_PARENT`, `ABANDONED`                                                           |
+| `TaskUnitStatus`      | `AWAITING_PARENT`, `PENDING`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`, `SKIPPED`, `ABANDONED` |
+| `CommunicationStatus` | `PENDING`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED`, `SKIPPED`                                 |
 
 `TaskUnit` и `Communication` больше не делят набор из шести ([0042](0042-communication-statuses.md)).
 Перечисления у них и так были раздельные — меняется только то, что они перестали совпадать.

@@ -576,7 +576,7 @@ public class TaskcommProperties {
         /** Как часто продлевается аренда — заметно меньше аренды. */
         private Duration heartbeatInterval = Duration.ofSeconds(20);
 
-        /** Предел обработки одной попытки; таймаут клиента внешней системы обязан быть короче. */
+        /** Предел обработки одной попытки; тайм-аут клиента внешней системы обязан быть короче. */
         private Duration maxExecutionTime = Duration.ofMinutes(5);
     }
 

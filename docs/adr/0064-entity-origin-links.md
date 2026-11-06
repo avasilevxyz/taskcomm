@@ -23,12 +23,12 @@
 
 **Кто кого может породить** (всюду `N >= 0`):
 
-| Создатель | Что создаёт |
-|---|---|
-| `Communication` | `Communication`, `Task` |
-| `Task` | `Task`, `TaskBatch`, `TaskUnit`, `Communication` |
-| `TaskBatch` | `TaskUnit`, `Task`, `Communication` |
-| `TaskUnit` | `Task`, `Communication` |
+| Создатель       | Что создаёт                                      |
+|-----------------|--------------------------------------------------|
+| `Communication` | `Communication`, `Task`                          |
+| `Task`          | `Task`, `TaskBatch`, `TaskUnit`, `Communication` |
+| `TaskBatch`     | `TaskUnit`, `Task`, `Communication`              |
+| `TaskUnit`      | `Task`, `Communication`                          |
 
 Плюс связь «брат-брат» у асинхронных коммуникаций: колбэк отвечает на конкретную исходящую.
 
@@ -188,12 +188,12 @@ origin_relation   text NULL CHECK (origin_relation IN ('SPAWNED', 'RESPONSE'))
 
 ### Что это даёт сценариям
 
-| Сценарий | Чем обслуживается |
-|---|---|
-| 1. Визуализация | четыре таблицы по `(execution_id)` + `parent_attempt_id` + `origin_*` |
-| 2. Коммуникации дела по `source` / `destination` | `WHERE execution_id = ?`, фильтр и сортировка в памяти |
-| 3. Коммуникации по параметру → связанные задачи | поиск → `execution_id` → задачи, при нужде `origin_id` |
-| 4. Задача дела по типу → её результат | `WHERE execution_id = ? AND task_type = ?` + [0058](0058-task-result-storage.md) |
+| Сценарий                                         | Чем обслуживается                                                                |
+|--------------------------------------------------|----------------------------------------------------------------------------------|
+| 1. Визуализация                                  | четыре таблицы по `(execution_id)` + `parent_attempt_id` + `origin_*`            |
+| 2. Коммуникации дела по `source` / `destination` | `WHERE execution_id = ?`, фильтр и сортировка в памяти                           |
+| 3. Коммуникации по параметру → связанные задачи  | поиск → `execution_id` → задачи, при нужде `origin_id`                           |
+| 4. Задача дела по типу → её результат            | `WHERE execution_id = ? AND task_type = ?` + [0058](0058-task-result-storage.md) |
 
 Связи из четырёх сценариев нужны **одному**. Остальные три обслуживаются агрегатом и уже
 обязательным индексом `(execution_id)`.
@@ -237,7 +237,7 @@ origin_relation   text NULL CHECK (origin_relation IN ('SPAWNED', 'RESPONSE'))
   discriminator, и запрос «прочитай создателя» ветвится по нему.
 - **Новая тихая потеря связи.** Явно переданное чужое дело или отказ от привязки убирают не только
   общее дело, но и указатель. Ошибки не будет — место этой ловушки
-  в [consumer-contract.md](../consumer-contract.md), рядом с потерей дела при смене потока.
+  в [guide/compatibility.md](../guide/compatibility.md), рядом с потерей дела при смене потока.
 - **[0038](0038-execution-aggregate.md) отвергал черновик `caused_by_*` — и это не отмена того
   отказа.** Тот черновик шёл связкой с полем `metadata` и сквозным `correlationId`, а общей их
   ошибкой 0038 назвал «навешивали поля на существующие сущности, вместо того чтобы назвать
