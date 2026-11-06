@@ -6,9 +6,10 @@ Spring Boot стартер, инкапсулирующий таск-менедж
 (`TaskBatch`), REST API для управления задачами, а также аналогичный механизм для коммуникаций
 (процессоры по источнику/назначению) с горизонтальным масштабированием.
 
-> **Статус: проект в начальной стадии.** Собран только скелет, доменного кода пока нет — этот файл и правила по темам
-> в [docs/rules/](docs/rules/) описывают *целевые* правила. Если реальность разойдётся с ними,
-> приоритет у правил: сначала обсуди расхождение, потом меняй правило или код.
+> **Статус:** задачи, коммуникации, REST и наблюдаемость сделаны, впереди — публикация и первый
+> релиз ([roadmap](docs/roadmap.md)). Этот файл и правила по темам в [docs/rules/](docs/rules/) —
+> правила, а не описание кода. Если код с ними разошёлся, приоритет у правил: сначала обсуди
+> расхождение, потом меняй правило или код.
 
 ## Документация проекта
 
@@ -66,7 +67,9 @@ Spring Boot стартер, инкапсулирующий таск-менедж
 
 ## Стек
 
-- Java 25 (toolchain; сборка — на JDK **25.0.4 или новее**), Gradle (Groovy DSL, wrapper),
+- Java 25 (toolchain; сборка — на JDK **25.0.4 или новее**: `JAVA_HOME` обязан указывать на него,
+  иначе `settings.gradle` валит сборку — palantir-java-format на daemon не той версии падает
+  на новых конструкциях), Gradle (Groovy DSL, wrapper),
   Spring Boot 4.1 на Spring Framework 7 ([ADR 0088](docs/adr/0088-java-25-spring-boot-4.md))
 - Lombok, MapStruct, SLF4J
 - Spring JDBC (`JdbcClient`), PostgreSQL
@@ -81,56 +84,22 @@ Spring Boot стартер, инкапсулирующий таск-менедж
 
 ### Каталог версий
 
-Фиксируем явно, в version catalog внутри `settings.gradle`:
-
-- Spring Boot `4.1.1`, MapStruct `1.6.3` вместе с `lombok-mapstruct-binding 0.2.0`,
-  Lombok `1.18.48` (JDK 25 поддерживается начиная с `1.18.40`), `org.jetbrains:annotations 24.1.0`
-- Checkstyle `14.0.0`, Spotless (плагин `com.diffplug.spotless`) `8.10.0` с шагом
-  `palantirJavaFormat('2.97.0')`, Error Prone — плагин `net.ltgt.errorprone 5.1.0` и
-  `com.google.errorprone:error_prone_core 2.50.0`, ArchUnit `1.5.0` (`archunit-junit5`)
-- Версия Gradle живёт в `gradle-wrapper.properties`, а не в каталоге, но фиксируется так же:
-  Gradle `9.7.1`
-
-**Грабля Spotless + palantir-java-format.** Форматирование новых конструкций Java
-(записи с распаковкой, `sealed`, pattern matching в `switch`, unnamed-паттерны `_`) у
-`palantir-java-format` работает надёжно, только если **сам Gradle daemon запущен на JDK версии
-toolchain** (а не только toolchain нацелен на неё) — либо если включено свойство
-`palantir.native.formatter=true` в `gradle.properties`. Несовпадение версии daemon даёт
-`FormatterException` на ровном месте. Поэтому `settings.gradle` **валит сборку**, если Gradle
-запущен на JDK старше 25.0.4: `JAVA_HOME` обязан указывать на JDK 25. Toolchain умеет требовать
-только мажорную версию, нижнюю границу патча держит эта проверка.
+Версии фиксируются явно, в version catalog внутри `settings.gradle`; Gradle — в
+`gradle-wrapper.properties`.
 
 **Не пиним** — версии приходят из BOM Spring Boot: Micrometer и его реестры, драйвер PostgreSQL,
 Tomcat, Jackson 3, Liquibase (только в тестах). `jackson-dataformat-xml` — тоже из BOM и только `compileOnly`:
 потребителю она не приезжает, SOAP-потребитель подключает её сам ([ADR 0135](docs/adr/0135-communication-engine.md)). Так же `spring-webmvc` и `spring-security-web`: REST включает потребитель, MVC и Security у него свои ([ADR 0140](docs/adr/0140-rest-controllers.md)). Так же `micrometer-core` и `spring-boot-health`: метрики и health indicator появляются только у того, у кого Micrometer и Actuator свои ([ADR 0141](docs/adr/0141-observability-instance.md)). Явный пин старой ветки Micrometer против Boot ломает Actuator, а пин драйвера
 вниз нарушает наше же правило «не понижать версии зависимостей».
 
-Checkstyle обязан **разбирать синтаксис Java 25**: `sealed` с `permits` и pattern matching
-в `switch` — основа дизайна, и парсер старше 2023 года на них не работает. Версии вида 10.3.x
-для этого проекта непригодны. `14.0.0` проверен на `import module`, unnamed-паттернах
-и распаковке записей в `switch`.
-
 В каталоге нет и не должно быть Spring Cloud, json-schema-validator, logback-access и logstash:
 в дизайне taskcomm они не участвуют, а каждая зависимость стартера приезжает всем потребителям.
 
 ### Граница между Spotless и Checkstyle
 
-За форматирование отвечает **только Spotless**: отступы, переносы, пробелы, положение скобок,
-порядок импортов, длина строки, висячие запятые. Форматные правила из `checkstyle.xml` убраны
-сознательно — два источника правды об одном приводят к тому, что Checkstyle ругается на строку,
-которую только что записал Spotless.
-
-Checkstyle отвечает за то, чего форматтер не видит: именование, структуру, сложность, Javadoc,
-корректность, состав импортов. Он **заваливает сборку** (`severity=error`).
-
-Из конфига отдельно убраны два правила, и не как форматные:
-
-- `MissingSwitchDefault` — воркер разбирает запечатанную иерархию процессоров без ветки `default`
-  ([ADR 0007](docs/adr/0007-processor-contracts.md)).
-- `IllegalCatch` — воркер обязан перехватывать всё, что бросил процессор потребителя, иначе чужой
-  код убьёт поток воркера.
-
-Точечные исключения кладутся в `checkstyle-suppressions.xml` рядом с конфигом.
+За форматирование отвечает **только Spotless**; Checkstyle — за то, чего форматтер не видит, и
+**заваливает сборку**. Что из правил убрано и почему — в шапке `checkstyle.xml`; точечные исключения —
+в `checkstyle-suppressions.xml` рядом с ним.
 
 ## Структура репозитория
 
@@ -145,28 +114,13 @@ taskcomm/
 ```
 xyz.avasilev.taskcomm          TaskcommException и его общие наследники — публичный API,
 │                              доступный всем пакетам без связи между подсистемами
-├── execution/
-│   ├── api/           публичный API: Execution, ExecutionRef, ExecutionService, Origin,
-│   │                  HistoryWindow, PageRequest, Page — общие значения чтения (ADR 0138)
-│   └── internal/      реализация, ExecutionRepository, держатель текущего дела, генератор UUIDv7
-├── task/
-│   ├── api/           публичный API: Task, TaskBatch, TaskUnit, TaskService, TaskSubmitOptions,
-│   │                  TaskProcessor и три его наследника, Emitter, SearchableField,
-│   │                  @TaskProcessorSettings и сокращения, контекст обработки (skip(reason),
-│   │                  doNotRetry(reason), shouldStop(), executionRef(), attemptNumber(), isRetry()),
-│   │                  TaskInspection и его запросы и снимки
-│   └── internal/      реализация: сервисы, хранилище по обязанностям (создание, захват,
-│                      закрытие попытки, heartbeat — ADR 0117), поллер, retry
-├── communication/
-│   ├── api/           публичный API: Communication, CommunicationService, значения-запросы приёма,
-│   │                  CommunicationProcessor и его транспортные наследники, CommunicationContext,
-│   │                  нейтральные заголовки, CommunicationInspection и его запросы и снимки
-│   └── internal/      реализация, CommunicationRepository
-├── schema/
-│   └── internal/      проверка схемы при старте, initialize, обслуживание партиций и граница
-│                      активных партиций — общее для подсистем, без api (ADR 0107)
-├── rest/              контроллеры и DTO (внутренняя реализация, не публичный Java API)
-└── autoconfigure/     классы @AutoConfiguration и @ConfigurationProperties
+├── execution/{api,internal}   агрегат Execution
+├── task/{api,internal}        подсистема задач
+├── communication/{api,internal}  подсистема коммуникаций
+├── schema/internal/           проверка схемы, initialize, партиции и их граница — общее для
+│                              подсистем, без api (ADR 0107)
+├── rest/                      контроллеры и DTO (внутренняя реализация, не публичный Java API)
+└── autoconfigure/             классы @AutoConfiguration и @ConfigurationProperties
 ```
 
 **Публичный API — это всё, что лежит вне пакетов `internal`.** Изменение сигнатуры такого типа —
@@ -191,7 +145,7 @@ gradlew.bat test
 Только unit-тесты, без Docker.
 
 ```powershell
-gradlew.bat test --tests "xyz.avasilev.taskcomm.task.internal.TaskServiceTest"
+gradlew.bat test --tests "xyz.avasilev.taskcomm.task.internal.TaskSettingsTest"
 ```
 
 ```powershell
@@ -294,17 +248,8 @@ classpath — Spring уже всё нашёл.
 ошибке применяется к ней целиком. Не «унифицировать» две модели ради симметрии и не заводить
 `CommunicationBatch` / `CommunicationUnit`.
 
-Направление — **тип, а не значение поля**:
-
-```java
-public sealed interface Communication<C> permits Communication.Inbound, Communication.Outbound {
-    C requestPayload();
-    non-sealed interface Inbound<C>  extends Communication<C> { String source(); }
-    non-sealed interface Outbound<C> extends Communication<C> { String destination(); }
-}
-```
-
-Невалидную коммуникацию (обе стороны пустые, обе заполненные) нельзя собрать в принципе, а процессор
+Направление — **тип, а не значение поля**: `Communication` запечатан и разрешает только
+`Inbound` (`source()`) и `Outbound` (`destination()`). Невалидную коммуникацию (обе стороны пустые, обе заполненные) нельзя собрать в принципе, а процессор
 разбирает направление через pattern matching. В БД по-прежнему две колонки и признак направления.
 Интерфейсы, а не записи, — как у `Task`: новое поле не ломает совместимость
 ([ADR 0134](docs/adr/0134-communication-public-api-shape.md)).
@@ -395,19 +340,10 @@ public sealed interface Communication<C> permits Communication.Inbound, Communic
   из списка** — помеченный квалификатором бин потребителя берётся вместо нашего, а бин того же
   типа без квалификатора не берётся; и для каждой автоконфигурации — что бинов чужих типов она
   в контекст не добавляет ([ADR 0096](docs/adr/0096-no-foreign-type-beans.md)).
-- ArchUnit-тест обязателен и проверяет ([ADR 0087](docs/adr/0087-architecture-rules.md)):
-  - `internal` подсистемы используется только внутри неё и из `autoconfigure`, где бины
-    собираются вручную;
-  - `execution.internal` вдобавок доступен `task.internal` и `communication.internal` — ради общего
-    держателя текущего дела и генератора UUIDv7 ([ADR 0114](docs/adr/0114-uuidv7-generator-in-execution-internal.md));
-    это **единственное** исключение, и список его оснований закрыт — расширять молча нельзя;
-  - `api` не зависит от `internal`;
-  - `task` и `communication` не зависят друг от друга;
-  - `execution` не зависит ни от `task`, ни от `communication` — агрегат пассивен;
-  - `schema.internal` используется только из `schema` и `autoconfigure`, а `schema` не зависит
-    ни от `task`, ни от `communication`, ни от `execution` ([ADR 0107](docs/adr/0107-schema-internal-package.md));
-  - `rest` зависит только от `api`;
-  - в `internal` нет стереотипных аннотаций Spring.
+- ArchUnit-тест `ArchitectureTest` обязателен ([ADR 0087](docs/adr/0087-architecture-rules.md)); перечень
+  границ пакетов — в нём. Единственное исключение — `execution.internal`, доступный внутренним
+  пакетам обоих движков ([ADR 0114](docs/adr/0114-uuidv7-generator-in-execution-internal.md)):
+  список его оснований закрыт, расширять молча нельзя. Новый пакет или подсистема — новые правила там же.
 - Утверждения — AssertJ (`assertThat`), не `Assertions.assertEquals`.
 
 ## Совместимость и публикация
@@ -430,7 +366,8 @@ public sealed interface Communication<C> permits Communication.Inbound, Communic
   для всех потребителей. Сначала предложи и обоснуй.
 - Не менять публичные сигнатуры, не сказав об этом прямо.
 - Не отключать и не подавлять правила Checkstyle / Spotless / Error Prone, чтобы «прошла сборка».
-  Чини код, а не правило.
+  Чини код, а не правило. Ложное срабатывание Error Prone на коде Lombok глушится точечно,
+  не целым правилом.
 
 ## Порядок обсуждения
 
@@ -441,19 +378,6 @@ public sealed interface Communication<C> permits Communication.Inbound, Communic
   стоит, ошибётся ровно тогда, когда обсуждение важнее всего.
 - Развилку закрывает человек. Пока прямого ответа нет, она открыта — сколько бы раундов
   ни потребовалось.
-
-## Известные грабли сборки
-
-- **Lombok + MapStruct**: нужен `org.projectlombok:lombok-mapstruct-binding` в `annotationProcessor`,
-  иначе MapStruct отработает раньше Lombok и не увидит сгенерированные геттеры.
-- **Error Prone + Java 25**: плагин `net.ltgt.errorprone`, компилятору нужны
-  `-XDcompilePolicy=simple` и `--should-stop=ifError=FLOW`. На коде, сгенерированном Lombok,
-  возможны ложные срабатывания — глушить точечно, не целым правилом.
-- **Spotless и Checkstyle** должны быть настроены на один и тот же стиль, иначе они начнут
-  переписывать код друг за другом.
-- **Spotless + palantir-java-format на JDK не той версии**: см. раздел «Каталог версий» —
-  Gradle daemon должен работать на JDK 25, иначе форматирование новых конструкций падает.
-  `settings.gradle` проверяет это сам.
 
 ## Открытые вопросы
 
@@ -481,16 +405,4 @@ public sealed interface Communication<C> permits Communication.Inbound, Communic
    Разбора вариантов не было, и цены механизма никто не считал. Изменение аддитивное, поэтому
    ничего не блокирует и ждёт первого реального применения.
 
-Из списка **вышли** два вопроса, и оба закрыты [ADR 0064](docs/adr/0064-entity-origin-links.md).
-Таблица связей сущностей: closure table не понадобился — ни один из сценариев не оказался обходом
-графа, а `Execution` и есть замыкание; хранится только указатель на создателя, колонками `origin_*`
-в двух таблицах. Доступ процессора к данным породившей его коммуникации: тот же указатель даёт
-прямое чтение с отсечением партиций, а `ExecutionService` получил первых потребителей.
-
-Вышел и размыкатель — закрыт [ADR 0065](docs/adr/0065-communication-circuit-breaker.md). Внутри
-него отложены синхронизация состояния между экземплярами и ручное управление через REST; это
-не открытый вопрос, а следующий шаг уже принятого решения.
-
-Вышли и оба вопроса о приёме входящих — закрыты [ADR 0133](docs/adr/0133-synchronous-inbound-reception.md):
-второй метод приёма выполняет обработку синхронно в потоке вызывающего, а ответ отправителю
-формирует процессор входящей.
+Закрытые вопросы из этого списка ушли в ADR; их история — в [roadmap](docs/roadmap.md).
