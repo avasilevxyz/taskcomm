@@ -15,7 +15,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.core.task.TaskDecorator;
 import org.springframework.scheduling.TaskScheduler;
-import org.springframework.scheduling.concurrent.CustomizableThreadFactory;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.transaction.PlatformTransactionManager;
 import xyz.avasilev.taskcomm.execution.internal.UuidV7;
@@ -55,6 +54,11 @@ public class CommunicationEngine implements SmartLifecycle {
 
     private final CircuitBreakers breakers;
 
+    /** Такт снимка метрик на всю схему; {@code null} — метрик нет, снимок не считается. */
+    private final Runnable snapshot;
+
+    private final Duration snapshotInterval;
+
     private final TaskScheduler externalScheduler;
 
     private final List<ScheduledFuture<?>> futures = new ArrayList<>();
@@ -77,7 +81,7 @@ public class CommunicationEngine implements SmartLifecycle {
      * @param threadFactory фабрика потоков воркеров потребителя или {@code null}
      * @param decorator декоратор запусков воркеров потребителя или {@code null}
      * @param scheduler планировщик потребителя или {@code null}
-     * @param observation MDC и метрики
+     * @param observation MDC, метрики и такт снимка на всю схему
      */
     public CommunicationEngine(
             final DataSource dataSource,
@@ -118,6 +122,8 @@ public class CommunicationEngine implements SmartLifecycle {
         this.safety =
                 new CommunicationSafetyPoller(dataSource, transactionManager, settings, retries, registry.systems());
         this.safetyInterval = settings.safetyInterval();
+        this.snapshot = observation.snapshotTick(dataSource, transactionManager, ids, settings, registry);
+        this.snapshotInterval = observation.snapshotInterval();
         final PollerLayout layout = settings.pollers();
         final List<PollerSettings> all = new ArrayList<>();
         all.add(layout.main());
@@ -128,7 +134,9 @@ public class CommunicationEngine implements SmartLifecycle {
                         claimable(layout, poller, registry),
                         claimer,
                         this.worker,
-                        threadFactory != null ? threadFactory : workerThreads(poller),
+                        threadFactory != null
+                                ? threadFactory
+                                : CommunicationPoller.ownThreads(THREAD_PREFIX + poller.name() + "-"),
                         decorator,
                         this.breakers,
                         system -> settings.breaker(system).settings().probeCalls()))
@@ -150,6 +158,9 @@ public class CommunicationEngine implements SmartLifecycle {
                 this::renewLeases, Instant.now().plus(this.heartbeatTick), this.heartbeatTick));
         this.futures.add(scheduler.scheduleWithFixedDelay(
                 this::runSafety, Instant.now().plus(this.safetyInterval), this.safetyInterval));
+        if (this.snapshot != null) {
+            this.futures.add(scheduler.scheduleWithFixedDelay(this.snapshot, Instant.now(), this.snapshotInterval));
+        }
         this.running = true;
     }
 
@@ -265,12 +276,6 @@ public class CommunicationEngine implements SmartLifecycle {
                 .forEach(system ->
                         result.put(system, registry.find(system).orElseThrow().shape()));
         return result;
-    }
-
-    private static ThreadFactory workerThreads(final PollerSettings poller) {
-        final CustomizableThreadFactory factory = new CustomizableThreadFactory(THREAD_PREFIX + poller.name() + "-");
-        factory.setDaemon(true);
-        return factory;
     }
 
     /**

@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.task.TaskDecorator;
+import org.springframework.scheduling.concurrent.CustomizableThreadFactory;
 
 /**
  * Поллер задач: свой пул воркеров размером {@code workers} и цикл захвата
@@ -192,5 +193,17 @@ class TaskPoller {
                 this.poll();
             }
         }
+    }
+
+    /**
+     * Фабрика потоков воркеров, когда своей у потребителя нет: потоки-демоны с именем поллера.
+     *
+     * @param prefix префикс имени потока
+     * @return фабрика потоков
+     */
+    static ThreadFactory ownThreads(final String prefix) {
+        final CustomizableThreadFactory factory = new CustomizableThreadFactory(prefix);
+        factory.setDaemon(true);
+        return factory;
     }
 }

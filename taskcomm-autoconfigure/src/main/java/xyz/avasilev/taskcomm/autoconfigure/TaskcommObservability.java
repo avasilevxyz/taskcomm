@@ -1,5 +1,6 @@
 package xyz.avasilev.taskcomm.autoconfigure;
 
+import java.time.Duration;
 import xyz.avasilev.taskcomm.TaskcommConfigurationException;
 
 /** Проверка свойств наблюдаемости при старте (docs/rules/configuration.md). */
@@ -38,5 +39,22 @@ final class TaskcommObservability {
                     + " (docs/adr/0051-engine-health.md)");
         }
         return missed;
+    }
+
+    /**
+     * Такт снимка метрик на всю схему.
+     *
+     * @param properties свойства стартера
+     * @return такт
+     * @throws TaskcommConfigurationException если такт не задан или не положителен
+     */
+    static Duration metricsInterval(final TaskcommProperties properties) {
+        final Duration interval = properties.getMetrics().getInterval();
+        if (interval == null || interval.isNegative() || interval.isZero()) {
+            throw new TaskcommConfigurationException("taskcomm.metrics.interval = " + interval
+                    + ": такт снимка метрик должен быть положительным"
+                    + " (docs/adr/0102-schema-wide-metrics-snapshot.md)");
+        }
+        return interval;
     }
 }

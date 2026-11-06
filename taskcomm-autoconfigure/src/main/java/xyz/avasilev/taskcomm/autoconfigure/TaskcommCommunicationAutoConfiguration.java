@@ -289,7 +289,9 @@ public class TaskcommCommunicationAutoConfiguration {
     public CommunicationObservation taskcommCommunicationObservation(
             final TaskcommProperties properties, final ObjectProvider<CommunicationMetrics> metrics) {
         return new CommunicationObservation(
-                TaskcommObservability.mdcPrefix(properties), metrics.getIfAvailable(() -> CommunicationMetrics.NONE));
+                TaskcommObservability.mdcPrefix(properties),
+                metrics.getIfAvailable(() -> CommunicationMetrics.NONE),
+                TaskcommObservability.metricsInterval(properties));
     }
 
     /** Метрики — только при Micrometer на classpath (docs/adr/0015-observability.md). */

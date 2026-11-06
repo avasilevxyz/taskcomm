@@ -53,6 +53,9 @@ public class TaskcommProperties {
     /** Health indicator. */
     private Health health = new Health();
 
+    /** Метрики. */
+    private Metrics metrics = new Metrics();
+
     /**
      * Свойства {@code taskcomm.logging.*} (docs/adr/0034-mdc-business-id.md).
      */
@@ -81,6 +84,22 @@ public class TaskcommProperties {
          * ложных срабатываний.
          */
         private int missedIntervals = 10;
+    }
+
+    /**
+     * Свойства {@code taskcomm.metrics.*} (docs/adr/0102-schema-wide-metrics-snapshot.md).
+     */
+    @Getter
+    @Setter
+    public static class Metrics {
+
+        /**
+         * Такт снимка метрик на всю схему: очередь, отложенные, возраст и просрочка захватываемой работы,
+         * незавершённые и осиротевшие. Каждый экземпляр раз в такт читает снимок, а один из них ещё
+         * и пересчитывает его. Значения запаздывают не больше чем на два такта. Работает, только если
+         * в приложении есть Micrometer и бин MeterRegistry.
+         */
+        private Duration interval = Duration.ofSeconds(30);
     }
 
     /**

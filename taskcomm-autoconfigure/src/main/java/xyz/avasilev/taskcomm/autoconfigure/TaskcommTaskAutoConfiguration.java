@@ -301,7 +301,9 @@ public class TaskcommTaskAutoConfiguration {
     public TaskObservation taskcommTaskObservation(
             final TaskcommProperties properties, final ObjectProvider<TaskMetrics> metrics) {
         return new TaskObservation(
-                TaskcommObservability.mdcPrefix(properties), metrics.getIfAvailable(() -> TaskMetrics.NONE));
+                TaskcommObservability.mdcPrefix(properties),
+                metrics.getIfAvailable(() -> TaskMetrics.NONE),
+                TaskcommObservability.metricsInterval(properties));
     }
 
     /** Метрики попыток — только при Micrometer на classpath (docs/adr/0015-observability.md). */

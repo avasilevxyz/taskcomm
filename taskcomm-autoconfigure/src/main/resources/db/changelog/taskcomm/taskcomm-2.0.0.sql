@@ -552,3 +552,35 @@ COMMENT ON COLUMN tc_partition_horizon.id IS 'Постоянный иденти�
 COMMENT ON COLUMN tc_partition_horizon.created_at IS 'Время заведения строки';
 COMMENT ON COLUMN tc_partition_horizon.updated_at IS 'Время последнего сдвига границы. Проставляет приложение';
 COMMENT ON COLUMN tc_partition_horizon.active_from IS 'Нижняя граница партиций, где МОЖЕТ лежать незавершённая работа: ниже неё незавершённой работы нет, выше - не обязательно есть. Не время последнего изменения. Такт сдвигает её вперёд, запись в старую партицию опускает назад. -infinity - граница ещё не рассчитана, активны все партиции';
+
+--changeset taskcomm:2.0.0-13-tc_metrics_snapshot
+CREATE TABLE IF NOT EXISTS tc_metrics_snapshot (
+    id             uuid             NOT NULL,
+    created_at     timestamptz      NOT NULL,
+    updated_at     timestamptz      NOT NULL,
+    subsystem      text             NOT NULL,
+    metric         text             NOT NULL,
+    type_or_system text             NOT NULL,
+    poller         text             NOT NULL,
+    reason         text             NOT NULL,
+    value          double precision NOT NULL,
+    computed_at    timestamptz      NOT NULL,
+    CONSTRAINT tc_metrics_snapshot_pk PRIMARY KEY (id),
+    CONSTRAINT tc_metrics_snapshot_subsystem_check CHECK (subsystem IN ('TASK', 'COMMUNICATION')),
+    CONSTRAINT tc_metrics_snapshot_metric_check CHECK (metric IN (
+        'QUEUE', 'DELAYED', 'OLDEST_CLAIMABLE_AGE', 'OVERDUE', 'UNFINISHED', 'ORPHANED')),
+    CONSTRAINT tc_metrics_snapshot_reason_check CHECK (reason IN ('', 'SCHEDULED', 'RETRY')),
+    CONSTRAINT tc_metrics_snapshot_labels_uq UNIQUE (subsystem, metric, type_or_system, poller, reason)
+);
+
+COMMENT ON TABLE tc_metrics_snapshot IS 'Снимок метрик на всю схему - очередь, отложенные, возраст и просрочка захватываемой работы, незавершённые и осиротевшие. Каждая подсистема пишет свои строки: один экземпляр за такт считает, публикуют из снимка все. Строка на сочетание метрики и меток';
+COMMENT ON COLUMN tc_metrics_snapshot.id IS 'Идентификатор строки, UUIDv7';
+COMMENT ON COLUMN tc_metrics_snapshot.created_at IS 'Время первого появления этого сочетания метрики и меток';
+COMMENT ON COLUMN tc_metrics_snapshot.updated_at IS 'Время последнего изменения строки. Проставляет приложение';
+COMMENT ON COLUMN tc_metrics_snapshot.subsystem IS 'Подсистема, чьи строки: TASK или COMMUNICATION. Подсистема считает и удаляет только свои';
+COMMENT ON COLUMN tc_metrics_snapshot.metric IS 'Метрика: QUEUE - захватываемая сейчас работа, DELAYED - ждущая своего времени, OLDEST_CLAIMABLE_AGE - возраст самой старой захватываемой в секундах, OVERDUE - наибольшая просрочка claim_order_at в секундах, UNFINISHED - незавершённые, ORPHANED - незавершённые без процессора';
+COMMENT ON COLUMN tc_metrics_snapshot.type_or_system IS 'Тип задачи у подсистемы задач, внешняя система у коммуникаций';
+COMMENT ON COLUMN tc_metrics_snapshot.poller IS 'Поллер, захватывающий этот тип или систему. Пустая строка - у метрики нет такой метки: у незавершённых и осиротевших';
+COMMENT ON COLUMN tc_metrics_snapshot.reason IS 'Причина у DELAYED: SCHEDULED - отложенный запуск, попыток ещё не было, RETRY - повтор после неудачи. Пустая строка у остальных метрик';
+COMMENT ON COLUMN tc_metrics_snapshot.value IS 'Значение метрики на всю схему. По экземплярам его агрегируют max(), а не sum(): каждый экземпляр публикует одно и то же';
+COMMENT ON COLUMN tc_metrics_snapshot.computed_at IS 'Время такта, в котором строку посчитали, - время транзакции подсчёта, а не время события в самой строке. Строки подсистемы, не обновлённые в такте, такт удаляет';

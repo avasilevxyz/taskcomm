@@ -160,6 +160,9 @@ public class SchemaVerifier {
                 columns("id created_at updated_at level task_type field_name field_type"
                         + " json_path field_title field_description last_declared_at"));
         tables.put("tc_partition_horizon", columns("id created_at updated_at active_from"));
+        tables.put(
+                "tc_metrics_snapshot",
+                columns("id created_at updated_at subsystem metric type_or_system poller reason value computed_at"));
         return Collections.unmodifiableMap(tables);
     }
 

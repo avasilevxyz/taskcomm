@@ -15,7 +15,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.core.task.TaskDecorator;
 import org.springframework.scheduling.TaskScheduler;
-import org.springframework.scheduling.concurrent.CustomizableThreadFactory;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.transaction.PlatformTransactionManager;
 import xyz.avasilev.taskcomm.execution.internal.UuidV7;
@@ -55,6 +54,11 @@ public class TaskEngine implements SmartLifecycle {
 
     private final Duration heartbeatTick;
 
+    /** Такт снимка метрик на всю схему; {@code null} — метрик нет, снимок не считается. */
+    private final Runnable snapshot;
+
+    private final Duration snapshotInterval;
+
     private final TaskScheduler externalScheduler;
 
     private final List<ScheduledFuture<?>> futures = new ArrayList<>();
@@ -79,7 +83,7 @@ public class TaskEngine implements SmartLifecycle {
      * @param threadFactory фабрика потоков воркеров потребителя или {@code null}
      * @param decorator декоратор запусков воркеров потребителя или {@code null}
      * @param scheduler планировщик потребителя или {@code null} — тогда движок заводит свой
-     * @param observation MDC и метрики попыток
+     * @param observation MDC, метрики и такт снимка на всю схему
      */
     public TaskEngine(
             final DataSource dataSource,
@@ -126,6 +130,8 @@ public class TaskEngine implements SmartLifecycle {
         final TaskWorker worker = new TaskWorker(
                 registry, codec, closer, this.heartbeat, children, new TaskCollector(dataSource, codec), ids);
         final TaskAttemptObserver observer = new TaskAttemptObserver(observation);
+        this.snapshotInterval = observation.snapshotInterval();
+        this.snapshot = observation.snapshotTick(dataSource, transactionManager, ids, settings, registry);
         final List<PollerSettings> all = new ArrayList<>();
         all.add(layout.main());
         all.addAll(layout.dedicated());
@@ -136,7 +142,9 @@ public class TaskEngine implements SmartLifecycle {
                         claimer,
                         worker,
                         observer,
-                        threadFactory != null ? threadFactory : workerThreads(poller),
+                        threadFactory != null
+                                ? threadFactory
+                                : TaskPoller.ownThreads(THREAD_PREFIX + poller.name() + "-"),
                         decorator))
                 .toList();
     }
@@ -161,6 +169,9 @@ public class TaskEngine implements SmartLifecycle {
                     this::sweepResults,
                     Instant.now().plus(TaskResultDiscard.SWEEP_INTERVAL),
                     TaskResultDiscard.SWEEP_INTERVAL));
+        }
+        if (this.snapshot != null) {
+            this.futures.add(scheduler.scheduleWithFixedDelay(this.snapshot, Instant.now(), this.snapshotInterval));
         }
         this.activeScheduler = scheduler;
         this.running = true;
@@ -300,12 +311,6 @@ public class TaskEngine implements SmartLifecycle {
         final Map<String, ContractShape> result = new LinkedHashMap<>();
         layout.claimableTypes(poller, shapes.keySet()).forEach(type -> result.put(type, shapes.get(type)));
         return result;
-    }
-
-    private static ThreadFactory workerThreads(final PollerSettings poller) {
-        final CustomizableThreadFactory factory = new CustomizableThreadFactory(THREAD_PREFIX + poller.name() + "-");
-        factory.setDaemon(true);
-        return factory;
     }
 
     /**

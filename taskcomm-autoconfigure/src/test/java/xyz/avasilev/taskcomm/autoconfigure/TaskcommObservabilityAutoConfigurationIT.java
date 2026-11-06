@@ -94,6 +94,44 @@ class TaskcommObservabilityAutoConfigurationIT {
     }
 
     @Test
+    void schemaWideSnapshotIsCountedAndPublishedPerSubsystem() {
+        this.contextRunner.withUserConfiguration(Probe.class, Registry.class).run(context -> {
+            final MeterRegistry registry = context.getBean(MeterRegistry.class);
+            await().atMost(WAIT)
+                    .until(() -> registry.find("tc.task.unfinished")
+                                    .tags("type", "mdc")
+                                    .gauge()
+                            != null);
+            assertThat(registry.get("tc.task.queue")
+                            .tags("type", "mdc", "poller", "main")
+                            .gauge()
+                            .value())
+                    .isZero();
+            assertThat(registry.get("tc.metrics.snapshot.age")
+                            .tags("subsystem", "task")
+                            .gauge()
+                            .value())
+                    .isNotNaN();
+            assertThat(registry.get("tc.metrics.snapshot.age")
+                            .tags("subsystem", "communication")
+                            .gauge())
+                    .isNotNull();
+        });
+    }
+
+    @Test
+    void nonPositiveSnapshotIntervalFailsStartup() {
+        this.contextRunner
+                .withUserConfiguration(Probe.class)
+                .withPropertyValues("taskcomm.metrics.interval=0s")
+                .run(context -> assertThat(context)
+                        .getFailure()
+                        .rootCause()
+                        .isInstanceOf(TaskcommConfigurationException.class)
+                        .hasMessageContaining("taskcomm.metrics.interval"));
+    }
+
+    @Test
     void healthIndicatorReportsLivenessOfBothEngines() {
         this.contextRunner.withUserConfiguration(Probe.class).run(context -> {
             final Health health = context.getBean("taskcommHealthIndicator", HealthIndicator.class)
