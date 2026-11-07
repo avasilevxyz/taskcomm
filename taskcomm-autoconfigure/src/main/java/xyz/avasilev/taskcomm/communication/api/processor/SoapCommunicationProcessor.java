@@ -6,11 +6,12 @@ import xyz.avasilev.taskcomm.communication.api.CommunicationHeaders;
  * Процессор внешней системы по SOAP. Форма контракта в базе — {@code SOAP}. Тело по умолчанию —
  * XML, его разбирает XML-маппер стартера; другой разбор — переопределите методы разбора.
  *
- * @param <C> доменная форма запроса
- * @param <R> доменная форма синхронного ответа
- * @param <A> доменная форма колбэка; {@link Void} у не ждущего ответа
+ * @param <TRequest> доменная форма запроса
+ * @param <TSyncResponse> доменная форма синхронного ответа
+ * @param <TAsyncResponse> доменная форма колбэка; {@link Void} у не ждущего ответа
  */
-public non-sealed interface SoapCommunicationProcessor<C, R, A> extends HttpCommunicationProcessor<C, R, A> {
+public non-sealed interface SoapCommunicationProcessor<TRequest, TSyncResponse, TAsyncResponse>
+        extends HttpCommunicationProcessor<TRequest, TSyncResponse, TAsyncResponse> {
 
     /**
      * Разбирает тело входящей при приёме, в потоке вызывающего. Исключение — неразбираемое тело:
@@ -21,7 +22,8 @@ public non-sealed interface SoapCommunicationProcessor<C, R, A> extends HttpComm
      * @param xml разбор XML в тип запроса
      * @return доменная форма запроса
      */
-    default C decodeRequest(final String body, final CommunicationHeaders headers, final BodyDecoder<C> xml) {
+    default TRequest decodeRequest(
+            final String body, final CommunicationHeaders headers, final BodyDecoder<TRequest> xml) {
         return xml.decode(body);
     }
 
@@ -33,7 +35,8 @@ public non-sealed interface SoapCommunicationProcessor<C, R, A> extends HttpComm
      * @param xml разбор XML в тип колбэка
      * @return доменная форма колбэка
      */
-    default A decodeResponse(final String body, final CommunicationHeaders headers, final BodyDecoder<A> xml) {
+    default TAsyncResponse decodeResponse(
+            final String body, final CommunicationHeaders headers, final BodyDecoder<TAsyncResponse> xml) {
         return xml.decode(body);
     }
 }

@@ -8,11 +8,12 @@ import xyz.avasilev.taskcomm.communication.api.CommunicationHeaders;
  * добавить не может (docs/adr/0052-communication-transport-contracts.md). Отказных статусов
  * по умолчанию нет — смысл статуса знает только автор процессора.
  *
- * @param <C> доменная форма запроса
- * @param <R> доменная форма синхронного ответа
- * @param <A> доменная форма колбэка; {@link Void} у не ждущего ответа
+ * @param <TRequest> доменная форма запроса
+ * @param <TSyncResponse> доменная форма синхронного ответа
+ * @param <TAsyncResponse> доменная форма колбэка; {@link Void} у не ждущего ответа
  */
-public non-sealed interface RawCommunicationProcessor<C, R, A> extends CommunicationProcessor<C, R, A> {
+public non-sealed interface RawCommunicationProcessor<TRequest, TSyncResponse, TAsyncResponse>
+        extends CommunicationProcessor<TRequest, TSyncResponse, TAsyncResponse> {
 
     /**
      * Разбирает тело входящей при приёме, в потоке вызывающего. Исключение — неразбираемое тело:
@@ -22,7 +23,7 @@ public non-sealed interface RawCommunicationProcessor<C, R, A> extends Communica
      * @param headers заголовки
      * @return доменная форма запроса
      */
-    C decodeRequest(String body, CommunicationHeaders headers);
+    TRequest decodeRequest(String body, CommunicationHeaders headers);
 
     /**
      * Разбирает тело колбэка при приёме, в потоке вызывающего. Процессор, не ждущий ответа, может
@@ -32,5 +33,5 @@ public non-sealed interface RawCommunicationProcessor<C, R, A> extends Communica
      * @param headers заголовки
      * @return доменная форма колбэка
      */
-    A decodeResponse(String body, CommunicationHeaders headers);
+    TAsyncResponse decodeResponse(String body, CommunicationHeaders headers);
 }

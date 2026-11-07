@@ -274,10 +274,10 @@ final class CommunicationSettingsResolver {
                 .orElse(this.global.lease().heartbeatInterval());
     }
 
-    private static <V> Picked<V> pick(
-            final List<Layer> layers, final Function<SettingsOverride, V> value, final V globalValue) {
+    private static <TValue> Picked<TValue> pick(
+            final List<Layer> layers, final Function<SettingsOverride, TValue> value, final TValue globalValue) {
         for (final Layer layer : layers) {
-            final V candidate = value.apply(layer.settings());
+            final TValue candidate = value.apply(layer.settings());
             if (candidate != null) {
                 return new Picked<>(candidate, layer.level());
             }
@@ -285,7 +285,7 @@ final class CommunicationSettingsResolver {
         return new Picked<>(globalValue, SettingsLevel.GLOBAL);
     }
 
-    private static <T> T build(final Supplier<T> settings, final String where) {
+    private static <TSettings> TSettings build(final Supplier<TSettings> settings, final String where) {
         try {
             return settings.get();
         } catch (final TaskcommConfigurationException invalid) {
@@ -306,9 +306,9 @@ final class CommunicationSettingsResolver {
      *
      * @param value значение
      * @param level уровень
-     * @param <V> тип значения
+     * @param <TValue> тип значения
      */
-    private record Picked<V>(V value, SettingsLevel level) {
+    private record Picked<TValue>(TValue value, SettingsLevel level) {
 
         @Override
         public String toString() {

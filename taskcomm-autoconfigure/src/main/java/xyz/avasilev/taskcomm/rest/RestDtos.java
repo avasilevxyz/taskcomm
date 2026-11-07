@@ -26,10 +26,10 @@ public final class RestDtos {
      * @param items строки
      * @param next курсор следующей страницы или {@code null} — дальше нет
      * @param window окно, в котором искали
-     * @param <T> строка
+     * @param <EItem> строка
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record PageDto<T>(List<T> items, String next, WindowDto window) {}
+    public record PageDto<EItem>(List<EItem> items, String next, WindowDto window) {}
 
     /**
      * Окно чтения истории — по времени создания дела.

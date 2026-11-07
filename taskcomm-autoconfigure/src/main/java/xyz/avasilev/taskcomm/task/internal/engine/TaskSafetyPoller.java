@@ -240,7 +240,7 @@ class TaskSafetyPoller {
      * на сервере запрос получил бы общий план, и партиции ниже границы блокировались бы,
      * несмотря на условие (docs/adr/0101-active-partition-horizon.md).
      */
-    private <R> List<R> search(final Supplier<List<R>> query) {
+    private <ERow> List<ERow> search(final Supplier<List<ERow>> query) {
         return this.transactions.execute(status -> {
             TaskSql.forceCustomPlan(this.jdbc);
             return query.get();

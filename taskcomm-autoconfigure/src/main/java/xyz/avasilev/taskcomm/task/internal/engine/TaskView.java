@@ -13,9 +13,9 @@ import xyz.avasilev.taskcomm.task.api.TaskStatus;
  *
  * @param row строка задачи
  * @param payload нагрузка, разобранная в тип из дженерика процессора
- * @param <T> параметры задачи
+ * @param <TPayload> параметры задачи
  */
-public record TaskView<T>(TaskRow row, T payload) implements Task<T> {
+public record TaskView<TPayload>(TaskRow row, TPayload payload) implements Task<TPayload> {
 
     @Override
     public UUID id() {

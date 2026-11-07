@@ -41,10 +41,10 @@ abstract class RestErrors {
      * Не найдено.
      *
      * @param what что искали
-     * @param <T> тело ответа
+     * @param <TBody> тело ответа
      * @return {@code 404}
      */
-    static <T> ResponseEntity<T> notFound(final String what) {
+    static <TBody> ResponseEntity<TBody> notFound(final String what) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .header("X-Taskcomm-Not-Found", what)
                 .build();

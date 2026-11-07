@@ -9,10 +9,11 @@
 ([ADR 0052](../adr/0052-communication-transport-contracts.md)):
 
 ```java
-sealed interface CommunicationProcessor<C, R, A>
+sealed interface CommunicationProcessor<TRequest, TSyncResponse, TAsyncResponse>
         permits HttpCommunicationProcessor, KafkaCommunicationProcessor, RawCommunicationProcessor
 
-sealed interface HttpCommunicationProcessor<C, R, A> extends CommunicationProcessor<C, R, A>
+sealed interface HttpCommunicationProcessor<TRequest, TSyncResponse, TAsyncResponse>
+        extends CommunicationProcessor<TRequest, TSyncResponse, TAsyncResponse>
         permits RestCommunicationProcessor, SoapCommunicationProcessor
 ```
 
@@ -65,7 +66,7 @@ sealed interface HttpCommunicationProcessor<C, R, A> extends CommunicationProces
   неуспех. **Внутри активной транзакции потребителя синхронный приём бросает исключение**, наследника
   `TaskcommException`, до записи чего-либо: попытка и обмен пишутся своими транзакциями и не увидели бы
   незакоммиченную строку, а работа рядом молча потеряла бы атомарность с бизнес-данными.
-- **Ответ отправителю формирует процессор входящей** — его возвращаемое значение `R`. Стартер пишет его
+- **Ответ отправителю формирует процессор входящей** — его возвращаемое значение `TSyncResponse`. Стартер пишет его
   в `response_*` попытки в транзакции закрытия и отдаёт вызывающему. У асинхронного приёма `response_*`
   пуст — отвечать уже некому.
 - **Повтор после смерти вызывающего** — по общим правилам: переподхват закрывает попытку `LEASE_LOST`,

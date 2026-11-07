@@ -13,9 +13,9 @@ import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
  * <p>Интерфейс, а не запись (docs/adr/0111-task-public-api-shape.md). Значения — снимок на момент
  * чтения.
  *
- * @param <B> параметры группы — например, один поставщик
+ * @param <TPayload> параметры группы — например, один поставщик
  */
-public interface TaskBatch<B> {
+public interface TaskBatch<TPayload> {
 
     /**
      * Идентификатор группы.
@@ -50,7 +50,7 @@ public interface TaskBatch<B> {
      *
      * @return нагрузка, восстановленная в тип из дженерика процессора
      */
-    B payload();
+    TPayload payload();
 
     /**
      * Приоритет, унаследованный от задачи. Шкала по возрастанию: <b>меньше значит важнее</b>.

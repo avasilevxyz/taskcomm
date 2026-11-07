@@ -17,17 +17,17 @@ import java.util.UUID;
  * };
  * }</pre>
  *
- * @param <C> доменная форма запроса
- * @param <R> доменная форма ответа отправителю
+ * @param <TRequest> доменная форма запроса
+ * @param <TSyncResponse> доменная форма ответа отправителю
  */
-public sealed interface ReceiveAndProcessResult<C, R> {
+public sealed interface ReceiveAndProcessResult<TRequest, TSyncResponse> {
 
     /**
      * Созданная коммуникация.
      *
      * @return входящая
      */
-    Communication.Inbound<C> communication();
+    Communication.Inbound<TRequest> communication();
 
     /**
      * Процессор отработал успешно. Ответ записан в {@code response_*} попытки — отдайте его
@@ -36,11 +36,11 @@ public sealed interface ReceiveAndProcessResult<C, R> {
      * @param communication входящая в статусе {@code SUCCEEDED} или {@code SKIPPED}, если процессор
      *     объявил пропуск
      * @param response что вернул процессор; {@code null}, если он вернул {@code null}
-     * @param <C> доменная форма запроса
-     * @param <R> доменная форма ответа отправителю
+     * @param <TRequest> доменная форма запроса
+     * @param <TSyncResponse> доменная форма ответа отправителю
      */
-    record Processed<C, R>(Communication.Inbound<C> communication, R response)
-            implements ReceiveAndProcessResult<C, R> {
+    record Processed<TRequest, TSyncResponse>(Communication.Inbound<TRequest> communication, TSyncResponse response)
+            implements ReceiveAndProcessResult<TRequest, TSyncResponse> {
 
         /**
          * Проверяет коммуникацию.
@@ -61,11 +61,11 @@ public sealed interface ReceiveAndProcessResult<C, R> {
      *
      * @param communication входящая в статусе {@code FAILED}
      * @param reason причина неуспеха
-     * @param <C> доменная форма запроса
-     * @param <R> доменная форма ответа отправителю
+     * @param <TRequest> доменная форма запроса
+     * @param <TSyncResponse> доменная форма ответа отправителю
      */
-    record Failed<C, R>(Communication.Inbound<C> communication, String reason)
-            implements ReceiveAndProcessResult<C, R> {
+    record Failed<TRequest, TSyncResponse>(Communication.Inbound<TRequest> communication, String reason)
+            implements ReceiveAndProcessResult<TRequest, TSyncResponse> {
 
         /**
          * Проверяет коммуникацию и причину.
@@ -85,11 +85,11 @@ public sealed interface ReceiveAndProcessResult<C, R> {
      *
      * @param communication входящая в статусе {@code SKIPPED}
      * @param duplicateOf коммуникация, с ключом которой она совпала
-     * @param <C> доменная форма запроса
-     * @param <R> доменная форма ответа отправителю
+     * @param <TRequest> доменная форма запроса
+     * @param <TSyncResponse> доменная форма ответа отправителю
      */
-    record Duplicate<C, R>(Communication.Inbound<C> communication, UUID duplicateOf)
-            implements ReceiveAndProcessResult<C, R> {
+    record Duplicate<TRequest, TSyncResponse>(Communication.Inbound<TRequest> communication, UUID duplicateOf)
+            implements ReceiveAndProcessResult<TRequest, TSyncResponse> {
 
         /**
          * Проверяет коммуникации.
@@ -109,11 +109,11 @@ public sealed interface ReceiveAndProcessResult<C, R> {
      *
      * @param communication входящая в статусе {@code FAILED}, без доменной формы запроса
      * @param reason причина разбора
-     * @param <C> доменная форма запроса
-     * @param <R> доменная форма ответа отправителю
+     * @param <TRequest> доменная форма запроса
+     * @param <TSyncResponse> доменная форма ответа отправителю
      */
-    record Unparseable<C, R>(Communication.Inbound<C> communication, String reason)
-            implements ReceiveAndProcessResult<C, R> {
+    record Unparseable<TRequest, TSyncResponse>(Communication.Inbound<TRequest> communication, String reason)
+            implements ReceiveAndProcessResult<TRequest, TSyncResponse> {
 
         /**
          * Проверяет коммуникацию и причину.

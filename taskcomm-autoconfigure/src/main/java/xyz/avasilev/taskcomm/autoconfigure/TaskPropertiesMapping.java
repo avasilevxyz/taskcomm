@@ -170,7 +170,7 @@ final class TaskPropertiesMapping {
                 retry.getJitter());
     }
 
-    private static <T> T withPath(final String path, final Supplier<T> value) {
+    private static <TValue> TValue withPath(final String path, final Supplier<TValue> value) {
         try {
             return value.get();
         } catch (final TaskcommConfigurationException invalid) {

@@ -6,9 +6,10 @@ package xyz.avasilev.taskcomm.communication.api.processor;
  * есть код, и отказные статусы по умолчанию — {@code 5xx} и {@code 429}
  * (docs/adr/0065-communication-circuit-breaker.md).
  *
- * @param <C> доменная форма запроса
- * @param <R> доменная форма синхронного ответа
- * @param <A> доменная форма колбэка; {@link Void} у не ждущего ответа
+ * @param <TRequest> доменная форма запроса
+ * @param <TSyncResponse> доменная форма синхронного ответа
+ * @param <TAsyncResponse> доменная форма колбэка; {@link Void} у не ждущего ответа
  */
-public sealed interface HttpCommunicationProcessor<C, R, A> extends CommunicationProcessor<C, R, A>
+public sealed interface HttpCommunicationProcessor<TRequest, TSyncResponse, TAsyncResponse>
+        extends CommunicationProcessor<TRequest, TSyncResponse, TAsyncResponse>
         permits RestCommunicationProcessor, SoapCommunicationProcessor {}

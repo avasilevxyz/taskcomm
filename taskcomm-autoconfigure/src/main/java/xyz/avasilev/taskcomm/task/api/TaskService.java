@@ -33,10 +33,10 @@ public interface TaskService {
      *
      * @param taskType тип задачи
      * @param payload параметры задачи
-     * @param <T> параметры задачи
+     * @param <TPayload> параметры задачи
      * @return созданная задача в статусе {@code PENDING}
      */
-    <T> Task<T> submit(String taskType, T payload);
+    <TPayload> Task<TPayload> submit(String taskType, TPayload payload);
 
     /**
      * Ставит задачу в указанное дело — из любого потока.
@@ -44,10 +44,10 @@ public interface TaskService {
      * @param taskType тип задачи
      * @param payload параметры задачи
      * @param execution дело; побеждает неявную привязку потока
-     * @param <T> параметры задачи
+     * @param <TPayload> параметры задачи
      * @return созданная задача в статусе {@code PENDING}
      */
-    <T> Task<T> submit(String taskType, T payload, ExecutionRef execution);
+    <TPayload> Task<TPayload> submit(String taskType, TPayload payload, ExecutionRef execution);
 
     /**
      * Ставит задачу с необязательными параметрами.
@@ -55,10 +55,10 @@ public interface TaskService {
      * @param taskType тип задачи
      * @param payload параметры задачи
      * @param options дело, «не раньше», приоритет
-     * @param <T> параметры задачи
+     * @param <TPayload> параметры задачи
      * @return созданная задача в статусе {@code PENDING}
      */
-    <T> Task<T> submit(String taskType, T payload, TaskSubmitOptions options);
+    <TPayload> Task<TPayload> submit(String taskType, TPayload payload, TaskSubmitOptions options);
 
     /**
      * Ставит задачу процессору, указанному классом: компилятор сверяет тип нагрузки с дженериком
@@ -66,11 +66,11 @@ public interface TaskService {
      *
      * @param processor класс процессора — бина в контексте
      * @param payload параметры задачи
-     * @param <T> параметры задачи
+     * @param <TPayload> параметры задачи
      * @return созданная задача в статусе {@code PENDING}
      * @throws IllegalArgumentException если такого процессора нет в реестре
      */
-    <T> Task<T> submit(Class<? extends TaskProcessor<T>> processor, T payload);
+    <TPayload> Task<TPayload> submit(Class<? extends TaskProcessor<TPayload>> processor, TPayload payload);
 
     /**
      * Ставит задачу процессору, указанному классом, в указанное дело.
@@ -78,11 +78,12 @@ public interface TaskService {
      * @param processor класс процессора — бина в контексте
      * @param payload параметры задачи
      * @param execution дело; побеждает неявную привязку потока
-     * @param <T> параметры задачи
+     * @param <TPayload> параметры задачи
      * @return созданная задача в статусе {@code PENDING}
      * @throws IllegalArgumentException если такого процессора нет в реестре
      */
-    <T> Task<T> submit(Class<? extends TaskProcessor<T>> processor, T payload, ExecutionRef execution);
+    <TPayload> Task<TPayload> submit(
+            Class<? extends TaskProcessor<TPayload>> processor, TPayload payload, ExecutionRef execution);
 
     /**
      * Ставит задачу процессору, указанному классом, с необязательными параметрами.
@@ -90,11 +91,12 @@ public interface TaskService {
      * @param processor класс процессора — бина в контексте
      * @param payload параметры задачи
      * @param options дело, «не раньше», приоритет
-     * @param <T> параметры задачи
+     * @param <TPayload> параметры задачи
      * @return созданная задача в статусе {@code PENDING}
      * @throws IllegalArgumentException если такого процессора нет в реестре
      */
-    <T> Task<T> submit(Class<? extends TaskProcessor<T>> processor, T payload, TaskSubmitOptions options);
+    <TPayload> Task<TPayload> submit(
+            Class<? extends TaskProcessor<TPayload>> processor, TPayload payload, TaskSubmitOptions options);
 
     /**
      * Ставит задачу по нагрузке сырым JSON — для REST и для кода, у которого доменной формы нет
@@ -125,11 +127,12 @@ public interface TaskService {
      *
      * @param execution дело
      * @param processor класс процессора — бина в контексте
-     * @param <T> параметры задачи
+     * @param <TPayload> параметры задачи
      * @return задачи дела этого типа
      * @throws IllegalArgumentException если такого процессора нет в реестре
      */
-    <T> List<Task<T>> findInExecution(ExecutionRef execution, Class<? extends TaskProcessor<T>> processor);
+    <TPayload> List<Task<TPayload>> findInExecution(
+            ExecutionRef execution, Class<? extends TaskProcessor<TPayload>> processor);
 
     /**
      * Текущий результат задачи — результат её последней попытки, если та успешна
@@ -146,11 +149,11 @@ public interface TaskService {
      *
      * @param task задача
      * @param resultType класс результата задачи — тот, что стоит в дженерике процессора
-     * @param <RT> результат задачи
+     * @param <TResult> результат задачи
      * @return результат или пусто
      * @throws IllegalArgumentException если класс не совпадает с результатом процессора
      */
-    <RT> Optional<RT> result(Task<?> task, Class<RT> resultType);
+    <TResult> Optional<TResult> result(Task<?> task, Class<TResult> resultType);
 
     /**
      * Отменяет задачу целиком (docs/adr/0070-cancellation-on-any-entity.md,

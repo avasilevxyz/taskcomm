@@ -18,18 +18,18 @@ import xyz.avasilev.taskcomm.task.api.TaskBatchStatus;
  * @param priority приоритет
  * @param status статус на момент чтения
  * @param createdAt время создания
- * @param <B> параметры группы
+ * @param <TPayload> параметры группы
  */
-record TaskBatchView<B>(
+record TaskBatchView<TPayload>(
         UUID id,
         UUID taskId,
         ExecutionRef executionRef,
         String taskType,
-        B payload,
+        TPayload payload,
         int priority,
         TaskBatchStatus status,
         Instant createdAt)
-        implements TaskBatch<B> {
+        implements TaskBatch<TPayload> {
 
     @Override
     public Optional<String> statusDescription() {

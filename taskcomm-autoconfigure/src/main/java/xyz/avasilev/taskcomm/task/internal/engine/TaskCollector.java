@@ -165,20 +165,20 @@ class TaskCollector {
         return json == null ? null : this.codec.read(json, type);
     }
 
-    private <E> Stream<E> paged(
-            final String sql, final Instant executionCreatedAt, final UUID attemptId, final Mapper<E> mapper) {
+    private <EItem> Stream<EItem> paged(
+            final String sql, final Instant executionCreatedAt, final UUID attemptId, final Mapper<EItem> mapper) {
         return StreamSupport.stream(new Pages<>(sql, executionCreatedAt, attemptId, mapper), false);
     }
 
     /**
      * Строка страницы в обёртку сборки.
      *
-     * @param <E> обёртка сборки
+     * @param <EItem> обёртка сборки
      */
     @FunctionalInterface
-    private interface Mapper<E> {
+    private interface Mapper<EItem> {
 
-        E map(ResultSet rs) throws SQLException;
+        EItem map(ResultSet rs) throws SQLException;
     }
 
     /**
@@ -186,16 +186,16 @@ class TaskCollector {
      *
      * @param id идентификатор ребёнка — ключ следующей страницы
      * @param value обёртка
-     * @param <E> обёртка сборки
+     * @param <EItem> обёртка сборки
      */
-    private record Keyed<E>(UUID id, E value) {}
+    private record Keyed<EItem>(UUID id, EItem value) {}
 
     /**
      * Страницы потока: следующая читается, когда кончилась текущая.
      *
-     * @param <E> обёртка сборки
+     * @param <EItem> обёртка сборки
      */
-    private final class Pages<E> extends Spliterators.AbstractSpliterator<E> {
+    private final class Pages<EItem> extends Spliterators.AbstractSpliterator<EItem> {
 
         private final String sql;
 
@@ -203,15 +203,15 @@ class TaskCollector {
 
         private final UUID attemptId;
 
-        private final Mapper<E> mapper;
+        private final Mapper<EItem> mapper;
 
-        private final Deque<Keyed<E>> page = new ArrayDeque<>();
+        private final Deque<Keyed<EItem>> page = new ArrayDeque<>();
 
         private UUID after = START;
 
         private boolean exhausted;
 
-        Pages(final String sql, final Instant executionCreatedAt, final UUID attemptId, final Mapper<E> mapper) {
+        Pages(final String sql, final Instant executionCreatedAt, final UUID attemptId, final Mapper<EItem> mapper) {
             super(Long.MAX_VALUE, Spliterator.ORDERED | Spliterator.NONNULL);
             this.sql = sql;
             this.executionCreatedAt = executionCreatedAt;
@@ -220,11 +220,11 @@ class TaskCollector {
         }
 
         @Override
-        public boolean tryAdvance(final Consumer<? super E> action) {
+        public boolean tryAdvance(final Consumer<? super EItem> action) {
             if (this.page.isEmpty() && !this.exhausted) {
                 this.readNext();
             }
-            final Keyed<E> head = this.page.poll();
+            final Keyed<EItem> head = this.page.poll();
             if (head != null) {
                 action.accept(head.value());
             }
@@ -232,7 +232,7 @@ class TaskCollector {
         }
 
         private void readNext() {
-            final List<Keyed<E>> next = TaskCollector.this
+            final List<Keyed<EItem>> next = TaskCollector.this
                     .jdbc
                     .sql(this.sql)
                     .param("executionCreatedAt", TaskSql.parameter(this.executionCreatedAt))

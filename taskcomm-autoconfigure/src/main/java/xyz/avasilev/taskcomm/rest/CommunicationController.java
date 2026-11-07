@@ -231,10 +231,10 @@ public class CommunicationController extends RestErrors {
         return options;
     }
 
-    private <T> ResponseEntity<T> withCommunication(
+    private <TBody> ResponseEntity<TBody> withCommunication(
             final UUID id,
             final Map<String, String> params,
-            final Function<CommunicationSnapshot, ResponseEntity<T>> action) {
+            final Function<CommunicationSnapshot, ResponseEntity<TBody>> action) {
         final RestParams p = new RestParams(params);
         final HistoryWindow window = this.windows.entity(
                 p.instant("executionCreatedAt"), p.instant("from"), p.instant("to"), p.everywhere());

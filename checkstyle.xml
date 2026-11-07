@@ -175,19 +175,19 @@
         <module name="LocalVariableName"/>
         <module name="LocalFinalVariableName"/>
         <module name="PatternVariableName"/>
-        <!-- Одна буква уровня или R и буква уровня — результат этого уровня (docs/adr/0059): T, RT, RU, RB. -->
+        <!-- Префикс вида и имя по существу (docs/adr/0145): T — тип, E — элемент, K и V — ключ и значение. -->
         <module name="ClassTypeParameterName">
-            <property name="format" value="^R?[A-Z]$"/>
+            <property name="format" value="^[TEKV][A-Z][A-Za-z]*$"/>
         </module>
         <module name="RecordComponentName"/>
         <module name="RecordTypeParameterName">
-            <property name="format" value="^R?[A-Z]$"/>
+            <property name="format" value="^[TEKV][A-Z][A-Za-z]*$"/>
         </module>
         <module name="MethodTypeParameterName">
-            <property name="format" value="^R?[A-Z]$"/>
+            <property name="format" value="^[TEKV][A-Z][A-Za-z]*$"/>
         </module>
         <module name="InterfaceTypeParameterName">
-            <property name="format" value="^R?[A-Z]$"/>
+            <property name="format" value="^[TEKV][A-Z][A-Za-z]*$"/>
         </module>
         <module name="IllegalIdentifierName"/>
         <module name="AbbreviationAsWordInName">

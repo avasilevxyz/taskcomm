@@ -8,14 +8,23 @@
 
 Форму работы выбирает тип задачи — через контракт, который реализует процессор.
 
-| Если работа…                                                                  | Контракт                                  | Пример                                                 |
-|-------------------------------------------------------------------------------|-------------------------------------------|--------------------------------------------------------|
-| неделима: одна операция от начала до конца                                    | `FlatTaskProcessor<T, RT>`                | сформировать отчёт, выгрузить файл                     |
-| идёт над множеством объектов, каждый обрабатывается и повторяется сам по себе | `UnitTaskProcessor<T, U, RU, RT>`         | синхронизировать заказы за март                        |
-| то же, но объектам нужны общие данные, которые дорого получать поштучно       | `BatchTaskProcessor<T, B, U, RU, RB, RT>` | обновить цены: прайс-лист на поставщика, цена на товар |
+| Если работа…                                                                  | Контракт             | Пример                                                 |
+|-------------------------------------------------------------------------------|----------------------|--------------------------------------------------------|
+| неделима: одна операция от начала до конца                                    | `FlatTaskProcessor`  | сформировать отчёт, выгрузить файл                     |
+| идёт над множеством объектов, каждый обрабатывается и повторяется сам по себе | `UnitTaskProcessor`  | синхронизировать заказы за март                        |
+| то же, но объектам нужны общие данные, которые дорого получать поштучно       | `BatchTaskProcessor` | обновить цены: прайс-лист на поставщика, цена на товар |
 
-Буквы параметров типа читаются по уровню: `T` — задача, `B` — группа, `U` — подзадача, а `R`
-с той же буквой — результат этого уровня. `Void` на месте результата значит «не хранить».
+Параметры типа называют уровень и роль: нагрузку задачи, группы или подзадачи и результат
+каждого уровня.
+
+```java
+FlatTaskProcessor<TTaskPayload, TTaskResult>
+UnitTaskProcessor<TTaskPayload, TUnitPayload, TUnitResult, TTaskResult>
+BatchTaskProcessor<TTaskPayload, TBatchPayload, TUnitPayload,
+                   TUnitResult, TBatchResult, TTaskResult>
+```
+
+`Void` на месте результата значит «не хранить».
 
 Все три контракта требуют `taskType()` — строку, по которой стартер находит процессор. Два
 процессора с одним типом — приложение не запустится.
@@ -51,8 +60,11 @@ public class ReportProcessor implements FlatTaskProcessor<ReportParams, ReportSu
 @Component
 @RequiredArgsConstructor
 public class OrderSyncProcessor
-        implements UnitTaskProcessor<SyncPeriod, OrderRef, OrderOutcome, SyncSummary> {
-    //                             T           U         RU            RT
+        implements UnitTaskProcessor<
+                SyncPeriod,       // TTaskPayload — период синхронизации
+                OrderRef,         // TUnitPayload — один заказ
+                OrderOutcome,     // TUnitResult  — что вышло с заказом
+                SyncSummary> {    // TTaskResult  — свод по задаче
 
     private final OrderRepository orders;
 
@@ -127,12 +139,12 @@ public class OrderSyncProcessor
 @Component
 @RequiredArgsConstructor
 public class PriceUpdateProcessor implements BatchTaskProcessor<
-        UpdateParams,     // T  — параметры задачи
-        SupplierBatch,    // B  — параметры группы
-        ItemPrice,        // U  — один товар
-        ItemOutcome,      // RU — что вышло с товаром
-        SupplierReport,   // RB — свод по поставщику
-        UpdateReport> {   // RT — свод по задаче
+        UpdateParams,     // TTaskPayload  — параметры задачи
+        SupplierBatch,    // TBatchPayload — параметры группы
+        ItemPrice,        // TUnitPayload  — один товар
+        ItemOutcome,      // TUnitResult   — что вышло с товаром
+        SupplierReport,   // TBatchResult  — свод по поставщику
+        UpdateReport> {   // TTaskResult   — свод по задаче
 
     private final SupplierApi supplierApi;
 
@@ -175,7 +187,7 @@ public class PriceUpdateProcessor implements BatchTaskProcessor<
 ```
 
 **Данные, полученные при раскрытии группы, кладутся в нагрузку каждой подзадачи.** Подзадача
-самодостаточна: её повтор через месяц не требует ни группы, ни задачи. Поэтому `B` — параметры
+самодостаточна: её повтор через месяц не требует ни группы, ни задачи. Поэтому `TBatchPayload` — параметры
 группы («какой поставщик»), а не собранные данные («его прайс-лист»).
 
 Если общие данные объёмны и дублировать их в каждой подзадаче дорого, храните их у себя, ключуя

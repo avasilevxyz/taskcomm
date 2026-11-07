@@ -59,12 +59,12 @@ public final class CommunicationCreations {
      * @param processor процессор системы-получателя
      * @param payload доменная форма запроса
      * @param options опции
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      * @return создана или дубликат
      */
     @SuppressWarnings("unchecked")
-    public <C> SendResult<C> send(
-            final RegisteredProcessor processor, final C payload, final CommunicationSendOptions options) {
+    public <TRequest> SendResult<TRequest> send(
+            final RegisteredProcessor processor, final TRequest payload, final CommunicationSendOptions options) {
         final CreatedCommunication created = this.creator.create(new NewCommunication(
                 Direction.OUTBOUND,
                 processor.system(),
@@ -77,7 +77,8 @@ public final class CommunicationCreations {
                 NewCommunication.Placement.of(options),
                 NewCommunication.Start.OUTBOUND,
                 new NewCommunication.Keys(options.dedupKeys(), options.correlationKeys())));
-        final Communication.Outbound<C> outbound = (Communication.Outbound<C>) this.reread(created, processor);
+        final Communication.Outbound<TRequest> outbound =
+                (Communication.Outbound<TRequest>) this.reread(created, processor);
         return created.duplicate() == null
                 ? new SendResult.Created<>(outbound)
                 : new SendResult.Duplicate<>(outbound, created.duplicate().duplicateOf());
@@ -88,18 +89,20 @@ public final class CommunicationCreations {
      *
      * @param processor процессор системы-отправителя
      * @param request что прислали
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      * @return принята, дубликат или неразбираемое тело
      */
     @SuppressWarnings("unchecked")
-    public <C> ReceiveResult<C> receive(final RegisteredProcessor processor, final InboundRequest request) {
+    public <TRequest> ReceiveResult<TRequest> receive(
+            final RegisteredProcessor processor, final InboundRequest request) {
         final DecodedBody decoded = this.decoding.decode(processor, request);
         final CreatedCommunication created = this.creator.create(this.inbound(
                 processor,
                 decoded,
                 request,
                 new NewCommunication.Start(BodyDecoding.message(request), decoded.failure(), null, null)));
-        final Communication.Inbound<C> inbound = (Communication.Inbound<C>) this.reread(created, processor);
+        final Communication.Inbound<TRequest> inbound =
+                (Communication.Inbound<TRequest>) this.reread(created, processor);
         if (created.duplicate() != null) {
             return new ReceiveResult.Duplicate<>(inbound, created.duplicate().duplicateOf());
         }
@@ -113,11 +116,11 @@ public final class CommunicationCreations {
      *
      * @param processor процессор системы-отправителя
      * @param request что прислали
-     * @param <C> доменная форма запроса
-     * @param <R> доменная форма ответа отправителю
+     * @param <TRequest> доменная форма запроса
+     * @param <TSyncResponse> доменная форма ответа отправителю
      * @return итог приёма
      */
-    public <C, R> ReceiveAndProcessResult<C, R> receiveAndProcess(
+    public <TRequest, TSyncResponse> ReceiveAndProcessResult<TRequest, TSyncResponse> receiveAndProcess(
             final RegisteredProcessor processor, final InboundRequest request) {
         final DecodedBody decoded = this.decoding.decode(processor, request);
         return this.sync.receive(

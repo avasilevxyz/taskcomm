@@ -23,9 +23,9 @@ import xyz.avasilev.taskcomm.execution.api.Origin;
  * };
  * }</pre>
  *
- * @param <C> доменная форма запроса
+ * @param <TRequest> доменная форма запроса
  */
-public sealed interface Communication<C> permits Communication.Inbound, Communication.Outbound {
+public sealed interface Communication<TRequest> permits Communication.Inbound, Communication.Outbound {
 
     /**
      * Идентификатор коммуникации.
@@ -48,7 +48,7 @@ public sealed interface Communication<C> permits Communication.Inbound, Communic
      * @return нагрузка, восстановленная в тип из дженерика процессора; {@code null} у входящей,
      *     тело которой не разобралось
      */
-    C requestPayload();
+    TRequest requestPayload();
 
     /**
      * Приоритет. Шкала по возрастанию: <b>меньше значит важнее</b>.
@@ -89,9 +89,9 @@ public sealed interface Communication<C> permits Communication.Inbound, Communic
     /**
      * Входящая: внешняя система прислала сообщение нам.
      *
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      */
-    non-sealed interface Inbound<C> extends Communication<C> {
+    non-sealed interface Inbound<TRequest> extends Communication<TRequest> {
 
         /**
          * Внешняя система-отправитель — по ней ищется процессор.
@@ -104,9 +104,9 @@ public sealed interface Communication<C> permits Communication.Inbound, Communic
     /**
      * Исходящая: мы отправляем сообщение внешней системе.
      *
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      */
-    non-sealed interface Outbound<C> extends Communication<C> {
+    non-sealed interface Outbound<TRequest> extends Communication<TRequest> {
 
         /**
          * Внешняя система-получатель — по ней ищется процессор.

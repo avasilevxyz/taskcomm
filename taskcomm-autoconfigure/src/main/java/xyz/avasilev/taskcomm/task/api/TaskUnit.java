@@ -16,9 +16,9 @@ import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
  * <p>Интерфейс, а не запись (docs/adr/0111-task-public-api-shape.md). Значения — снимок на момент
  * чтения.
  *
- * @param <U> один бизнес-объект — например, заказ
+ * @param <TPayload> один бизнес-объект — например, заказ
  */
-public interface TaskUnit<U> {
+public interface TaskUnit<TPayload> {
 
     /**
      * Идентификатор подзадачи.
@@ -60,7 +60,7 @@ public interface TaskUnit<U> {
      *
      * @return нагрузка, восстановленная в тип из дженерика процессора
      */
-    U payload();
+    TPayload payload();
 
     /**
      * Приоритет, унаследованный от родителя. Шкала по возрастанию: <b>меньше значит важнее</b>.

@@ -92,30 +92,33 @@ public class DefaultCommunicationService implements CommunicationService {
     }
 
     @Override
-    public <C> SendResult<C> send(final String destination, final C payload) {
+    public <TRequest> SendResult<TRequest> send(final String destination, final TRequest payload) {
         return this.send(destination, payload, CommunicationSendOptions.defaults());
     }
 
     @Override
-    public <C> SendResult<C> send(final String destination, final C payload, final ExecutionRef execution) {
+    public <TRequest> SendResult<TRequest> send(
+            final String destination, final TRequest payload, final ExecutionRef execution) {
         return this.send(
                 destination, payload, CommunicationSendOptions.defaults().inExecution(execution));
     }
 
     @Override
-    public <C> SendResult<C> send(final String destination, final C payload, final CommunicationSendOptions options) {
+    public <TRequest> SendResult<TRequest> send(
+            final String destination, final TRequest payload, final CommunicationSendOptions options) {
         return this.creations.send(this.registry.get().forCreate(destination), payload, options);
     }
 
     @Override
-    public <C> SendResult<C> send(final Class<? extends CommunicationProcessor<C, ?, ?>> processor, final C payload) {
+    public <TRequest> SendResult<TRequest> send(
+            final Class<? extends CommunicationProcessor<TRequest, ?, ?>> processor, final TRequest payload) {
         return this.send(processor, payload, CommunicationSendOptions.defaults());
     }
 
     @Override
-    public <C> SendResult<C> send(
-            final Class<? extends CommunicationProcessor<C, ?, ?>> processor,
-            final C payload,
+    public <TRequest> SendResult<TRequest> send(
+            final Class<? extends CommunicationProcessor<TRequest, ?, ?>> processor,
+            final TRequest payload,
             final CommunicationSendOptions options) {
         return this.creations.send(this.registry.get().forCreate(processor), payload, options);
     }
@@ -140,8 +143,8 @@ public class DefaultCommunicationService implements CommunicationService {
     }
 
     @Override
-    public <C> ReceiveResult<C> receive(
-            final Class<? extends CommunicationProcessor<C, ?, ?>> processor, final InboundRequest request) {
+    public <TRequest> ReceiveResult<TRequest> receive(
+            final Class<? extends CommunicationProcessor<TRequest, ?, ?>> processor, final InboundRequest request) {
         return this.creations.receive(this.registry.get().forCreate(processor), request);
     }
 
@@ -152,8 +155,9 @@ public class DefaultCommunicationService implements CommunicationService {
     }
 
     @Override
-    public <C, R> ReceiveAndProcessResult<C, R> receiveAndProcess(
-            final Class<? extends CommunicationProcessor<C, R, ?>> processor, final InboundRequest request) {
+    public <TRequest, TSyncResponse> ReceiveAndProcessResult<TRequest, TSyncResponse> receiveAndProcess(
+            final Class<? extends CommunicationProcessor<TRequest, TSyncResponse, ?>> processor,
+            final InboundRequest request) {
         SyncReception.requireOutsideTransaction(TransactionSynchronizationManager.isActualTransactionActive());
         return this.creations.receiveAndProcess(this.registry.get().forCreate(processor), request);
     }
@@ -170,10 +174,10 @@ public class DefaultCommunicationService implements CommunicationService {
 
     @Override
     @SuppressWarnings("unchecked")
-    public <C> List<Communication<C>> findInExecution(
-            final ExecutionRef execution, final Class<? extends CommunicationProcessor<C, ?, ?>> processor) {
+    public <TRequest> List<Communication<TRequest>> findInExecution(
+            final ExecutionRef execution, final Class<? extends CommunicationProcessor<TRequest, ?, ?>> processor) {
         return this.reader.inExecution(execution, this.registry.get().forCreate(processor)).stream()
-                .map(communication -> (Communication<C>) communication)
+                .map(communication -> (Communication<TRequest>) communication)
                 .toList();
     }
 

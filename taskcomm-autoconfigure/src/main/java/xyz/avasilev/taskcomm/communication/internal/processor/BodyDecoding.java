@@ -57,7 +57,7 @@ public final class BodyDecoding {
     }
 
     /**
-     * Разбирает тело колбэка в доменную форму {@code A}.
+     * Разбирает тело колбэка в доменную форму {@code TAsyncResponse}.
      *
      * @param processor процессор системы
      * @param body сырое тело

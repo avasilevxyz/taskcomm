@@ -8,24 +8,24 @@ import java.util.UUID;
  * а сохраняется сразу {@code SKIPPED} — видно, сколько раз пытались отправить
  * (docs/adr/0076-communication-deduplication.md).
  *
- * @param <C> доменная форма запроса
+ * @param <TRequest> доменная форма запроса
  */
-public sealed interface SendResult<C> {
+public sealed interface SendResult<TRequest> {
 
     /**
      * Созданная коммуникация.
      *
      * @return исходящая
      */
-    Communication.Outbound<C> communication();
+    Communication.Outbound<TRequest> communication();
 
     /**
      * Создана и ждёт отправки.
      *
      * @param communication исходящая в статусе {@code PENDING}
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      */
-    record Created<C>(Communication.Outbound<C> communication) implements SendResult<C> {
+    record Created<TRequest>(Communication.Outbound<TRequest> communication) implements SendResult<TRequest> {
 
         /**
          * Проверяет коммуникацию.
@@ -43,9 +43,10 @@ public sealed interface SendResult<C> {
      *
      * @param communication исходящая в статусе {@code SKIPPED}
      * @param duplicateOf коммуникация, с ключом которой она совпала
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      */
-    record Duplicate<C>(Communication.Outbound<C> communication, UUID duplicateOf) implements SendResult<C> {
+    record Duplicate<TRequest>(Communication.Outbound<TRequest> communication, UUID duplicateOf)
+            implements SendResult<TRequest> {
 
         /**
          * Проверяет коммуникации.

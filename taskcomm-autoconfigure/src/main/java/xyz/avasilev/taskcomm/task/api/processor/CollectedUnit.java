@@ -13,7 +13,8 @@ import xyz.avasilev.taskcomm.task.api.TaskUnitStatus;
  * @param result результат её обработки или {@code null} — у неуспешных и у вернувших {@code null}
  * @param status терминальный статус
  * @param statusDescription причина статуса или {@code null}
- * @param <U> бизнес-объект подзадачи
- * @param <RU> результат обработки подзадачи
+ * @param <TPayload> бизнес-объект подзадачи
+ * @param <TResult> результат обработки подзадачи
  */
-public record CollectedUnit<U, RU>(UUID id, U payload, RU result, TaskUnitStatus status, String statusDescription) {}
+public record CollectedUnit<TPayload, TResult>(
+        UUID id, TPayload payload, TResult result, TaskUnitStatus status, String statusDescription) {}

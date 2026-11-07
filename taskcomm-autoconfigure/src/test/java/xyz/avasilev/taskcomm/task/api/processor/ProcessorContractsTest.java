@@ -52,7 +52,7 @@ class ProcessorContractsTest {
 
     /**
      * Не вызывается: проверяет компилятором, что постановка по классу выводит тип нагрузки
-     * из дженерика процессора и возвращает {@code Task<T>}, а чтения — типизированные значения.
+     * из дженерика процессора и возвращает {@code Task<TPayload>}, а чтения — типизированные значения.
      */
     @SuppressWarnings("unused")
     private static List<Object> typedSubmissionCompiles(final TaskService service, final ProcessingContext context) {

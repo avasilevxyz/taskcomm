@@ -31,10 +31,10 @@ public interface CommunicationService {
      *
      * @param destination внешняя система-получатель
      * @param payload доменная форма запроса
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      * @return созданная коммуникация или дубликат
      */
-    <C> SendResult<C> send(String destination, C payload);
+    <TRequest> SendResult<TRequest> send(String destination, TRequest payload);
 
     /**
      * Создаёт исходящую в указанном деле — из любого потока.
@@ -42,10 +42,10 @@ public interface CommunicationService {
      * @param destination внешняя система-получатель
      * @param payload доменная форма запроса
      * @param execution дело; побеждает неявную привязку потока
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      * @return созданная коммуникация или дубликат
      */
-    <C> SendResult<C> send(String destination, C payload, ExecutionRef execution);
+    <TRequest> SendResult<TRequest> send(String destination, TRequest payload, ExecutionRef execution);
 
     /**
      * Создаёт исходящую с необязательными параметрами.
@@ -53,10 +53,10 @@ public interface CommunicationService {
      * @param destination внешняя система-получатель
      * @param payload доменная форма запроса
      * @param options дело, «не раньше», приоритет, ключи дедупликации и корреляции
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      * @return созданная коммуникация или дубликат
      */
-    <C> SendResult<C> send(String destination, C payload, CommunicationSendOptions options);
+    <TRequest> SendResult<TRequest> send(String destination, TRequest payload, CommunicationSendOptions options);
 
     /**
      * Создаёт исходящую процессору, указанному классом: компилятор сверяет тип запроса с дженериком
@@ -64,11 +64,12 @@ public interface CommunicationService {
      *
      * @param processor класс процессора — бина в контексте
      * @param payload доменная форма запроса
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      * @return созданная коммуникация или дубликат
      * @throws IllegalArgumentException если такого процессора нет в реестре
      */
-    <C> SendResult<C> send(Class<? extends CommunicationProcessor<C, ?, ?>> processor, C payload);
+    <TRequest> SendResult<TRequest> send(
+            Class<? extends CommunicationProcessor<TRequest, ?, ?>> processor, TRequest payload);
 
     /**
      * Создаёт исходящую процессору, указанному классом, с необязательными параметрами.
@@ -76,12 +77,14 @@ public interface CommunicationService {
      * @param processor класс процессора — бина в контексте
      * @param payload доменная форма запроса
      * @param options дело, «не раньше», приоритет, ключи дедупликации и корреляции
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      * @return созданная коммуникация или дубликат
      * @throws IllegalArgumentException если такого процессора нет в реестре
      */
-    <C> SendResult<C> send(
-            Class<? extends CommunicationProcessor<C, ?, ?>> processor, C payload, CommunicationSendOptions options);
+    <TRequest> SendResult<TRequest> send(
+            Class<? extends CommunicationProcessor<TRequest, ?, ?>> processor,
+            TRequest payload,
+            CommunicationSendOptions options);
 
     /**
      * Отправляет исходящую по нагрузке сырым JSON — для REST и для кода, у которого доменной формы нет
@@ -113,11 +116,12 @@ public interface CommunicationService {
      *
      * @param processor класс процессора — бина в контексте
      * @param request что прислали
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      * @return принята, дубликат или неразбираемое тело
      * @throws IllegalArgumentException если такого процессора нет в реестре
      */
-    <C> ReceiveResult<C> receive(Class<? extends CommunicationProcessor<C, ?, ?>> processor, InboundRequest request);
+    <TRequest> ReceiveResult<TRequest> receive(
+            Class<? extends CommunicationProcessor<TRequest, ?, ?>> processor, InboundRequest request);
 
     /**
      * Синхронный приём входящей: обработка здесь же, в потоке вызывающего, <b>одной попыткой</b>
@@ -150,13 +154,13 @@ public interface CommunicationService {
      *
      * @param processor класс процессора — бина в контексте
      * @param request что прислали
-     * @param <C> доменная форма запроса
-     * @param <R> доменная форма ответа отправителю
+     * @param <TRequest> доменная форма запроса
+     * @param <TSyncResponse> доменная форма ответа отправителю
      * @return обработана, неуспех, дубликат или неразбираемое тело
      * @throws IllegalArgumentException если такого процессора нет в реестре
      */
-    <C, R> ReceiveAndProcessResult<C, R> receiveAndProcess(
-            Class<? extends CommunicationProcessor<C, R, ?>> processor, InboundRequest request);
+    <TRequest, TSyncResponse> ReceiveAndProcessResult<TRequest, TSyncResponse> receiveAndProcess(
+            Class<? extends CommunicationProcessor<TRequest, TSyncResponse, ?>> processor, InboundRequest request);
 
     /**
      * Приём колбэка — асинхронного ответа на исходящую (docs/adr/0086-async-response-in-outbound.md).
@@ -185,12 +189,12 @@ public interface CommunicationService {
      *
      * @param execution дело
      * @param processor класс процессора — бина в контексте
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      * @return коммуникации дела
      * @throws IllegalArgumentException если такого процессора нет в реестре
      */
-    <C> List<Communication<C>> findInExecution(
-            ExecutionRef execution, Class<? extends CommunicationProcessor<C, ?, ?>> processor);
+    <TRequest> List<Communication<TRequest>> findInExecution(
+            ExecutionRef execution, Class<? extends CommunicationProcessor<TRequest, ?, ?>> processor);
 
     /**
      * Отменяет коммуникацию (docs/adr/0139-restart-api.md): ждущая захвата или ответа становится

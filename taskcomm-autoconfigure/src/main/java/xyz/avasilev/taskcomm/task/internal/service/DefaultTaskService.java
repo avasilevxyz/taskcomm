@@ -205,34 +205,41 @@ public class DefaultTaskService implements TaskService {
     }
 
     @Override
-    public <T> Task<T> submit(final String taskType, final T payload) {
+    public <TPayload> Task<TPayload> submit(final String taskType, final TPayload payload) {
         return this.submit(taskType, payload, TaskSubmitOptions.defaults());
     }
 
     @Override
-    public <T> Task<T> submit(final String taskType, final T payload, final ExecutionRef execution) {
+    public <TPayload> Task<TPayload> submit(
+            final String taskType, final TPayload payload, final ExecutionRef execution) {
         return this.submit(taskType, payload, TaskSubmitOptions.defaults().inExecution(execution));
     }
 
     @Override
-    public <T> Task<T> submit(final String taskType, final T payload, final TaskSubmitOptions options) {
+    public <TPayload> Task<TPayload> submit(
+            final String taskType, final TPayload payload, final TaskSubmitOptions options) {
         return this.submit(this.registry.get().forSubmit(taskType), payload, options);
     }
 
     @Override
-    public <T> Task<T> submit(final Class<? extends TaskProcessor<T>> processor, final T payload) {
+    public <TPayload> Task<TPayload> submit(
+            final Class<? extends TaskProcessor<TPayload>> processor, final TPayload payload) {
         return this.submit(processor, payload, TaskSubmitOptions.defaults());
     }
 
     @Override
-    public <T> Task<T> submit(
-            final Class<? extends TaskProcessor<T>> processor, final T payload, final ExecutionRef execution) {
+    public <TPayload> Task<TPayload> submit(
+            final Class<? extends TaskProcessor<TPayload>> processor,
+            final TPayload payload,
+            final ExecutionRef execution) {
         return this.submit(processor, payload, TaskSubmitOptions.defaults().inExecution(execution));
     }
 
     @Override
-    public <T> Task<T> submit(
-            final Class<? extends TaskProcessor<T>> processor, final T payload, final TaskSubmitOptions options) {
+    public <TPayload> Task<TPayload> submit(
+            final Class<? extends TaskProcessor<TPayload>> processor,
+            final TPayload payload,
+            final TaskSubmitOptions options) {
         return this.submit(this.registry.get().forSubmit(processor), payload, options);
     }
 
@@ -257,11 +264,11 @@ public class DefaultTaskService implements TaskService {
 
     @Override
     @SuppressWarnings("unchecked")
-    public <T> List<Task<T>> findInExecution(
-            final ExecutionRef execution, final Class<? extends TaskProcessor<T>> processor) {
+    public <TPayload> List<Task<TPayload>> findInExecution(
+            final ExecutionRef execution, final Class<? extends TaskProcessor<TPayload>> processor) {
         final RegisteredProcessor registered = this.readable(processor);
         return this.read(execution, registered).stream()
-                .map(task -> (Task<T>) task)
+                .map(task -> (Task<TPayload>) task)
                 .toList();
     }
 
@@ -273,7 +280,7 @@ public class DefaultTaskService implements TaskService {
     }
 
     @Override
-    public <RT> Optional<RT> result(final Task<?> task, final Class<RT> resultType) {
+    public <TResult> Optional<TResult> result(final Task<?> task, final Class<TResult> resultType) {
         final RegisteredProcessor processor = this.readable(task.taskType());
         final Class<?> declared = processor.types().taskResult().resolve();
         if (declared == null || !ClassUtils.isAssignable(resultType, declared)) {
@@ -285,7 +292,8 @@ public class DefaultTaskService implements TaskService {
                         resultType.cast(this.codec.read(json, processor.types().taskResult())));
     }
 
-    private <T> Task<T> submit(final RegisteredProcessor processor, final T payload, final TaskSubmitOptions options) {
+    private <TPayload> Task<TPayload> submit(
+            final RegisteredProcessor processor, final TPayload payload, final TaskSubmitOptions options) {
         final Placement placement = placement(options);
         final String type = processor.taskType();
         final int priority =

@@ -98,12 +98,13 @@ final class TaskcommBeanSelection {
      * @param qualified бины под квалификатором
      * @param type тип бина — для сообщения
      * @param qualifier имя квалификатора — для сообщения
-     * @param <T> тип бина
+     * @param <TBean> тип бина
      * @return бин потребителя или {@code null} — тогда стартер берёт своё
      * @throws TaskcommConfigurationException если помеченных бинов больше одного
      */
-    static <T> T replacement(final ObjectProvider<T> qualified, final Class<T> type, final String qualifier) {
-        final List<T> beans = qualified.orderedStream().toList();
+    static <TBean> TBean replacement(
+            final ObjectProvider<TBean> qualified, final Class<TBean> type, final String qualifier) {
+        final List<TBean> beans = qualified.orderedStream().toList();
         if (beans.size() > 1) {
             throw new TaskcommConfigurationException(
                     "Бинов " + type.getSimpleName() + " под " + qualifier + " " + beans.size() + ", а допустим один.");
@@ -111,13 +112,13 @@ final class TaskcommBeanSelection {
         return beans.isEmpty() ? null : beans.getFirst();
     }
 
-    private static <T> T select(
-            final ObjectProvider<T> qualified,
-            final ObjectProvider<T> all,
+    private static <TBean> TBean select(
+            final ObjectProvider<TBean> qualified,
+            final ObjectProvider<TBean> all,
             final ListableBeanFactory beanFactory,
-            final Class<T> type,
+            final Class<TBean> type,
             final String qualifier) {
-        final List<T> marked = qualified.orderedStream().toList();
+        final List<TBean> marked = qualified.orderedStream().toList();
         if (marked.size() > 1) {
             throw new TaskcommConfigurationException(
                     "Бинов " + type.getSimpleName() + " под " + qualifier + " " + marked.size() + ", а допустим один.");
@@ -125,7 +126,7 @@ final class TaskcommBeanSelection {
         if (marked.size() == 1) {
             return marked.getFirst();
         }
-        final T unique = all.getIfUnique();
+        final TBean unique = all.getIfUnique();
         if (unique != null) {
             return unique;
         }

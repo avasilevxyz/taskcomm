@@ -216,11 +216,11 @@ public class TaskController extends RestErrors {
         return new RestDtos.DiscardDto(this.tasks.discardChildResults(olderThan == null ? Duration.ZERO : olderThan));
     }
 
-    private <T> ResponseEntity<T> withEntity(
+    private <TBody> ResponseEntity<TBody> withEntity(
             final TaskSnapshot.Level level,
             final UUID id,
             final Map<String, String> params,
-            final Function<TaskSnapshot, ResponseEntity<T>> action) {
+            final Function<TaskSnapshot, ResponseEntity<TBody>> action) {
         final RestParams p = new RestParams(params);
         final Instant executionCreatedAt = p.instant("executionCreatedAt");
         final HistoryWindow window =

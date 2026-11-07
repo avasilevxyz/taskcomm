@@ -9,9 +9,9 @@ import xyz.avasilev.taskcomm.communication.api.processor.CommunicationProcessor;
  * Java-типы доменных форм процессора, восстановленные из его дженерика
  * (docs/adr/0012-payload-storage.md). FQCN в базе не хранится: тип знает только процессор.
  *
- * @param request {@code C} — запрос
- * @param response {@code R} — синхронный ответ
- * @param callback {@code A} — колбэк
+ * @param request {@code TRequest} — запрос
+ * @param response {@code TSyncResponse} — синхронный ответ
+ * @param callback {@code TAsyncResponse} — колбэк
  */
 public record ProcessorTypes(ResolvableType request, ResolvableType response, ResolvableType callback) {
 
@@ -27,16 +27,16 @@ public record ProcessorTypes(ResolvableType request, ResolvableType response, Re
     static ProcessorTypes of(final Class<?> processorClass, final String system) {
         final ResolvableType contract = ResolvableType.forClass(processorClass).as(CommunicationProcessor.class);
         return new ProcessorTypes(
-                resolved(contract, 0, system, "C"),
-                resolved(contract, 1, system, "R"),
-                resolved(contract, 2, system, "A"));
+                resolved(contract, 0, system, "TRequest"),
+                resolved(contract, 1, system, "TSyncResponse"),
+                resolved(contract, 2, system, "TAsyncResponse"));
     }
 
     private static ResolvableType resolved(
-            final ResolvableType contract, final int index, final String system, final String letter) {
+            final ResolvableType contract, final int index, final String system, final String parameter) {
         final ResolvableType generic = contract.getGeneric(index);
         if (generic.resolve() == null) {
-            throw new TaskcommConfigurationException("Процессор внешней системы '" + system + "': параметр " + letter
+            throw new TaskcommConfigurationException("Процессор внешней системы '" + system + "': параметр " + parameter
                     + " не выводится из класса процессора. Нагрузку не во что разобрать — укажите конкретные типы "
                     + "в объявлении класса (docs/adr/0012-payload-storage.md).");
         }

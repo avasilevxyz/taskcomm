@@ -13,12 +13,12 @@ import xyz.avasilev.taskcomm.task.internal.ContractShape;
  * Буквы — как в контракте (docs/adr/0059-collect-contract.md); у уровней, которых у контракта нет,
  * поле пустое.
  *
- * @param task {@code T} — параметры задачи
- * @param batch {@code B} — параметры группы
- * @param unit {@code U} — бизнес-объект подзадачи
- * @param unitResult {@code RU} — результат подзадачи
- * @param batchResult {@code RB} — результат группы
- * @param taskResult {@code RT} — результат задачи
+ * @param task {@code TTaskPayload} — параметры задачи
+ * @param batch {@code TBatchPayload} — параметры группы
+ * @param unit {@code TUnitPayload} — бизнес-объект подзадачи
+ * @param unitResult {@code TUnitResult} — результат подзадачи
+ * @param batchResult {@code TBatchResult} — результат группы
+ * @param taskResult {@code TTaskResult} — результат задачи
  */
 public record ProcessorTypes(
         ResolvableType task,
@@ -44,36 +44,41 @@ public record ProcessorTypes(
             case FLAT -> {
                 final ResolvableType flat = self.as(FlatTaskProcessor.class);
                 yield new ProcessorTypes(
-                        resolved(flat, 0, taskType, "T"), null, null, null, null, resolved(flat, 1, taskType, "RT"));
+                        resolved(flat, 0, taskType, "TTaskPayload"),
+                        null,
+                        null,
+                        null,
+                        null,
+                        resolved(flat, 1, taskType, "TTaskResult"));
             }
             case UNIT -> {
                 final ResolvableType unit = self.as(UnitTaskProcessor.class);
                 yield new ProcessorTypes(
-                        resolved(unit, 0, taskType, "T"),
+                        resolved(unit, 0, taskType, "TTaskPayload"),
                         null,
-                        resolved(unit, 1, taskType, "U"),
-                        resolved(unit, 2, taskType, "RU"),
+                        resolved(unit, 1, taskType, "TUnitPayload"),
+                        resolved(unit, 2, taskType, "TUnitResult"),
                         null,
-                        resolved(unit, 3, taskType, "RT"));
+                        resolved(unit, 3, taskType, "TTaskResult"));
             }
             case BATCH -> {
                 final ResolvableType batch = self.as(BatchTaskProcessor.class);
                 yield new ProcessorTypes(
-                        resolved(batch, 0, taskType, "T"),
-                        resolved(batch, 1, taskType, "B"),
-                        resolved(batch, 2, taskType, "U"),
-                        resolved(batch, 3, taskType, "RU"),
-                        resolved(batch, 4, taskType, "RB"),
-                        resolved(batch, 5, taskType, "RT"));
+                        resolved(batch, 0, taskType, "TTaskPayload"),
+                        resolved(batch, 1, taskType, "TBatchPayload"),
+                        resolved(batch, 2, taskType, "TUnitPayload"),
+                        resolved(batch, 3, taskType, "TUnitResult"),
+                        resolved(batch, 4, taskType, "TBatchResult"),
+                        resolved(batch, 5, taskType, "TTaskResult"));
             }
         };
     }
 
     private static ResolvableType resolved(
-            final ResolvableType contract, final int index, final String taskType, final String letter) {
+            final ResolvableType contract, final int index, final String taskType, final String parameter) {
         final ResolvableType generic = contract.getGeneric(index);
         if (generic.resolve() == null) {
-            throw new TaskcommConfigurationException("Процессор типа задачи '" + taskType + "': параметр " + letter
+            throw new TaskcommConfigurationException("Процессор типа задачи '" + taskType + "': параметр " + parameter
                     + " не выводится из класса процессора. Нагрузку и результат не во что разобрать — укажите "
                     + "конкретные типы в объявлении класса (docs/adr/0012-payload-storage.md).");
         }

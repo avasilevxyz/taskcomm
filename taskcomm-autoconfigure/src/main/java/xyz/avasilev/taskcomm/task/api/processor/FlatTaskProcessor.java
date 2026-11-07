@@ -9,8 +9,8 @@ import xyz.avasilev.taskcomm.task.api.Task;
  * <pre>{@code
  * @Component
  * public class ReportProcessor implements FlatTaskProcessor<
- *         ReportPeriod,   // T  — параметры задачи
- *         ReportFile> {   // RT — результат задачи; Void — не хранить
+ *         ReportPeriod,   // TTaskPayload — параметры задачи
+ *         ReportFile> {   // TTaskResult — результат задачи; Void — не хранить
  *
  *     public String taskType() {
  *         return "monthly-report";
@@ -24,10 +24,10 @@ import xyz.avasilev.taskcomm.task.api.Task;
  *
  * <p><b>Гарантия — at-least-once, не exactly-once</b>: {@link #process} обязан быть идемпотентным.
  *
- * @param <T> параметры задачи
- * @param <RT> результат задачи; {@link Void} — результат не хранить
+ * @param <TTaskPayload> параметры задачи
+ * @param <TTaskResult> результат задачи; {@link Void} — результат не хранить
  */
-public non-sealed interface FlatTaskProcessor<T, RT> extends TaskProcessor<T> {
+public non-sealed interface FlatTaskProcessor<TTaskPayload, TTaskResult> extends TaskProcessor<TTaskPayload> {
 
     /**
      * Выполняет задачу. Нормальный возврат — успех; исключение — неуспешная попытка с повтором
@@ -37,5 +37,5 @@ public non-sealed interface FlatTaskProcessor<T, RT> extends TaskProcessor<T> {
      * @param context контекст обработки
      * @return результат задачи; {@code null} не хранится
      */
-    RT process(Task<T> task, ProcessingContext context);
+    TTaskResult process(Task<TTaskPayload> task, ProcessingContext context);
 }

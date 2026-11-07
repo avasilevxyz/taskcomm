@@ -27,13 +27,13 @@ import xyz.avasilev.taskcomm.communication.api.Communication;
  * <p><b>У клиента внешней системы обязан быть тайм-аут, и короче предела обработки</b>: прервать код
  * процессора стартер не может.
  *
- * @param <C> доменная форма запроса
- * @param <R> доменная форма синхронного ответа: у исходящей — ответ внешней системы, у входящей —
+ * @param <TRequest> доменная форма запроса
+ * @param <TSyncResponse> доменная форма синхронного ответа: у исходящей — ответ внешней системы, у входящей —
  *     ответ отправителю (docs/adr/0133-synchronous-inbound-reception.md); {@link Void} — не хранить
- * @param <A> доменная форма асинхронного ответа — колбэка на исходящую
+ * @param <TAsyncResponse> доменная форма асинхронного ответа — колбэка на исходящую
  *     (docs/adr/0086-async-response-in-outbound.md); {@link Void} у процессора, не ждущего ответа
  */
-public sealed interface CommunicationProcessor<C, R, A>
+public sealed interface CommunicationProcessor<TRequest, TSyncResponse, TAsyncResponse>
         permits HttpCommunicationProcessor, KafkaCommunicationProcessor, RawCommunicationProcessor {
 
     /**
@@ -52,7 +52,7 @@ public sealed interface CommunicationProcessor<C, R, A>
      * @param communication коммуникация
      * @param context контекст обработки
      */
-    default void beforeProcess(final Communication<C> communication, final CommunicationContext context) {
+    default void beforeProcess(final Communication<TRequest> communication, final CommunicationContext context) {
         // ключей нет
     }
 
@@ -70,7 +70,7 @@ public sealed interface CommunicationProcessor<C, R, A>
      * @param context контекст обработки
      * @return доменная форма ответа; {@code null} не хранится
      */
-    R process(Communication<C> communication, CommunicationContext context);
+    TSyncResponse process(Communication<TRequest> communication, CommunicationContext context);
 
     /**
      * Обрабатывает асинхронный ответ на исходящую — колбэк, пришедший той же системой с ключом
@@ -83,7 +83,9 @@ public sealed interface CommunicationProcessor<C, R, A>
      * @param context контекст обработки; {@code response_*} в нём — что мы ответили отправителю колбэка
      */
     default void handleResponse(
-            final Communication.Outbound<C> communication, final A response, final CommunicationContext context) {
+            final Communication.Outbound<TRequest> communication,
+            final TAsyncResponse response,
+            final CommunicationContext context) {
         // колбэк сохранён, обрабатывать нечего
     }
 }

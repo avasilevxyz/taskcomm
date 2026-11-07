@@ -141,11 +141,11 @@ public class CommunicationCreator {
      * что создание (docs/adr/0094-creation-always-in-transaction.md).
      *
      * @param work работа
-     * @param <T> результат
+     * @param <TResult> результат
      * @return результат работы
      * @throws TaskcommException если транзакция потребителя активна на другом {@code DataSource}
      */
-    public <T> T inTransaction(final Supplier<T> work) {
+    public <TResult> TResult inTransaction(final Supplier<TResult> work) {
         this.requireBoundToConsumerTransaction();
         return this.joining.execute(status -> work.get());
     }

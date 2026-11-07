@@ -61,12 +61,12 @@ public final class SyncReception {
      * @param decoded разобранное тело
      * @param message что прислали
      * @param communication коммуникация к созданию по способу начала первой попытки
-     * @param <C> доменная форма запроса
-     * @param <R> доменная форма ответа отправителю
+     * @param <TRequest> доменная форма запроса
+     * @param <TSyncResponse> доменная форма ответа отправителю
      * @return итог приёма
      */
     @SuppressWarnings("unchecked")
-    <C, R> ReceiveAndProcessResult<C, R> receive(
+    <TRequest, TSyncResponse> ReceiveAndProcessResult<TRequest, TSyncResponse> receive(
             final RegisteredProcessor processor,
             final DecodedBody decoded,
             final ExchangeMessage message,
@@ -86,12 +86,12 @@ public final class SyncReception {
                 new CommunicationRef(row.id(), row.execution().createdAt());
         if (row.duplicate() != null) {
             return new ReceiveAndProcessResult.Duplicate<>(
-                    (Communication.Inbound<C>) this.reader.one(target, processor),
+                    (Communication.Inbound<TRequest>) this.reader.one(target, processor),
                     row.duplicate().duplicateOf());
         }
         if (decoded.failure() != null) {
             return new ReceiveAndProcessResult.Unparseable<>(
-                    (Communication.Inbound<C>) this.reader.one(target, processor), decoded.failure());
+                    (Communication.Inbound<TRequest>) this.reader.one(target, processor), decoded.failure());
         }
         final CommunicationWorker.SyncOutcome outcome = running.worker()
                 .executeSync(new ClaimedCommunication(
@@ -108,9 +108,10 @@ public final class SyncReception {
                                 row.origin(),
                                 decoded.json(),
                                 null)));
-        final Communication.Inbound<C> inbound = (Communication.Inbound<C>) this.reader.one(target, processor);
+        final Communication.Inbound<TRequest> inbound =
+                (Communication.Inbound<TRequest>) this.reader.one(target, processor);
         return outcome.processed()
-                ? new ReceiveAndProcessResult.Processed<>(inbound, (R) outcome.response())
+                ? new ReceiveAndProcessResult.Processed<>(inbound, (TSyncResponse) outcome.response())
                 : new ReceiveAndProcessResult.Failed<>(inbound, outcome.failure());
     }
 

@@ -12,7 +12,8 @@ import xyz.avasilev.taskcomm.task.api.TaskBatchStatus;
  * @param result результат сборки группы или {@code null} — у неуспешных и у вернувших {@code null}
  * @param status терминальный статус
  * @param statusDescription причина статуса или {@code null}
- * @param <B> параметры группы
- * @param <RB> результат сборки группы
+ * @param <TPayload> параметры группы
+ * @param <TResult> результат сборки группы
  */
-public record CollectedBatch<B, RB>(UUID id, B payload, RB result, TaskBatchStatus status, String statusDescription) {}
+public record CollectedBatch<TPayload, TResult>(
+        UUID id, TPayload payload, TResult result, TaskBatchStatus status, String statusDescription) {}

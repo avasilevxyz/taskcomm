@@ -18,18 +18,18 @@ import xyz.avasilev.taskcomm.task.api.TaskUnitStatus;
  * @param payload бизнес-объект, разобранный в тип из дженерика процессора
  * @param priority приоритет
  * @param createdAt время создания
- * @param <U> бизнес-объект подзадачи
+ * @param <TPayload> бизнес-объект подзадачи
  */
-record TaskUnitView<U>(
+record TaskUnitView<TPayload>(
         UUID id,
         UUID taskId,
         UUID group,
         ExecutionRef executionRef,
         String taskType,
-        U payload,
+        TPayload payload,
         int priority,
         Instant createdAt)
-        implements TaskUnit<U> {
+        implements TaskUnit<TPayload> {
 
     @Override
     public Optional<UUID> batchId() {

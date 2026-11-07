@@ -8,24 +8,24 @@ import java.util.UUID;
  * создаётся при любом исходе; обрабатывать её будет движок. Ответ отправителю формирует вызывающий
  * сам: {@code response_*} у асинхронного приёма пуст (docs/adr/0133-synchronous-inbound-reception.md).
  *
- * @param <C> доменная форма запроса
+ * @param <TRequest> доменная форма запроса
  */
-public sealed interface ReceiveResult<C> {
+public sealed interface ReceiveResult<TRequest> {
 
     /**
      * Созданная коммуникация.
      *
      * @return входящая
      */
-    Communication.Inbound<C> communication();
+    Communication.Inbound<TRequest> communication();
 
     /**
      * Принята: создана в транзакции вызывающего и будет обработана движком после её коммита.
      *
      * @param communication входящая в статусе {@code PENDING}
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      */
-    record Accepted<C>(Communication.Inbound<C> communication) implements ReceiveResult<C> {
+    record Accepted<TRequest>(Communication.Inbound<TRequest> communication) implements ReceiveResult<TRequest> {
 
         /**
          * Проверяет коммуникацию.
@@ -43,9 +43,10 @@ public sealed interface ReceiveResult<C> {
      *
      * @param communication входящая в статусе {@code SKIPPED}
      * @param duplicateOf коммуникация, с ключом которой она совпала, — на неё можно сослаться в ответе
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      */
-    record Duplicate<C>(Communication.Inbound<C> communication, UUID duplicateOf) implements ReceiveResult<C> {
+    record Duplicate<TRequest>(Communication.Inbound<TRequest> communication, UUID duplicateOf)
+            implements ReceiveResult<TRequest> {
 
         /**
          * Проверяет коммуникации.
@@ -66,9 +67,10 @@ public sealed interface ReceiveResult<C> {
      *
      * @param communication входящая в статусе {@code FAILED}, без доменной формы запроса
      * @param reason причина разбора
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      */
-    record Unparseable<C>(Communication.Inbound<C> communication, String reason) implements ReceiveResult<C> {
+    record Unparseable<TRequest>(Communication.Inbound<TRequest> communication, String reason)
+            implements ReceiveResult<TRequest> {
 
         /**
          * Проверяет коммуникацию и причину.

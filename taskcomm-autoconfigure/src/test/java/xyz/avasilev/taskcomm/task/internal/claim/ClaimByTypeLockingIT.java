@@ -265,12 +265,12 @@ class ClaimByTypeLockingIT {
     }
 
     /** Своя транзакция с {@code force_custom_plan}, откатывается в конце. */
-    private <T> T transaction(final Function<JdbcClient, T> body) {
+    private <TResult> TResult transaction(final Function<JdbcClient, TResult> body) {
         try (Connection connection = this.db.dataSource.getConnection()) {
             connection.setAutoCommit(false);
             final JdbcClient jdbc = JdbcClient.create(new SingleConnectionDataSource(connection, true));
             TaskSql.forceCustomPlan(jdbc);
-            final T result = body.apply(jdbc);
+            final TResult result = body.apply(jdbc);
             connection.rollback();
             return result;
         } catch (final SQLException failure) {

@@ -21,10 +21,11 @@ public final class CommunicationViews {
      * @param direction направление
      * @param row строка коммуникации
      * @param payload доменная форма запроса
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      * @return входящая или исходящая
      */
-    public static <C> Communication<C> of(final Direction direction, final Row row, final C payload) {
+    public static <TRequest> Communication<TRequest> of(
+            final Direction direction, final Row row, final TRequest payload) {
         return direction == Direction.INBOUND ? new InboundView<>(row, payload) : new OutboundView<>(row, payload);
     }
 
@@ -33,10 +34,10 @@ public final class CommunicationViews {
      *
      * @param row строка коммуникации
      * @param payload доменная форма запроса
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      * @return входящая
      */
-    static <C> Communication.Inbound<C> inbound(final Row row, final C payload) {
+    static <TRequest> Communication.Inbound<TRequest> inbound(final Row row, final TRequest payload) {
         return new InboundView<>(row, payload);
     }
 
@@ -45,10 +46,10 @@ public final class CommunicationViews {
      *
      * @param row строка коммуникации
      * @param payload доменная форма запроса
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      * @return исходящая
      */
-    static <C> Communication.Outbound<C> outbound(final Row row, final C payload) {
+    static <TRequest> Communication.Outbound<TRequest> outbound(final Row row, final TRequest payload) {
         return new OutboundView<>(row, payload);
     }
 
@@ -107,9 +108,9 @@ public final class CommunicationViews {
      *
      * @param row строка
      * @param requestPayload доменная форма запроса
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      */
-    private record InboundView<C>(Row row, C requestPayload) implements Communication.Inbound<C> {
+    private record InboundView<TRequest>(Row row, TRequest requestPayload) implements Communication.Inbound<TRequest> {
 
         @Override
         public String source() {
@@ -157,9 +158,10 @@ public final class CommunicationViews {
      *
      * @param row строка
      * @param requestPayload доменная форма запроса
-     * @param <C> доменная форма запроса
+     * @param <TRequest> доменная форма запроса
      */
-    private record OutboundView<C>(Row row, C requestPayload) implements Communication.Outbound<C> {
+    private record OutboundView<TRequest>(Row row, TRequest requestPayload)
+            implements Communication.Outbound<TRequest> {
 
         @Override
         public String destination() {

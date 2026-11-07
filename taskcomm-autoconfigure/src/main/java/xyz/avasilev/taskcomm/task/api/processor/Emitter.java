@@ -14,9 +14,9 @@ package xyz.avasilev.taskcomm.task.api.processor;
  * истёкшей аренды, очередной {@code emit} тоже бросает исключение: дети этой попытки больше
  * не нужны.
  *
- * @param <T> нагрузка ребёнка
+ * @param <TPayload> нагрузка ребёнка
  */
-public interface Emitter<T> {
+public interface Emitter<TPayload> {
 
     /**
      * Отдаёт одного ребёнка.
@@ -24,5 +24,5 @@ public interface Emitter<T> {
      * @param payload нагрузка ребёнка
      * @throws IllegalStateException если вызов вне своего метода раскрытия или попытка уже закрыта
      */
-    void emit(T payload);
+    void emit(TPayload payload);
 }

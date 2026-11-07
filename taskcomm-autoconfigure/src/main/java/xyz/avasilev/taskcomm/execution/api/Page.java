@@ -7,17 +7,17 @@ import java.util.Optional;
 /**
  * Страница выдачи: элементы, курсор следующей и окно, в котором искали (docs/adr/0138-inspection-api.md).
  *
- * @param <T> элемент выдачи
+ * @param <EItem> элемент выдачи
  */
-public final class Page<T> {
+public final class Page<EItem> {
 
-    private final List<T> items;
+    private final List<EItem> items;
 
     private final String next;
 
     private final HistoryWindow window;
 
-    private Page(final List<T> items, final String next, final HistoryWindow window) {
+    private Page(final List<EItem> items, final String next, final HistoryWindow window) {
         this.items = List.copyOf(items);
         this.next = next;
         this.window = Objects.requireNonNull(window, "window");
@@ -29,10 +29,10 @@ public final class Page<T> {
      * @param items элементы
      * @param next курсор следующей или {@code null} — дальше нет
      * @param window окно, в котором искали
-     * @param <T> элемент выдачи
+     * @param <EItem> элемент выдачи
      * @return страница
      */
-    public static <T> Page<T> of(final List<T> items, final String next, final HistoryWindow window) {
+    public static <EItem> Page<EItem> of(final List<EItem> items, final String next, final HistoryWindow window) {
         return new Page<>(items, next, window);
     }
 
@@ -41,7 +41,7 @@ public final class Page<T> {
      *
      * @return элементы
      */
-    public List<T> items() {
+    public List<EItem> items() {
         return this.items;
     }
 

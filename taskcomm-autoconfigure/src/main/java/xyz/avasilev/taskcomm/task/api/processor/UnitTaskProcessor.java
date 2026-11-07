@@ -13,10 +13,10 @@ import xyz.avasilev.taskcomm.task.api.TaskUnit;
  * <pre>{@code
  * @Component
  * public class OrderSyncProcessor implements UnitTaskProcessor<
- *         SyncPeriod,     // T  — параметры задачи: период
- *         OrderRef,       // U  — один заказ
- *         OrderOutcome,   // RU — что вышло с заказом
- *         SyncReport> {   // RT — свод по задаче
+ *         SyncPeriod,     // TTaskPayload — параметры задачи: период
+ *         OrderRef,       // TUnitPayload — один заказ
+ *         OrderOutcome,   // TUnitResult — что вышло с заказом
+ *         SyncReport> {   // TTaskResult — свод по задаче
  *
  *     public String taskType() {
  *         return "order-sync";
@@ -40,12 +40,13 @@ import xyz.avasilev.taskcomm.task.api.TaskUnit;
  *
  * <p><b>Гарантия — at-least-once, не exactly-once</b>: каждый метод обязан быть идемпотентным.
  *
- * @param <T> параметры задачи
- * @param <U> один бизнес-объект подзадачи
- * @param <RU> результат обработки подзадачи; {@link Void} — не хранить
- * @param <RT> результат сборки задачи; {@link Void} — не хранить
+ * @param <TTaskPayload> параметры задачи
+ * @param <TUnitPayload> один бизнес-объект подзадачи
+ * @param <TUnitResult> результат обработки подзадачи; {@link Void} — не хранить
+ * @param <TTaskResult> результат сборки задачи; {@link Void} — не хранить
  */
-public non-sealed interface UnitTaskProcessor<T, U, RU, RT> extends TaskProcessor<T> {
+public non-sealed interface UnitTaskProcessor<TTaskPayload, TUnitPayload, TUnitResult, TTaskResult>
+        extends TaskProcessor<TTaskPayload> {
 
     /**
      * Раскрывает задачу в подзадачи. Повтор раскрытия ничего не удаляет: новая попытка порождает
@@ -56,7 +57,7 @@ public non-sealed interface UnitTaskProcessor<T, U, RU, RT> extends TaskProcesso
      * @param units приёмник подзадач; действителен только внутри вызова
      * @param context контекст обработки
      */
-    void expand(Task<T> task, Emitter<U> units, ProcessingContext context);
+    void expand(Task<TTaskPayload> task, Emitter<TUnitPayload> units, ProcessingContext context);
 
     /**
      * Обрабатывает одну подзадачу. Неуспех повторяет только эту подзадачу.
@@ -65,7 +66,7 @@ public non-sealed interface UnitTaskProcessor<T, U, RU, RT> extends TaskProcesso
      * @param context контекст обработки
      * @return результат обработки; {@code null} не хранится
      */
-    RU process(TaskUnit<U> unit, ProcessingContext context);
+    TUnitResult process(TaskUnit<TUnitPayload> unit, ProcessingContext context);
 
     /**
      * Собирает свод, когда у последнего раскрытия не осталось незавершённых подзадач, — в том числе
@@ -77,7 +78,8 @@ public non-sealed interface UnitTaskProcessor<T, U, RU, RT> extends TaskProcesso
      * @param context контекст обработки
      * @return результат задачи; {@code null} не хранится
      */
-    RT collect(Task<T> task, Stream<CollectedUnit<U, RU>> units, ProcessingContext context);
+    TTaskResult collect(
+            Task<TTaskPayload> task, Stream<CollectedUnit<TUnitPayload, TUnitResult>> units, ProcessingContext context);
 
     /**
      * Поля нагрузки подзадачи, по которым разрешён поиск.

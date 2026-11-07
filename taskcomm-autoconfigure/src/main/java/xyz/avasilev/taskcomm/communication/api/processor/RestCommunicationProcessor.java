@@ -9,9 +9,9 @@ import xyz.avasilev.taskcomm.communication.api.CommunicationHeaders;
  * <pre>{@code
  * @Component
  * public class SupplierProcessor implements RestCommunicationProcessor<
- *         PriceUpdate,   // C — запрос
- *         Ack,           // R — синхронный ответ
- *         Void> {        // A — колбэка нет
+ *         PriceUpdate,   // TRequest — запрос
+ *         Ack,           // TSyncResponse — синхронный ответ
+ *         Void> {        // TAsyncResponse — колбэка нет
  *
  *     public String externalSystem() {
  *         return "supplier-b";
@@ -26,11 +26,12 @@ import xyz.avasilev.taskcomm.communication.api.CommunicationHeaders;
  * }
  * }</pre>
  *
- * @param <C> доменная форма запроса
- * @param <R> доменная форма синхронного ответа
- * @param <A> доменная форма колбэка; {@link Void} у не ждущего ответа
+ * @param <TRequest> доменная форма запроса
+ * @param <TSyncResponse> доменная форма синхронного ответа
+ * @param <TAsyncResponse> доменная форма колбэка; {@link Void} у не ждущего ответа
  */
-public non-sealed interface RestCommunicationProcessor<C, R, A> extends HttpCommunicationProcessor<C, R, A> {
+public non-sealed interface RestCommunicationProcessor<TRequest, TSyncResponse, TAsyncResponse>
+        extends HttpCommunicationProcessor<TRequest, TSyncResponse, TAsyncResponse> {
 
     /**
      * Разбирает тело входящей при приёме, в потоке вызывающего. Исключение — неразбираемое тело:
@@ -41,7 +42,8 @@ public non-sealed interface RestCommunicationProcessor<C, R, A> extends HttpComm
      * @param json разбор JSON в тип запроса
      * @return доменная форма запроса
      */
-    default C decodeRequest(final String body, final CommunicationHeaders headers, final BodyDecoder<C> json) {
+    default TRequest decodeRequest(
+            final String body, final CommunicationHeaders headers, final BodyDecoder<TRequest> json) {
         return json.decode(body);
     }
 
@@ -53,7 +55,8 @@ public non-sealed interface RestCommunicationProcessor<C, R, A> extends HttpComm
      * @param json разбор JSON в тип колбэка
      * @return доменная форма колбэка
      */
-    default A decodeResponse(final String body, final CommunicationHeaders headers, final BodyDecoder<A> json) {
+    default TAsyncResponse decodeResponse(
+            final String body, final CommunicationHeaders headers, final BodyDecoder<TAsyncResponse> json) {
         return json.decode(body);
     }
 }

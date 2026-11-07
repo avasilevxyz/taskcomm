@@ -37,10 +37,10 @@ public final class TaskSql {
      *
      * @param items строки пачки
      * @param value значение столбца у строки
-     * @param <T> тип строки пачки
+     * @param <EItem> тип строки пачки
      * @return столбец
      */
-    public static <T> String[] column(final List<T> items, final Function<T, ?> value) {
+    public static <EItem> String[] column(final List<EItem> items, final Function<EItem, ?> value) {
         return items.stream()
                 .map(value)
                 .map(item -> item == null ? null : String.valueOf(item))

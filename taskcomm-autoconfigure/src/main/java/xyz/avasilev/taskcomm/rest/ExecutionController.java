@@ -107,9 +107,10 @@ public class ExecutionController extends RestErrors {
     }
 
     /** Все страницы; списки идут от новых к старым, выдача — в порядке создания. */
-    private static <S, D> List<D> all(final Function<PageRequest, Page<S>> read, final Function<S, D> map) {
-        final List<D> collected = new ArrayList<>();
-        Page<S> page = read.apply(PageRequest.first(CHUNK));
+    private static <ESource, EResult> List<EResult> all(
+            final Function<PageRequest, Page<ESource>> read, final Function<ESource, EResult> map) {
+        final List<EResult> collected = new ArrayList<>();
+        Page<ESource> page = read.apply(PageRequest.first(CHUNK));
         page.items().forEach(item -> collected.add(map.apply(item)));
         while (page.next().isPresent()) {
             page = read.apply(PageRequest.after(page.next().get(), CHUNK));

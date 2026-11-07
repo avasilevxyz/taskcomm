@@ -9,18 +9,19 @@ import xyz.avasilev.taskcomm.task.api.TaskUnit;
 /**
  * Задача с группами: задача раскрывается в группы, каждая группа — в подзадачи. Группа позволяет
  * один раз сходить во внешнюю систему за данными для всех своих подзадач. Форма контракта в базе —
- * {@code BATCH}. Шесть параметров типа — принятая цена типобезопасности; буква совпадает с уровнем,
- * {@code R} с тем же суффиксом — результат уровня (docs/adr/0059-collect-contract.md).
+ * {@code BATCH}. Шесть параметров типа — принятая цена типобезопасности: по нагрузке и результату
+ * на каждый уровень (docs/adr/0059-collect-contract.md,
+ * docs/adr/0145-meaningful-type-parameter-names.md).
  *
  * <pre>{@code
  * @Component
  * public class PriceSyncProcessor implements BatchTaskProcessor<
- *         SyncParams,      // T  — параметры задачи: период и список поставщиков
- *         SupplierBatch,   // B  — параметры группы: один поставщик
- *         ItemPrice,       // U  — один товар
- *         ItemOutcome,     // RU — что вышло с товаром
- *         SupplierReport,  // RB — свод по поставщику
- *         SyncReport> {    // RT — свод по задаче
+ *         SyncParams,      // TTaskPayload — параметры задачи: период и список поставщиков
+ *         SupplierBatch,   // TBatchPayload — параметры группы: один поставщик
+ *         ItemPrice,       // TUnitPayload — один товар
+ *         ItemOutcome,     // TUnitResult — что вышло с товаром
+ *         SupplierReport,  // TBatchResult — свод по поставщику
+ *         SyncReport> {    // TTaskResult — свод по задаче
  *
  *     public String taskType() {
  *         return "price-sync";
@@ -56,14 +57,16 @@ import xyz.avasilev.taskcomm.task.api.TaskUnit;
  *
  * <p><b>Гарантия — at-least-once, не exactly-once</b>: каждый метод обязан быть идемпотентным.
  *
- * @param <T> параметры задачи
- * @param <B> параметры группы
- * @param <U> один бизнес-объект подзадачи
- * @param <RU> результат обработки подзадачи; {@link Void} — не хранить
- * @param <RB> результат сборки группы; {@link Void} — не хранить
- * @param <RT> результат сборки задачи; {@link Void} — не хранить
+ * @param <TTaskPayload> параметры задачи
+ * @param <TBatchPayload> параметры группы
+ * @param <TUnitPayload> один бизнес-объект подзадачи
+ * @param <TUnitResult> результат обработки подзадачи; {@link Void} — не хранить
+ * @param <TBatchResult> результат сборки группы; {@link Void} — не хранить
+ * @param <TTaskResult> результат сборки задачи; {@link Void} — не хранить
  */
-public non-sealed interface BatchTaskProcessor<T, B, U, RU, RB, RT> extends TaskProcessor<T> {
+public non-sealed interface BatchTaskProcessor<
+                TTaskPayload, TBatchPayload, TUnitPayload, TUnitResult, TBatchResult, TTaskResult>
+        extends TaskProcessor<TTaskPayload> {
 
     /**
      * Раскрывает задачу в группы. Повтор раскрытия ничего не удаляет: дети неуспешной попытки
@@ -73,7 +76,7 @@ public non-sealed interface BatchTaskProcessor<T, B, U, RU, RB, RT> extends Task
      * @param batches приёмник групп; действителен только внутри вызова
      * @param context контекст обработки
      */
-    void expand(Task<T> task, Emitter<B> batches, ProcessingContext context);
+    void expand(Task<TTaskPayload> task, Emitter<TBatchPayload> batches, ProcessingContext context);
 
     /**
      * Раскрывает группу в подзадачи. Данные, собранные здесь, кладутся в нагрузку каждой подзадачи:
@@ -83,7 +86,7 @@ public non-sealed interface BatchTaskProcessor<T, B, U, RU, RB, RT> extends Task
      * @param units приёмник подзадач; действителен только внутри вызова
      * @param context контекст обработки
      */
-    void expandBatch(TaskBatch<B> batch, Emitter<U> units, ProcessingContext context);
+    void expandBatch(TaskBatch<TBatchPayload> batch, Emitter<TUnitPayload> units, ProcessingContext context);
 
     /**
      * Обрабатывает одну подзадачу. Неуспех повторяет только эту подзадачу: группа целиком
@@ -93,7 +96,7 @@ public non-sealed interface BatchTaskProcessor<T, B, U, RU, RB, RT> extends Task
      * @param context контекст обработки
      * @return результат обработки; {@code null} не хранится
      */
-    RU process(TaskUnit<U> unit, ProcessingContext context);
+    TUnitResult process(TaskUnit<TUnitPayload> unit, ProcessingContext context);
 
     /**
      * Собирает свод группы, когда у её последнего раскрытия не осталось незавершённых подзадач.
@@ -104,7 +107,10 @@ public non-sealed interface BatchTaskProcessor<T, B, U, RU, RB, RT> extends Task
      * @param context контекст обработки
      * @return результат группы; {@code null} не хранится
      */
-    RB collectBatch(TaskBatch<B> batch, Stream<CollectedUnit<U, RU>> units, ProcessingContext context);
+    TBatchResult collectBatch(
+            TaskBatch<TBatchPayload> batch,
+            Stream<CollectedUnit<TUnitPayload, TUnitResult>> units,
+            ProcessingContext context);
 
     /**
      * Собирает свод задачи, когда у её последнего раскрытия не осталось незавершённых групп.
@@ -114,7 +120,10 @@ public non-sealed interface BatchTaskProcessor<T, B, U, RU, RB, RT> extends Task
      * @param context контекст обработки
      * @return результат задачи; {@code null} не хранится
      */
-    RT collect(Task<T> task, Stream<CollectedBatch<B, RB>> batches, ProcessingContext context);
+    TTaskResult collect(
+            Task<TTaskPayload> task,
+            Stream<CollectedBatch<TBatchPayload, TBatchResult>> batches,
+            ProcessingContext context);
 
     /**
      * Поля нагрузки группы, по которым разрешён поиск.
