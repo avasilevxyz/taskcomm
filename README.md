@@ -100,7 +100,7 @@ public void close(YearMonth month) {
 }
 ```
 
-Схема базы, первая коммуникация и проверка — в [быстром старте](docs/guide/quick-start.md).
+Схема базы, первая коммуникация и проверка — в [быстром старте](docs/guide/start/quick-start.md).
 
 ## Требования
 
@@ -111,11 +111,10 @@ public void close(YearMonth month) {
 ## Документация
 
 - [Руководство](docs/guide/README.md) — оглавление и карта «я хочу… — читай…».
-- [Быстрый старт](docs/guide/quick-start.md) — от пустого проекта до выполненной задачи.
-- [Понятия](docs/guide/concepts.md) — словарь.
-- [Рецепты](docs/guide/recipes.md) — сквозные примеры.
-- [Настройки](docs/guide/configuration.md) — все свойства `taskcomm.*`.
-- [Совместимость](docs/guide/compatibility.md) — что нельзя менять в своём коде, когда работа уже в базе.
+- [Быстрый старт](docs/guide/start/quick-start.md) — от пустого проекта до выполненной задачи.
+- [Понятия](docs/guide/start/concepts.md) — словарь.
+- [Настройки](docs/guide/setup/configuration.md) — все свойства `taskcomm.*`.
+- [Совместимость](docs/guide/evolution/compatibility.md) — что нельзя менять в своём коде, когда работа уже в базе.
 
 Как устроен стартер и почему именно так — [architecture.md](docs/architecture.md) и
 [журнал решений](docs/adr/README.md).
@@ -129,7 +128,7 @@ public void close(YearMonth month) {
 Версии — по semver: мажорная поднимается только при потере обратной совместимости. Свойства
 и API не удаляются сразу — сначала помечаются устаревшими с указанием замены. Совместимость
 стартера — это ещё и совместимость **ваших** данных: какие изменения в вашем коде ломают уже
-записанные задачи, — в [Совместимости](docs/guide/compatibility.md).
+записанные задачи, — в [Совместимости](docs/guide/evolution/compatibility.md).
 
 ## Лицензия
 

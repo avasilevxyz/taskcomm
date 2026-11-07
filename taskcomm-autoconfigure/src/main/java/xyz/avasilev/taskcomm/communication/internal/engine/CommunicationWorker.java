@@ -323,7 +323,7 @@ public class CommunicationWorker {
         if (!context.responseRecorded() && processor.shape().http()) {
             log.warn(
                     "Процессор {} системы '{}' вернулся, не записав ответ: стартер его не видит, отказ прошёл бы как "
-                            + "успех. Записывайте ответ методом recordResponse (docs/guide/compatibility.md).",
+                            + "успех. Записывайте ответ методом recordResponse (docs/guide/communications/outbound.md).",
                     processor.shape(),
                     attempt.system());
         }

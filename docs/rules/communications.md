@@ -72,7 +72,7 @@ sealed interface HttpCommunicationProcessor<TRequest, TSyncResponse, TAsyncRespo
 - **Повтор после смерти вызывающего** — по общим правилам: переподхват закрывает попытку `LEASE_LOST`,
   и стартер синхронную коммуникацию не отличает. Предел в одну попытку для системы, принимаемой
   синхронно, задаёт потребитель — аннотацией или в `yaml`; стартер это **не проверяет**, требование
-  живёт в Javadoc и в [guide/compatibility.md](../guide/compatibility.md).
+  живёт в Javadoc и в [guide/communications/inbound.md](../guide/communications/inbound.md#входящие-синхронный-приём).
 
 **Повторная доставка — своя коммуникация**, а не новая попытка на существующей
 ([ADR 0076](../adr/0076-communication-deduplication.md)). Совпал ключ дедупликации — она
@@ -336,5 +336,5 @@ sealed interface HttpCommunicationProcessor<TRequest, TSyncResponse, TAsyncRespo
   не исправляется — её сообщения действительно опаздывают.
 - Поток процессора не прерывается никогда: «прервали по времени» значит «закрыли попытку».
   От зависания без тайм-аута размыкатель не защищает — тайм-аут на клиенте обязан ставить
-  потребитель, см. [guide/compatibility.md](../guide/compatibility.md).
+  потребитель, см. [guide/communications/outbound.md](../guide/communications/outbound.md).
 

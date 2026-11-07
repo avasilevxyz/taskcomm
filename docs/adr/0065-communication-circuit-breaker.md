@@ -311,7 +311,7 @@ taskcomm:
 
 ### Обязательства потребителя
 
-Записаны в [guide/compatibility.md](../guide/compatibility.md):
+Записаны в [guide/evolution/compatibility.md](../guide/evolution/compatibility.md):
 
 - **у клиента внешней системы тайм-аут, и короче предела обработки** — иначе зависшая система держит
   воркеров, а размыкатель от этого не защищает;

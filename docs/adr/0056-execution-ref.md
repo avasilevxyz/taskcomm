@@ -15,7 +15,7 @@
 или коммуникация, созданная из другого потока — своего пула, `CompletableFuture`, — молча попадает
 в новое дело, и связь не возникает.
 
-[guide/compatibility.md](../guide/compatibility.md) при этом советует «передайте дело явно», но API
+[guide/evolution/compatibility.md](../guide/evolution/compatibility.md) при этом советует «передайте дело явно», но API
 под этим советом нет: процессору неоткуда взять текущий `Execution`, а метода создания,
 принимающего его, не существует.
 
@@ -50,7 +50,7 @@
 ни происходило создание; явно переданное дело побеждает неявную привязку потока. Не передали —
 всё работает по правилам [0038](0038-execution-aggregate.md).
 
-Пример — та же ловушка из [guide/compatibility.md](../guide/compatibility.md), но с исправлением:
+Пример — та же ловушка из [guide/evolution/compatibility.md](../guide/evolution/compatibility.md), но с исправлением:
 
 ```java
 @Override

@@ -237,7 +237,7 @@ origin_relation   text NULL CHECK (origin_relation IN ('SPAWNED', 'RESPONSE'))
   discriminator, и запрос «прочитай создателя» ветвится по нему.
 - **Новая тихая потеря связи.** Явно переданное чужое дело или отказ от привязки убирают не только
   общее дело, но и указатель. Ошибки не будет — место этой ловушки
-  в [guide/compatibility.md](../guide/compatibility.md), рядом с потерей дела при смене потока.
+  в [guide/evolution/compatibility.md](../guide/evolution/compatibility.md), рядом с потерей дела при смене потока.
 - **[0038](0038-execution-aggregate.md) отвергал черновик `caused_by_*` — и это не отмена того
   отказа.** Тот черновик шёл связкой с полем `metadata` и сквозным `correlationId`, а общей их
   ошибкой 0038 назвал «навешивали поля на существующие сущности, вместо того чтобы назвать
