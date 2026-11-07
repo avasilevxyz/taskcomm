@@ -43,7 +43,7 @@ taskcomm:
 **Приоритет задаётся только на уровне типа или системы** — аннотацией на классе или в `yaml`
 типа. Приоритет — свойство сущности, а не попытки, поэтому на методе и в фазе он запрещён.
 `poll` и `workers` не переопределяются ни по типу, ни аннотацией: своя очередь под тип — это
-[выделенный поллер](tasks.md#приоритет-и-порядок).
+[выделенный поллер](claiming.md#выделенный-поллер).
 
 **При старте стартер печатает итоговое значение** по каждому типу, системе и методу процессора —
 и уровень, откуда оно взято. Ответ на «почему у меня предел тридцать минут» — в этом логе.
@@ -149,51 +149,95 @@ taskcomm:
   enabled: true
   task:
     enabled: true
-    poll: { interval: 1s, batch-size: 100, workers: 8,
-            claim-order: deadline, deadline-step: 1m,   # deadline | priority | quota
-            fifo-share: 0.1 }               # доля FIFO у quota, строго между 0 и 1
-    lease: { duration: 60s, heartbeat-interval: 20s, max-execution-time: 30m }
-    retry: { max-attempts: 3, initial-delay: 5s, multiplier: 2.0, max-delay: 1h, jitter: 0.2 }
+    poll:
+      interval: 1s
+      batch-size: 100
+      workers: 8
+      claim-order: deadline         # deadline | priority | quota
+      deadline-step: 1m
+      fifo-share: 0.1               # доля FIFO у quota, строго между 0 и 1
+    lease:
+      duration: 60s
+      heartbeat-interval: 20s
+      max-execution-time: 30m
+    retry:
+      max-attempts: 3
+      initial-delay: 5s
+      multiplier: 2.0
+      max-delay: 1h
+      jitter: 0.2
     types:                          # ключ — taskType
       price-update:
-        priority: 50
-        lease: { max-execution-time: 30m }
-        retry: { max-attempts: 5 }
-        phases:                     # PROCESS | EXPAND | COLLECT
+        priority: 50                # default 100
+        lease:
+          max-execution-time: 30m
+        retry:
+          max-attempts: 5
+        phases:                     # process | expand | collect
           expand:
-            lease: { max-execution-time: 2h }
+            lease:
+              max-execution-time: 2h
     pollers:                        # дополнительные к основному; не заданное берётся у основного
-      urgent: { types: [order-urgent], workers: 4, claim-order: priority }
-    safety: { interval: 1m, grace: 1m }   # подстраховочный поллер
+      urgent:
+        types: [order-urgent]       # типы задач которые подхватит этот поллер 
+        workers: 4
+        claim-order: priority       # deadline | priority | quota
+    safety:                         # подстраховочный поллер
+      interval: 1m
+      grace: 1m
   communication:
     enabled: true
-    poll: { interval: 1s, batch-size: 100, workers: 8,
-            claim-order: deadline, deadline-step: 1m }   # deadline | priority | quota
-    lease: { duration: 60s, heartbeat-interval: 20s, max-execution-time: 5m }
-    retry: { max-attempts: 5, initial-delay: 10s, multiplier: 2.0, max-delay: 1h, jitter: 0.2 }
+    poll:
+      interval: 1s
+      batch-size: 100
+      workers: 8
+      claim-order: deadline         # deadline | priority | quota
+      deadline-step: 1m
+    lease:
+      duration: 60s
+      heartbeat-interval: 20s
+      max-execution-time: 5m
+    retry:
+      max-attempts: 5
+      initial-delay: 10s
+      multiplier: 2.0
+      max-delay: 1h
+      jitter: 0.2
     response-timeout: 1h            # срок ожидания асинхронного ответа, потом повторная отправка
-    safety: { interval: 1m }        # подстраховочный поллер: истёкшие ожидания ответа
+    safety:                         # подстраховочный поллер: истёкшие ожидания ответа
+      interval: 1m
     circuit-breaker:                # только исходящие; выключен по умолчанию
       enabled: false
       window: 60s
       minimum-calls: 10
       failure-rate-threshold: 0.5
-      wait: { initial-delay: 30s, multiplier: 2.0, max-delay: 10m, jitter: 0.2 }
-      probe: { calls: 3, timeout: 1m }
+      wait:
+        initial-delay: 30s
+        multiplier: 2.0
+        max-delay: 10m
+        jitter: 0.2
+      probe:
+        calls: 3
+        timeout: 1m
     systems:                        # ключ — имя внешней системы
       supplier-b:
         priority: 50
-        rate-limit-per-instance: 10      # отправок исходящих в секунду на экземпляр
-        retry: { max-attempts: 8 }
+        rate-limit-per-instance: 10 # отправок исходящих в секунду на экземпляр
+        retry:
+          max-attempts: 8
         response-timeout: 4h
-        failure-statuses: [5xx, 429]  # исход попытки, а не только размыкатель
-        circuit-breaker: { enabled: true, exceptions: [java.io.IOException] }
+        failure-statuses: [5xx, 429] # исход попытки, а не только размыкатель
+        circuit-breaker:
+          enabled: true
+          exceptions: [java.io.IOException]
     pollers:                        # дополнительные к основному, по именам внешних систем
-      supplier-b: { systems: [supplier-b], workers: 2 }
+      supplier-b:
+        systems: [supplier-b]       # source|destination коммуникаций которые подхватит этот поллер
+        workers: 2
   search:
     remove-undeclared-fields: false
   results:
-    discard: after   # never | immediately | after
+    discard: after                  # never | immediately | after
     discard-after: 7d
   logging:
     mdc-prefix: tc.                 # префикс ключей MDC: tc.executionId, tc.taskId, ...
@@ -212,5 +256,7 @@ taskcomm:
       period: month                 # day | week | month; выбирается один раз
       create-ahead: 3
       interval: 1h
-      drop: { enabled: false, retention: 180d }
+      drop:
+        enabled: false
+        retention: 180d
 ```
