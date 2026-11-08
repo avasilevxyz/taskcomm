@@ -7,11 +7,14 @@ allprojects {
     group = 'xyz.avasilev'
     version = '2.0.0'
 
-    // Публикация — в GitHub Packages, из GitHub Actions по тегу v<версия>
-    // (docs/adr/0146-publishing-to-github-packages.md). Учётные данные — только из окружения:
-    // в workflow это GITHUB_ACTOR и встроенный GITHUB_TOKEN, в файлы репозитория они не попадают.
-    // Без них publishToMavenLocal работает как раньше, падает только publish.
+    // Публикация — из GitHub Actions по тегу v<версия> в два места: GitHub Packages
+    // (docs/adr/0146-publishing-to-github-packages.md) и Maven Central
+    // (docs/adr/0147-publishing-to-maven-central.md). Учётные данные и ключ подписи — только
+    // из окружения, в файлы репозитория они не попадают. Без них publishToMavenLocal работает
+    // как раньше: подпись пропускается, падает только публикация в GitHub Packages.
     plugins.withId('maven-publish') {
+        apply plugin: 'signing'
+
         publishing {
             repositories {
                 maven {
@@ -22,11 +25,29 @@ allprojects {
                         password = providers.environmentVariable('GITHUB_TOKEN').orNull
                     }
                 }
+                // Каталог, из которого задача centralBundle собирает архив для Central Portal:
+                // file-репозиторий сам кладёт контрольные суммы, подписи кладёт плагин signing.
+                maven {
+                    name = 'CentralStaging'
+                    url = rootProject.layout.buildDirectory.dir('central/staging')
+                }
             }
             publications.withType(MavenPublication).configureEach {
                 pom {
                     name = project.name
+                    description = [
+                            'taskcomm-autoconfigure'      : 'Код и автоконфигурации taskcomm: задачи, коммуникации с внешними системами, REST',
+                            'taskcomm-spring-boot-starter': 'Spring Boot стартер taskcomm: таск-менеджмент и коммуникации с внешними системами на PostgreSQL',
+                            'taskcomm-bom'                : 'Версии taskcomm и согласованных с ним зависимостей',
+                    ][project.name]
                     url = 'https://github.com/avasilevxyz/taskcomm'
+                    developers {
+                        developer {
+                            id = 'avasilevxyz'
+                            name = 'Anton Vasilev'
+                            url = 'https://github.com/avasilevxyz'
+                        }
+                    }
                     licenses {
                         license {
                             name = 'MIT License'
@@ -36,9 +57,58 @@ allprojects {
                     scm {
                         url = 'https://github.com/avasilevxyz/taskcomm'
                         connection = 'scm:git:https://github.com/avasilevxyz/taskcomm.git'
+                        developerConnection = 'scm:git:ssh://git@github.com/avasilevxyz/taskcomm.git'
                     }
                 }
             }
+        }
+
+        // Central принимает только подписанные артефакты. Ключ — ASCII-armored закрытый ключ
+        // в SIGNING_KEY, пароль — в SIGNING_PASSWORD. Нет ключа — подпись не обязательна
+        // и пропускается: так работают локальная сборка и publishToMavenLocal.
+        def signingKey = providers.environmentVariable('SIGNING_KEY')
+        signing {
+            required = signingKey.present
+            if (signingKey.present) {
+                useInMemoryPgpKeys(signingKey.get(), providers.environmentVariable('SIGNING_PASSWORD').orNull)
+            }
+            sign publishing.publications
+        }
+
+        // Каталог очищается перед публикацией в него: в архив не должны попасть файлы прошлых сборок.
+        tasks.withType(PublishToMavenRepository).configureEach {
+            if (name.endsWith('ToCentralStagingRepository')) {
+                dependsOn rootProject.tasks.named('cleanCentralStaging')
+            }
+        }
+    }
+}
+
+// Архив выпуска для Central Portal (docs/adr/0147-publishing-to-maven-central.md): все модули,
+// опубликованные в каталог CentralStaging, с подписями и контрольными суммами. Отправляет его
+// workflow publish.yml; здесь — только сборка и проверка, что подписано всё.
+def centralStaging = layout.buildDirectory.dir('central/staging')
+
+tasks.register('cleanCentralStaging', Delete) {
+    delete centralStaging
+}
+
+tasks.register('centralBundle', Zip) {
+    group = 'publishing'
+    description = 'Собирает подписанный архив выпуска для Maven Central.'
+    dependsOn subprojects.collect { "${it.path}:publishAllPublicationsToCentralStagingRepository" }
+    from centralStaging
+    exclude '**/maven-metadata*'
+    destinationDirectory = layout.buildDirectory.dir('central')
+    archiveFileName = 'central-bundle.zip'
+    doFirst {
+        def unsigned = fileTree(centralStaging) {
+            include '**/*.jar', '**/*.pom', '**/*.module'
+        }.files.findAll { !new File(it.path + '.asc').exists() }
+        if (!unsigned.isEmpty()) {
+            throw new GradleException(
+                    'Central не примет неподписанные файлы — задайте SIGNING_KEY и SIGNING_PASSWORD: '
+                            + unsigned*.name.join(', '))
         }
     }
 }

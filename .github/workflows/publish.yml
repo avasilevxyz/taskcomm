@@ -1,5 +1,7 @@
-# Публикация в GitHub Packages по тегу v<версия> (docs/adr/0146-publishing-to-github-packages.md).
-# Публикуется только то, что прошло полную сборку; учётные данные — встроенный GITHUB_TOKEN.
+# Публикация по тегу v<версия> в GitHub Packages (docs/adr/0146-publishing-to-github-packages.md)
+# и Maven Central (docs/adr/0147-publishing-to-maven-central.md).
+# Публикуется только то, что прошло полную сборку. Секреты репозитория: SIGNING_KEY, SIGNING_PASSWORD,
+# CENTRAL_USERNAME, CENTRAL_PASSWORD; для GitHub Packages хватает встроенного GITHUB_TOKEN.
 name: publish
 
 on:
@@ -34,6 +36,35 @@ jobs:
 
       - run: ./gradlew build
 
-      - run: ./gradlew publish
+      # Подписанные артефакты — в GitHub Packages и в архив для Central (docs/adr/0147-publishing-to-maven-central.md).
+      - run: ./gradlew publishAllPublicationsToGitHubPackagesRepository centralBundle
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+
+      # Загрузка в Central Portal с автоматическим выпуском и ожидание, пока портал проверит архив.
+      # Выпущенную версию в Central не удалить и не заменить, поэтому шаг идёт последним.
+      - name: Выпустить в Maven Central
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+        run: |
+          auth="Authorization: Bearer $(printf '%s:%s' "$CENTRAL_USERNAME" "$CENTRAL_PASSWORD" | base64 -w0)"
+          api=https://central.sonatype.com/api/v1/publisher
+          id=$(curl --fail-with-body -sS -X POST -H "$auth" \
+            -F bundle=@build/central/central-bundle.zip \
+            "$api/upload?name=taskcomm-${GITHUB_REF_NAME}&publishingType=AUTOMATIC")
+          echo "Развёртывание $id"
+          for i in $(seq 1 60); do
+            status=$(curl --fail-with-body -sS -X POST -H "$auth" "$api/status?id=$id")
+            state=$(echo "$status" | jq -r .deploymentState)
+            echo "Состояние: $state"
+            case "$state" in
+              PUBLISHING|PUBLISHED) exit 0 ;;
+              FAILED) echo "$status" | jq . >&2; exit 1 ;;
+            esac
+            sleep 30
+          done
+          echo "Портал не закончил проверку за 30 минут" >&2
+          exit 1
