@@ -1,0 +1,27 @@
+# Полная сборка на каждый push и pull request: то же, что gradlew.bat build локально (CLAUDE.md,
+# «Команды»), включая интеграционные тесты на Testcontainers — Docker на ubuntu-latest есть.
+name: build
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # JDK 25.0.4 или новее — settings.gradle проверяет JVM самого Gradle.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - run: ./gradlew build

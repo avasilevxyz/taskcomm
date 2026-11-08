@@ -80,7 +80,9 @@ Spring Boot стартер, инкапсулирующий таск-менедж
 - Кодировка UTF-8, перевод строки LF, финальная пустая строка. `.editorconfig` и `.gitattributes`
   с `* text=auto eol=lf` — иначе при разработке под Windows в репозиторий поедут CRLF
 - group `xyz.avasilev`, базовый package `xyz.avasilev.taskcomm`, текущая версия `2.0.0`.
-  Публикация в Nexus **пока не настроена** — только `publishToMavenLocal`
+  Публикация — в GitHub Packages, **только из GitHub Actions по тегу `v<версия>`**
+  ([ADR 0146](docs/adr/0146-publishing-to-github-packages.md)); локально — `publishToMavenLocal`.
+  Выпуск — это push тега, и делается он только по явной просьбе
 
 ### Каталог версий
 

@@ -8,6 +8,52 @@
 
 Всё остальное — необязательное и включается тем, что уже есть в вашем приложении.
 
+## Репозиторий
+
+Артефакты публикуются в GitHub Packages. Он требует токен даже для чтения публичного пакета:
+заведите personal access token (classic) с правом `read:packages` и передайте его сборке
+через свойства или окружение — не в файлах репозитория.
+
+Gradle:
+
+```groovy
+repositories {
+    mavenCentral()
+    maven {
+        url = 'https://maven.pkg.github.com/avasilevxyz/taskcomm'
+        credentials {
+            username = providers.gradleProperty('gpr.user').orElse(providers.environmentVariable('GITHUB_ACTOR')).get()
+            password = providers.gradleProperty('gpr.key').orElse(providers.environmentVariable('GITHUB_TOKEN')).get()
+        }
+    }
+}
+```
+
+`gpr.user` и `gpr.key` — в `~/.gradle/gradle.properties`. В GitHub Actions своего репозитория
+хватит встроенного `GITHUB_TOKEN` с правом `packages: read`, если пакет доступен этому
+репозиторию.
+
+Maven — репозиторий в `pom.xml`, токен — в `~/.m2/settings.xml` под тем же `id`:
+
+```xml
+<repositories>
+    <repository>
+        <id>taskcomm</id>
+        <url>https://maven.pkg.github.com/avasilevxyz/taskcomm</url>
+    </repository>
+</repositories>
+```
+
+```xml
+<servers>
+    <server>
+        <id>taskcomm</id>
+        <username>ваш-логин-github</username>
+        <password>токен с read:packages</password>
+    </server>
+</servers>
+```
+
 ## Необязательные зависимости
 
 Стартер ничего из этого не тянет: функция появляется, когда зависимость уже есть у вас.

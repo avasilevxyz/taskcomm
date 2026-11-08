@@ -544,8 +544,10 @@
 
 ## 9. Публикация
 
-- [ ] Настройка Nexus и учётных данных
-- [ ] Первый релиз `2.0.0`
+- [x] Публикация в GitHub Packages из GitHub Actions по тегу, сборка на каждый push и pull
+      request ([ADR 0146](adr/0146-publishing-to-github-packages.md))
+- [ ] Первый релиз `2.0.0` — push тега `v2.0.0`
+- [ ] Nexus или Maven Central — чтение без токена GitHub; ждёт адреса и учётных данных
 
 ---
 

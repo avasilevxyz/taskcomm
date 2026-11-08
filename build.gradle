@@ -6,6 +6,41 @@
 allprojects {
     group = 'xyz.avasilev'
     version = '2.0.0'
+
+    // Публикация — в GitHub Packages, из GitHub Actions по тегу v<версия>
+    // (docs/adr/0146-publishing-to-github-packages.md). Учётные данные — только из окружения:
+    // в workflow это GITHUB_ACTOR и встроенный GITHUB_TOKEN, в файлы репозитория они не попадают.
+    // Без них publishToMavenLocal работает как раньше, падает только publish.
+    plugins.withId('maven-publish') {
+        publishing {
+            repositories {
+                maven {
+                    name = 'GitHubPackages'
+                    url = 'https://maven.pkg.github.com/avasilevxyz/taskcomm'
+                    credentials {
+                        username = providers.environmentVariable('GITHUB_ACTOR').orNull
+                        password = providers.environmentVariable('GITHUB_TOKEN').orNull
+                    }
+                }
+            }
+            publications.withType(MavenPublication).configureEach {
+                pom {
+                    name = project.name
+                    url = 'https://github.com/avasilevxyz/taskcomm'
+                    licenses {
+                        license {
+                            name = 'MIT License'
+                            url = 'https://opensource.org/licenses/MIT'
+                        }
+                    }
+                    scm {
+                        url = 'https://github.com/avasilevxyz/taskcomm'
+                        connection = 'scm:git:https://github.com/avasilevxyz/taskcomm.git'
+                    }
+                }
+            }
+        }
+    }
 }
 
 configure(subprojects.findAll { it.name != 'taskcomm-bom' }) {
@@ -20,6 +55,9 @@ configure(subprojects.findAll { it.name != 'taskcomm-bom' }) {
         toolchain {
             languageVersion = JavaLanguageVersion.of(25)
         }
+        // Исходники и Javadoc рядом с jar: IDE потребителя показывает документацию публичного API.
+        withSourcesJar()
+        withJavadocJar()
     }
 
     tasks.withType(JavaCompile).configureEach {
@@ -34,8 +72,7 @@ configure(subprojects.findAll { it.name != 'taskcomm-bom' }) {
         options.encoding = 'UTF-8'
     }
 
-    // Публикация в Nexus пока не настроена (CLAUDE.md) — только publishToMavenLocal для отладки
-    // в приложении-потребителе. Все модули публикуются под одной и той же version/group.
+    // Все модули публикуются под одной и той же version/group; репозиторий — в allprojects выше.
     publishing {
         publications {
             maven(MavenPublication) {

@@ -1,0 +1,39 @@
+# Публикация в GitHub Packages по тегу v<версия> (docs/adr/0146-publishing-to-github-packages.md).
+# Публикуется только то, что прошло полную сборку; учётные данные — встроенный GITHUB_TOKEN.
+name: publish
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Тег обязан совпадать с версией в build.gradle: иначе под тегом v2.0.1 уехал бы 2.0.0.
+      - name: Сверить тег с версией
+        run: |
+          version=$(sed -n "s/^ *version = '\(.*\)'/\1/p" build.gradle | head -n 1)
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "Тег ${GITHUB_REF_NAME} не совпадает с версией ${version} в build.gradle" >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - run: ./gradlew build
+
+      - run: ./gradlew publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
