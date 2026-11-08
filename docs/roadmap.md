@@ -547,10 +547,9 @@
 - [x] Публикация в GitHub Packages из GitHub Actions по тегу, сборка на каждый push и pull
       request ([ADR 0146](adr/0146-publishing-to-github-packages.md))
 - [x] Первый релиз `2.0.0` — тег `v2.0.0`, опубликован в GitHub Packages
-- [ ] Maven Central — чтение без токена GitHub
-      ([ADR 0147](adr/0147-publishing-to-maven-central.md)). Сборка и workflow готовы;
-      остановились на: подтверждении namespace `xyz.avasilev`, ключе подписи и секретах
-      репозитория, затем тег `v2.0.0` перевешивается и выпуск повторяется
+- [x] Maven Central — чтение без токена GitHub
+      ([ADR 0147](adr/0147-publishing-to-maven-central.md)): namespace `xyz.avasilev` подтверждён,
+      `2.0.0` выпущен в Central и GitHub Packages с тега `v2.0.0`
 
 ---
 
