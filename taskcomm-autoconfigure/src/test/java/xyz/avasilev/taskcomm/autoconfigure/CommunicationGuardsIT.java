@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import java.time.Duration;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -63,12 +62,8 @@ class CommunicationGuardsIT {
             final JdbcClient jdbc = JdbcClient.create(context.getBean(DataSource.class));
             await().atMost(WAIT).until(() -> count(jdbc, "slow", "SUCCEEDED") == ids.size());
 
-            final List<OffsetDateTime> sent =
-                    jdbc.sql("""
-                            SELECT a.started_at FROM tc_communication_attempt a
-                              JOIN tc_communication c ON c.id = a.communication_id
-                             WHERE c.destination = 'slow' ORDER BY a.started_at""").query(OffsetDateTime.class).list();
-            assertThat(Duration.between(sent.getFirst(), sent.getLast())).isGreaterThan(Duration.ZERO);
+            // Лимит действует между захватом и отправкой, поэтому меряется по вызовам процессора,
+            // а не по started_at попыток: один такт захватывает пачку с одним now() транзакции.
             assertThat(context.getBean(SlowProcessor.class).span()).isGreaterThanOrEqualTo(Duration.ofMillis(800));
         });
     }
