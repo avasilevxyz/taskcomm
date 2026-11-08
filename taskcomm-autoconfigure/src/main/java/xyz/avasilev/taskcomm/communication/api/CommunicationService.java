@@ -33,6 +33,7 @@ public interface CommunicationService {
      * @param payload доменная форма запроса
      * @param <TRequest> доменная форма запроса
      * @return созданная коммуникация или дубликат
+     * @throws xyz.avasilev.taskcomm.TaskcommException если внешняя система не объявлена ни одним процессором
      */
     <TRequest> SendResult<TRequest> send(String destination, TRequest payload);
 
@@ -44,6 +45,7 @@ public interface CommunicationService {
      * @param execution дело; побеждает неявную привязку потока
      * @param <TRequest> доменная форма запроса
      * @return созданная коммуникация или дубликат
+     * @throws xyz.avasilev.taskcomm.TaskcommException если внешняя система не объявлена ни одним процессором
      */
     <TRequest> SendResult<TRequest> send(String destination, TRequest payload, ExecutionRef execution);
 
@@ -55,6 +57,7 @@ public interface CommunicationService {
      * @param options дело, «не раньше», приоритет, ключи дедупликации и корреляции
      * @param <TRequest> доменная форма запроса
      * @return созданная коммуникация или дубликат
+     * @throws xyz.avasilev.taskcomm.TaskcommException если внешняя система не объявлена ни одним процессором
      */
     <TRequest> SendResult<TRequest> send(String destination, TRequest payload, CommunicationSendOptions options);
 
@@ -66,7 +69,7 @@ public interface CommunicationService {
      * @param payload доменная форма запроса
      * @param <TRequest> доменная форма запроса
      * @return созданная коммуникация или дубликат
-     * @throws IllegalArgumentException если такого процессора нет в реестре
+     * @throws xyz.avasilev.taskcomm.TaskcommException если класс не зарегистрирован процессором
      */
     <TRequest> SendResult<TRequest> send(
             Class<? extends CommunicationProcessor<TRequest, ?, ?>> processor, TRequest payload);
@@ -79,7 +82,7 @@ public interface CommunicationService {
      * @param options дело, «не раньше», приоритет, ключи дедупликации и корреляции
      * @param <TRequest> доменная форма запроса
      * @return созданная коммуникация или дубликат
-     * @throws IllegalArgumentException если такого процессора нет в реестре
+     * @throws xyz.avasilev.taskcomm.TaskcommException если класс не зарегистрирован процессором
      */
     <TRequest> SendResult<TRequest> send(
             Class<? extends CommunicationProcessor<TRequest, ?, ?>> processor,
@@ -95,7 +98,7 @@ public interface CommunicationService {
      * @param payloadJson запрос в JSON
      * @param options опции отправки
      * @return созданная коммуникация или дубликат
-     * @throws IllegalArgumentException если процессора такой системы нет
+     * @throws xyz.avasilev.taskcomm.TaskcommException если внешняя система не объявлена ни одним процессором
      * @throws xyz.avasilev.taskcomm.UnreadablePayloadException если JSON не разбирается в запрос процессора
      */
     SendResult<?> sendJson(String destination, String payloadJson, CommunicationSendOptions options);
@@ -108,6 +111,7 @@ public interface CommunicationService {
      * @param source внешняя система-отправитель
      * @param request что прислали
      * @return принята, дубликат или неразбираемое тело
+     * @throws xyz.avasilev.taskcomm.TaskcommException если внешняя система не объявлена ни одним процессором
      */
     ReceiveResult<?> receive(String source, InboundRequest request);
 
@@ -118,7 +122,7 @@ public interface CommunicationService {
      * @param request что прислали
      * @param <TRequest> доменная форма запроса
      * @return принята, дубликат или неразбираемое тело
-     * @throws IllegalArgumentException если такого процессора нет в реестре
+     * @throws xyz.avasilev.taskcomm.TaskcommException если класс не зарегистрирован процессором
      */
     <TRequest> ReceiveResult<TRequest> receive(
             Class<? extends CommunicationProcessor<TRequest, ?, ?>> processor, InboundRequest request);
@@ -144,6 +148,8 @@ public interface CommunicationService {
      * @param source внешняя система-отправитель
      * @param request что прислали
      * @return обработана, неуспех, дубликат или неразбираемое тело
+     * @throws xyz.avasilev.taskcomm.TaskcommException если внешняя система не объявлена ни одним процессором
+     * @throws xyz.avasilev.taskcomm.TaskcommException если вызван внутри активной транзакции
      */
     ReceiveAndProcessResult<?, ?> receiveAndProcess(String source, InboundRequest request);
 
@@ -157,7 +163,8 @@ public interface CommunicationService {
      * @param <TRequest> доменная форма запроса
      * @param <TSyncResponse> доменная форма ответа отправителю
      * @return обработана, неуспех, дубликат или неразбираемое тело
-     * @throws IllegalArgumentException если такого процессора нет в реестре
+     * @throws xyz.avasilev.taskcomm.TaskcommException если класс не зарегистрирован процессором
+     * @throws xyz.avasilev.taskcomm.TaskcommException если вызван внутри активной транзакции
      */
     <TRequest, TSyncResponse> ReceiveAndProcessResult<TRequest, TSyncResponse> receiveAndProcess(
             Class<? extends CommunicationProcessor<TRequest, TSyncResponse, ?>> processor, InboundRequest request);
@@ -170,6 +177,7 @@ public interface CommunicationService {
      * @param source внешняя система — отправитель колбэка
      * @param request колбэк
      * @return куда записан колбэк
+     * @throws xyz.avasilev.taskcomm.TaskcommException если внешняя система не объявлена ни одним процессором
      */
     ReceiveResponseResult receiveResponse(String source, CallbackRequest request);
 
@@ -181,6 +189,8 @@ public interface CommunicationService {
      * @param execution дело
      * @param externalSystem внешняя система
      * @return коммуникации дела; запрос восстановлен по дженерику процессора
+     * @throws xyz.avasilev.taskcomm.TaskcommException если у внешней системы нет процессора — запрос не во что
+     *     разобрать
      */
     List<Communication<?>> findInExecution(ExecutionRef execution, String externalSystem);
 
@@ -191,7 +201,7 @@ public interface CommunicationService {
      * @param processor класс процессора — бина в контексте
      * @param <TRequest> доменная форма запроса
      * @return коммуникации дела
-     * @throws IllegalArgumentException если такого процессора нет в реестре
+     * @throws xyz.avasilev.taskcomm.TaskcommException если класс не зарегистрирован процессором
      */
     <TRequest> List<Communication<TRequest>> findInExecution(
             ExecutionRef execution, Class<? extends CommunicationProcessor<TRequest, ?, ?>> processor);

@@ -38,6 +38,7 @@
 | обработать миллион объектов с повтором по одному | [Примеры → Массовая обработка](tasks/examples/mass-processing.md)                                               |
 | вызвать внешний REST с повторами                 | [Примеры → Вызов внешнего REST](communications/examples/rest-with-retries.md)                                   |
 | принять вебхук                                   | [Коммуникации → Асинхронный приём](communications/inbound.md#входящие-асинхронный-приём)                        |
+| принимать сообщения из Kafka                     | [Примеры → Приём из Kafka](communications/examples/kafka.md)                                                    |
 | ответить отправителю в том же соединении         | [Коммуникации → Синхронный приём](communications/inbound.md#входящие-синхронный-приём)                          |
 | получить асинхронный ответ на свой запрос        | [Коммуникации → Асинхронный ответ](communications/callback.md)                                                  |
 | не отправлять одно и то же дважды                | [Коммуникации → Дедупликация](communications/dedup-correlation.md#дедупликация)                                 |
@@ -51,6 +52,7 @@
 | настроить партиции и очистку                     | [Эксплуатация → Партиции и очистка](operations/partitions-cleanup.md)                                           |
 | написать тесты                                   | [Тестирование](testing/README.md)                                                                               |
 | понять, почему не работает                       | [Решение проблем](operations/troubleshooting.md)                                                                |
+| понять, что бросает стартер                      | [Исключения](setup/exceptions.md)                                                                               |
 | поменять контракт процессора                     | [Совместимость](evolution/compatibility.md), [Миграция контракта](evolution/contract-migration.md)              |
 | обновить версию стартера                         | [Обновление версии](evolution/upgrade.md)                                                                       |
 

@@ -82,6 +82,8 @@ Maven:
 ```
 
 Changelog читается прямо из jar стартера, наши changeSet'ы попадают в вашу `DATABASECHANGELOG`.
+Запускает Liquibase ваше приложение, а не стартер: в Spring Boot 4 для этого нужен
+`spring-boot-starter-liquibase` — одной `liquibase-core` на classpath мало.
 Обновили версию стартера — новые changeSet'ы применятся при следующем запуске. Подходит
 Liquibase 4.x и 5.x: лицензию выбираете вы своей версией.
 

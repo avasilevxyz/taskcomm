@@ -35,6 +35,8 @@ public interface TaskService {
      * @param payload параметры задачи
      * @param <TPayload> параметры задачи
      * @return созданная задача в статусе {@code PENDING}
+     * @throws xyz.avasilev.taskcomm.TaskcommException если у типа нет процессора или процессор помечен
+     *     {@code @Deprecated}
      */
     <TPayload> Task<TPayload> submit(String taskType, TPayload payload);
 
@@ -46,6 +48,8 @@ public interface TaskService {
      * @param execution дело; побеждает неявную привязку потока
      * @param <TPayload> параметры задачи
      * @return созданная задача в статусе {@code PENDING}
+     * @throws xyz.avasilev.taskcomm.TaskcommException если у типа нет процессора или процессор помечен
+     *     {@code @Deprecated}
      */
     <TPayload> Task<TPayload> submit(String taskType, TPayload payload, ExecutionRef execution);
 
@@ -57,6 +61,8 @@ public interface TaskService {
      * @param options дело, «не раньше», приоритет
      * @param <TPayload> параметры задачи
      * @return созданная задача в статусе {@code PENDING}
+     * @throws xyz.avasilev.taskcomm.TaskcommException если у типа нет процессора или процессор помечен
+     *     {@code @Deprecated}
      */
     <TPayload> Task<TPayload> submit(String taskType, TPayload payload, TaskSubmitOptions options);
 
@@ -68,7 +74,8 @@ public interface TaskService {
      * @param payload параметры задачи
      * @param <TPayload> параметры задачи
      * @return созданная задача в статусе {@code PENDING}
-     * @throws IllegalArgumentException если такого процессора нет в реестре
+     * @throws xyz.avasilev.taskcomm.TaskcommException если класс не зарегистрирован процессором или помечен
+     *     {@code @Deprecated}
      */
     <TPayload> Task<TPayload> submit(Class<? extends TaskProcessor<TPayload>> processor, TPayload payload);
 
@@ -80,7 +87,8 @@ public interface TaskService {
      * @param execution дело; побеждает неявную привязку потока
      * @param <TPayload> параметры задачи
      * @return созданная задача в статусе {@code PENDING}
-     * @throws IllegalArgumentException если такого процессора нет в реестре
+     * @throws xyz.avasilev.taskcomm.TaskcommException если класс не зарегистрирован процессором или помечен
+     *     {@code @Deprecated}
      */
     <TPayload> Task<TPayload> submit(
             Class<? extends TaskProcessor<TPayload>> processor, TPayload payload, ExecutionRef execution);
@@ -93,7 +101,8 @@ public interface TaskService {
      * @param options дело, «не раньше», приоритет
      * @param <TPayload> параметры задачи
      * @return созданная задача в статусе {@code PENDING}
-     * @throws IllegalArgumentException если такого процессора нет в реестре
+     * @throws xyz.avasilev.taskcomm.TaskcommException если класс не зарегистрирован процессором или помечен
+     *     {@code @Deprecated}
      */
     <TPayload> Task<TPayload> submit(
             Class<? extends TaskProcessor<TPayload>> processor, TPayload payload, TaskSubmitOptions options);
@@ -106,7 +115,8 @@ public interface TaskService {
      * @param payloadJson нагрузка задачи в JSON
      * @param options опции постановки
      * @return созданная задача
-     * @throws IllegalArgumentException если процессора такого типа нет
+     * @throws xyz.avasilev.taskcomm.TaskcommException если у типа нет процессора или процессор помечен
+     *     {@code @Deprecated}
      * @throws xyz.avasilev.taskcomm.UnreadablePayloadException если JSON не разбирается в нагрузку процессора
      */
     Task<?> submitJson(String taskType, String payloadJson, TaskSubmitOptions options);
@@ -119,6 +129,7 @@ public interface TaskService {
      * @param execution дело
      * @param taskType тип задачи
      * @return задачи дела этого типа; нагрузка восстановлена по дженерику процессора
+     * @throws xyz.avasilev.taskcomm.TaskcommException если у типа нет процессора — нагрузку не во что разобрать
      */
     List<Task<?>> findInExecution(ExecutionRef execution, String taskType);
 
@@ -129,7 +140,7 @@ public interface TaskService {
      * @param processor класс процессора — бина в контексте
      * @param <TPayload> параметры задачи
      * @return задачи дела этого типа
-     * @throws IllegalArgumentException если такого процессора нет в реестре
+     * @throws xyz.avasilev.taskcomm.TaskcommException если класс не зарегистрирован процессором
      */
     <TPayload> List<Task<TPayload>> findInExecution(
             ExecutionRef execution, Class<? extends TaskProcessor<TPayload>> processor);
@@ -141,6 +152,7 @@ public interface TaskService {
      * @param task задача
      * @return результат, восстановленный по дженерику процессора, или пусто — результата нет,
      *     последняя попытка неуспешна или процессор возвращает {@link Void}
+     * @throws xyz.avasilev.taskcomm.TaskcommException если у типа нет процессора — нагрузку не во что разобрать
      */
     Optional<Object> result(Task<?> task);
 
@@ -151,7 +163,8 @@ public interface TaskService {
      * @param resultType класс результата задачи — тот, что стоит в дженерике процессора
      * @param <TResult> результат задачи
      * @return результат или пусто
-     * @throws IllegalArgumentException если класс не совпадает с результатом процессора
+     * @throws xyz.avasilev.taskcomm.TaskcommException если класс не совпадает с результатом процессора или у типа нет
+     *     процессора
      */
     <TResult> Optional<TResult> result(Task<?> task, Class<TResult> resultType);
 

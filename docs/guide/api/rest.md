@@ -132,6 +132,169 @@ GET /api/taskcomm/tasks?level=UNIT&field.order_id=A-1024&status=FAILED
 }
 ```
 
+## Примеры запросов и ответов
+
+Формы ответов сняты с работающего стартера; имена типов, полей и значения условные,
+идентификаторы сокращены. Поля со значением `null` в ответ не попадают: у задачи без описания
+статуса нет `statusDescription`, у последней страницы нет `next`.
+
+**Поставить задачу:**
+
+```
+POST /api/taskcomm/tasks?type=order-sync
+Content-Type: application/json
+
+{"order_id": "A-1024"}
+```
+
+```json
+201 Created
+{
+  "id": "01a1b72c-7428-…",
+  "execution": { "id": "01a1b72c-7426-…", "createdAt": "2026-11-07T18:01:46.271987Z" },
+  "status": "PENDING"
+}
+```
+
+Сохраните пару `execution.id` и `execution.createdAt`: по ней дело читается в своей партиции,
+без обхода всех.
+
+**Найти задачу по полю нагрузки:**
+
+```
+GET /api/taskcomm/tasks?field.order_id=A-1024
+```
+
+```json
+200 OK
+{
+  "items": [
+    {
+      "id": "01a1b72c-7428-…",
+      "level": "TASK",
+      "taskType": "order-sync",
+      "execution": { "id": "01a1b72c-7426-…", "createdAt": "2026-11-07T18:01:46.271987Z" },
+      "parents": {},
+      "state": {
+        "status": "PENDING",
+        "priority": 100,
+        "createdAt": "2026-11-07T18:01:46.271987Z",
+        "updatedAt": "2026-11-07T18:01:46.271987Z",
+        "orphan": false
+      },
+      "payload": { "order_id": "A-1024" }
+    }
+  ],
+  "window": { "from": "2026-10-08T18:01:46Z", "to": "2026-11-07T18:01:46Z", "everywhere": false }
+}
+```
+
+`parents` у подзадачи несёт `taskId` и `batchId`, у задачи он пуст. `payload` — нагрузка как
+она лежит в базе.
+
+**Поле, которое никто не объявил:**
+
+```
+GET /api/taskcomm/tasks?field.customer=x
+```
+
+```json
+400 Bad Request
+{
+  "error": "Поиск по полям [customer] уровня TASK: ни один тип не объявил все эти поля с подходящим типом значения. Известные поля: [order_id].",
+  "knownFields": ["order_id"]
+}
+```
+
+**Отменить и перезапустить:**
+
+```
+POST /api/taskcomm/tasks/TASK/01a1b72c-7428-…/cancel
+```
+
+```json
+200 OK
+{ "accepted": true, "reason": "отменена сразу: работа над ней не шла" }
+```
+
+Повторная отмена и перезапуск незавершённой отвергаются с `409` и причиной:
+
+```json
+409 Conflict
+{ "accepted": false, "reason": "перезапускается только завершённая сущность, а задача 01a1b72c-7428-… в статусе PENDING" }
+```
+
+**Сводка по типам:**
+
+```
+GET /api/taskcomm/tasks/summary
+```
+
+```json
+200 OK
+[ { "level": "TASK", "taskType": "order-sync", "status": "PENDING", "count": 1, "orphan": false } ]
+```
+
+**Отправить коммуникацию и найти её:**
+
+```
+POST /api/taskcomm/communications/outbound/bank
+Content-Type: application/json
+
+{"id": "payment-77"}
+```
+
+```json
+201 Created
+{ "id": "01a1b72c-87e5-…", "execution": { "id": "01a1b72c-87e3-…", "createdAt": "2026-11-07T18:01:51.325202Z" }, "status": "PENDING" }
+```
+
+```
+GET /api/taskcomm/communications?system=bank
+```
+
+```json
+200 OK
+{
+  "items": [
+    {
+      "id": "01a1b72c-87e5-…",
+      "direction": "OUTBOUND",
+      "externalSystem": "bank",
+      "execution": { "id": "01a1b72c-87e3-…", "createdAt": "2026-11-07T18:01:51.325202Z" },
+      "state": {
+        "status": "PENDING",
+        "phase": "PROCESS",
+        "priority": 100,
+        "createdAt": "2026-11-07T18:01:51.325202Z",
+        "updatedAt": "2026-11-07T18:01:51.325202Z",
+        "orphan": false
+      },
+      "requestPayload": { "id": "payment-77" }
+    }
+  ],
+  "window": { "from": "2026-10-08T18:01:51Z", "to": "2026-11-07T18:01:51Z", "everywhere": false }
+}
+```
+
+**Дело целиком:**
+
+```
+GET /api/taskcomm/executions/01a1b72c-7426-…?createdAt=2026-11-07T18:01:46.271987Z
+```
+
+```json
+200 OK
+{
+  "execution": { "id": "01a1b72c-7426-…", "createdAt": "2026-11-07T18:01:46.271987Z" },
+  "tasks": [ { "id": "01a1b72c-7428-…", "level": "TASK", "taskType": "order-sync", "…": "…" } ],
+  "batches": [],
+  "units": [],
+  "communications": [],
+  "correlationKeys": []
+}
+```
+
 ## Ошибки
 
 | Код   | Когда                                                                                 | Тело                                                                      |
