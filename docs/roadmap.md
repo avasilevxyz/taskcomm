@@ -551,6 +551,16 @@
       ([ADR 0147](adr/0147-publishing-to-maven-central.md)): namespace `xyz.avasilev` подтверждён,
       `2.0.0` выпущен в Central и GitHub Packages с тега `v2.0.0`
 
+## 10. Работа с ИИ-агентами потребителя
+
+- [x] Эксперимент: агент подключает taskcomm по ссылке, затем без ссылки пишет процессор
+      исходящей коммуникации — код рабочий, но руководство агент не находит
+      ([ADR 0148](adr/0148-agent-guide-in-jar.md))
+- [x] Памятка `docs/guide/agents.md` в jar как `META-INF/taskcomm/AGENTS.md`, абсолютные ссылки
+      на тег версии, правило путей `docs/...` в Javadoc, `verifyVersionedLinks`
+- [ ] Выпуск с памяткой и повтор эксперимента на нём
+- [ ] Skill для Claude Code — если повтор покажет, что памятки мало
+
 ---
 
 ## Открытые вопросы

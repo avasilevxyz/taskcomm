@@ -53,6 +53,7 @@
 | написать тесты                                   | [Тестирование](testing/README.md)                                                                               |
 | понять, почему не работает                       | [Решение проблем](operations/troubleshooting.md)                                                                |
 | понять, что бросает стартер                      | [Исключения](setup/exceptions.md)                                                                               |
+| поручить работу с taskcomm ИИ-агенту             | [Для ИИ-агентов](agents.md)                                                                                     |
 | поменять контракт процессора                     | [Совместимость](evolution/compatibility.md), [Миграция контракта](evolution/contract-migration.md)              |
 | обновить версию стартера                         | [Обновление версии](evolution/upgrade.md)                                                                       |
 

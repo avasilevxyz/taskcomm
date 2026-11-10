@@ -115,15 +115,16 @@ public void close(YearMonth month) {
 - [Понятия](docs/guide/start/concepts.md) — словарь.
 - [Настройки](docs/guide/setup/configuration.md) — все свойства `taskcomm.*`.
 - [Совместимость](docs/guide/evolution/compatibility.md) — что нельзя менять в своём коде, когда работа уже в базе.
+- [Для ИИ-агентов](docs/guide/agents.md) — памятка агенту, который пишет код с taskcomm; она же
+  лежит в jar как `META-INF/taskcomm/AGENTS.md`.
 
 Как устроен стартер и почему именно так — [architecture.md](docs/architecture.md) и
 [журнал решений](docs/adr/README.md).
 
 ## Статус и версии
 
-Текущая версия — `2.0.0`. Задачи, коммуникации, REST и наблюдаемость готовы; публикация
-в репозиторий артефактов ещё не настроена — пока сборка ставится только в локальный Maven
-(`gradlew publishToMavenLocal`). Что дальше — [roadmap](docs/roadmap.md).
+Текущая версия — `2.0.0`, опубликована в Maven Central: отдельный репозиторий объявлять
+не нужно. Что дальше — [roadmap](docs/roadmap.md).
 
 Версии — по semver: мажорная поднимается только при потере обратной совместимости. Свойства
 и API не удаляются сразу — сначала помечаются устаревшими с указанием замены. Совместимость

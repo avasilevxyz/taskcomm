@@ -88,8 +88,45 @@ def integrationTest = tasks.register('integrationTest', Test) {
     jvmArgumentProviders.add({ ["-Dtaskcomm.test.liquibase4.classpath=${liquibase4.asPath}"] } as CommandLineArgumentProvider)
 }
 
+// Памятка для ИИ-агентов потребителя (docs/adr/0148-agent-guide-in-jar.md): страница руководства
+// docs/guide/agents.md кладётся в jar как META-INF/taskcomm/AGENTS.md. Агент находит её в самом
+// артефакте, поэтому относительные ссылки руководства превращаются в абсолютные — на тег этой версии.
+def repositoryAtVersion = "https://github.com/avasilevxyz/taskcomm/blob/v${version}"
+tasks.named('processResources', ProcessResources) {
+    inputs.property('repositoryAtVersion', repositoryAtVersion)
+    from(rootProject.file('docs/guide/agents.md')) {
+        into 'META-INF/taskcomm'
+        rename { 'AGENTS.md' }
+        filter { String line ->
+            line.replaceAll(/\]\((?!https?:)([^)]+)\)/) { all, target -> "](${repositoryAtVersion}/docs/guide/${target})" }
+        }
+    }
+}
+
+// Ссылки на репозиторий в Javadoc публичного API ведут на тег версии. Поднял версию — ссылки обязаны
+// переехать вместе с ней, иначе Javadoc нового выпуска отправит читателя к правилам старого.
+def verifyVersionedLinks = tasks.register('verifyVersionedLinks') {
+    group = 'verification'
+    description = 'Проверяет, что ссылки на репозиторий в исходниках ведут на тег текущей версии.'
+    def sources = fileTree('src/main/java') { include '**/*.java' }
+    def expected = "v${version}"
+    inputs.files(sources)
+    inputs.property('expected', expected)
+    doLast {
+        def stale = sources.files.collectMany { file ->
+            (file.text =~ /avasilevxyz\/taskcomm\/(?:blob|tree)\/(v[0-9][0-9A-Za-z.-]*)/).collect { it[1] }
+                    .findAll { it != expected }
+                    .collect { "${file.name}: ${it}" }
+        }
+        if (!stale.isEmpty()) {
+            throw new GradleException("Ссылки на чужую версию вместо ${expected}: ${stale.join(', ')}")
+        }
+    }
+}
+
 tasks.named('check') {
     dependsOn integrationTest
+    dependsOn verifyVersionedLinks
 }
 
 // Нагрузочные сценарии (*LoadScenario) — вне check, запускаются руками на машине с Docker
