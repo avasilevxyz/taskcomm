@@ -9,6 +9,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -143,6 +145,7 @@ class TaskcommRestAutoConfigurationIT {
             final MockMvc mvc = MockMvcBuilders.webAppContextSetup(context).build();
             final String created = mvc.perform(post(BASE + "/tasks")
                             .param("type", "orders")
+                            .param("notBefore", later())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{\"orderId\":\"A-1\"}"))
                     .andExpect(status().isCreated())
@@ -199,6 +202,7 @@ class TaskcommRestAutoConfigurationIT {
         this.contextRunner.withPropertyValues("taskcomm.rest.enabled=true").run(context -> {
             final MockMvc mvc = MockMvcBuilders.webAppContextSetup(context).build();
             final String sent = mvc.perform(post(BASE + "/communications/outbound/bank")
+                            .param("notBefore", later())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{\"id\":\"nowait-1\"}"))
                     .andExpect(status().isCreated())
@@ -221,6 +225,18 @@ class TaskcommRestAutoConfigurationIT {
             mvc.perform(get(BASE + "/communications/" + id))
                     .andExpect(jsonPath("$.state.status").value("CANCELLED"));
         });
+    }
+
+    /**
+     * Отсрочка для работы, которую тест отменяет и перезапускает. Первый такт поллера идёт сразу
+     * при старте контекста, а {@code poll.interval} отодвигает только следующие: без отсрочки такт
+     * мог захватить и выполнить работу раньше отмены, и та сохраняла настоящий исход вместо
+     * {@code CANCELLED}.
+     *
+     * @return момент через час в ISO-8601
+     */
+    private static String later() {
+        return Instant.now().plus(Duration.ofHours(1)).toString();
     }
 
     /**
