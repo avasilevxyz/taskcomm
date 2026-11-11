@@ -32,7 +32,8 @@ public class DeliveryProcessor implements RestCommunicationProcessor<Shipment, S
                 .exchange((request, response) -> {
                     String text = response.bodyTo(String.class);
                     context.recordResponse(ExchangeMessage.of(text).withStatus(response.getStatusCode().value()));
-                    if (response.getStatusCode().is4xxClientError()) {
+                    if (response.getStatusCode().is4xxClientError()
+                            && response.getStatusCode().value() != 429) {
                         context.doNotRetry("служба отвергла заказ: " + response.getStatusCode());
                         throw new IllegalStateException(text);
                     }
@@ -55,7 +56,8 @@ taskcomm:
 
 - `503` и `429` — неуспех по умолчанию, хотя процессор вернулся нормально: стартер видит
   записанный статус и повторит сам;
-- `4xx` — ошибка в данных, повтор не поможет: `doNotRetry` перед исключением;
+- остальные `4xx` — ошибка в данных, повтор не поможет: `doNotRetry` перед исключением. `429`
+  из этой проверки исключён: `doNotRetry` отменил бы повтор, который стартер сделал бы сам;
 - идентификатор коммуникации уходит в `Idempotency-Key` — повторная отправка после истёкшей
   аренды не создаст второй доставки, если служба это поддерживает;
 - размыкатель остановит отправку, пока служба лежит, и попытки не сгорят; после восстановления
