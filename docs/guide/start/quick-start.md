@@ -28,7 +28,7 @@ Gradle:
 
 ```groovy
 dependencies {
-    implementation platform('xyz.avasilev:taskcomm-bom:2.0.1')
+    implementation platform('xyz.avasilev:taskcomm-bom:2.0.2')
     implementation 'xyz.avasilev:taskcomm-spring-boot-starter'
     runtimeOnly 'org.postgresql:postgresql'
 }
@@ -42,7 +42,7 @@ Maven:
         <dependency>
             <groupId>xyz.avasilev</groupId>
             <artifactId>taskcomm-bom</artifactId>
-            <version>2.0.1</version>
+            <version>2.0.2</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -64,7 +64,7 @@ Maven:
 
 `taskcomm-bom` необязателен. Он ничего не подтягивает, а только задаёт версии стартера и тех
 необязательных зависимостей, которые включают его функции, — их можно писать без версий. Без BOM
-укажите версию стартера явно: `taskcomm-spring-boot-starter:2.0.1`.
+укажите версию стартера явно: `taskcomm-spring-boot-starter:2.0.2`.
 
 **Стартер не навязывает вам версии Spring Boot.** Он не экспортирует BOM Spring Boot: подключив
 его, вы не получите ни одной зависимости, поднятой до «наших» версий. Версию Spring Boot
