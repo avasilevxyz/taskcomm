@@ -19,7 +19,7 @@ import xyz.avasilev.taskcomm.communication.api.Communication;
  * с одной {@link #externalSystem()} — падение при старте. Процессор не удаляется никогда, пока в базе
  * есть коммуникации его системы. Имя системы, поля {@code TRequest} и транспорт — формат уже
  * записанных данных: у живой системы их не меняют, часть таких правок теряет данные молча
- * (<a href="https://github.com/avasilevxyz/taskcomm/blob/v2.0.2/docs/guide/evolution/compatibility.md">Совместимость</a>).
+ * (<a href="https://github.com/avasilevxyz/taskcomm/blob/v2.1.0/docs/guide/evolution/compatibility.md">Совместимость</a>).
  *
  * <p><b>Гарантия — at-least-once</b>: аренда может истечь у живого, но медленного воркера, и ту же
  * коммуникацию подберёт другой. {@link #process} и {@link #handleResponse} обязаны быть идемпотентными;

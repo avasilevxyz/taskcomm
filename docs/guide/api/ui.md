@@ -3,12 +3,12 @@
 Экраны сопровождения поверх [REST API](rest.md): что стоит в очереди и что упало, карточки задач
 и коммуникаций с историей попыток, дело целиком — кто кого создал, — отмена, перезапуск и создание.
 Интерфейс — отдельный модуль `taskcomm-ui`, в стартер он не входит: подключают его те, кому он нужен.
-Модуль появился в выпуске, следующем за 2.0.2.
+Модуль появился в выпуске 2.1.0.
 
 ## Подключение
 
 ```groovy
-implementation platform('xyz.avasilev:taskcomm-bom:<версия>')
+implementation platform('xyz.avasilev:taskcomm-bom:2.1.0')
 implementation 'xyz.avasilev:taskcomm-spring-boot-starter'
 implementation 'xyz.avasilev:taskcomm-ui'
 ```

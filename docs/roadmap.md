@@ -614,6 +614,9 @@
 Этап сделан: критерий готовности проверен прогоном 11d, а отсутствие интерфейса без REST,
 с `taskcomm.ui.enabled: false` и с `taskcomm.enabled: false` — тестами `TaskcommUiAutoConfigurationIT`.
 
+- [x] Выпуск `2.1.0`: модуль `taskcomm-ui` и REST по `/tc/api` — Maven Central и GitHub Packages, тег
+      `v2.1.0`
+
 ---
 
 ## Открытые вопросы
