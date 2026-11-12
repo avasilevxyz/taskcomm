@@ -118,7 +118,7 @@ public class TaskcommProperties {
         private boolean enabled;
 
         /** Префикс путей REST. */
-        private String basePath = "/api/taskcomm";
+        private String basePath = "/tc/api";
 
         /**
          * Окно чтения истории по умолчанию — по времени создания дела, а не сущности: так устроен ключ

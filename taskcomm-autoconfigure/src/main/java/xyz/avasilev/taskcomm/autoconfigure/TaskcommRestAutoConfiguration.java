@@ -14,15 +14,18 @@ import org.springframework.web.servlet.DispatcherServlet;
 import xyz.avasilev.taskcomm.TaskcommConfigurationException;
 import xyz.avasilev.taskcomm.communication.api.CommunicationService;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationInspection;
+import xyz.avasilev.taskcomm.communication.api.processor.CommunicationProcessor;
 import xyz.avasilev.taskcomm.execution.api.ExecutionService;
 import xyz.avasilev.taskcomm.rest.CommunicationController;
 import xyz.avasilev.taskcomm.rest.ExecutionController;
+import xyz.avasilev.taskcomm.rest.MetaController;
 import xyz.avasilev.taskcomm.rest.RestMapper;
 import xyz.avasilev.taskcomm.rest.RestMapperImpl;
 import xyz.avasilev.taskcomm.rest.RestWindows;
 import xyz.avasilev.taskcomm.rest.TaskController;
 import xyz.avasilev.taskcomm.task.api.TaskService;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskInspection;
+import xyz.avasilev.taskcomm.task.api.processor.TaskProcessor;
 
 /**
  * REST API стартера (docs/adr/0014-rest-api.md, docs/adr/0091-rest-disabled-by-default.md,
@@ -88,6 +91,35 @@ public class TaskcommRestAutoConfiguration {
             final ObjectProvider<CommunicationInspection> communications,
             final RestMapper mapper) {
         return new ExecutionController(executions, tasks.getIfAvailable(), communications.getIfAvailable(), mapper);
+    }
+
+    /**
+     * Описание экземпляра для интерфейса (docs/adr/0150-execution-outline-and-meta.md); процессоры
+     * выключенной подсистемы в выдачу не попадают.
+     *
+     * @param properties свойства стартера
+     * @param taskInspection чтение задач — признак включённой подсистемы задач
+     * @param taskProcessors процессоры задач
+     * @param communicationInspection чтение коммуникаций — признак включённой подсистемы коммуникаций
+     * @param communicationProcessors процессоры коммуникаций
+     * @return контроллер
+     */
+    @Bean
+    public MetaController taskcommMetaController(
+            final TaskcommProperties properties,
+            final ObjectProvider<TaskInspection> taskInspection,
+            final ObjectProvider<TaskProcessor<?>> taskProcessors,
+            final ObjectProvider<CommunicationInspection> communicationInspection,
+            final ObjectProvider<CommunicationProcessor<?, ?, ?>> communicationProcessors) {
+        return new MetaController(
+                TaskcommRestAutoConfiguration.class.getPackage().getImplementationVersion(),
+                properties.getRest().getSearchWindow(),
+                taskInspection.getIfAvailable() == null
+                        ? null
+                        : taskProcessors.orderedStream().toList(),
+                communicationInspection.getIfAvailable() == null
+                        ? null
+                        : communicationProcessors.orderedStream().toList());
     }
 
     /**

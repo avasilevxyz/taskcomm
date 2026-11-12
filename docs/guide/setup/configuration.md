@@ -247,7 +247,7 @@ taskcomm:
     interval: 30s                   # такт снимка метрик на всю схему
   rest:
     enabled: false                  # выключен по умолчанию: пути надо закрыть самому
-    base-path: /api/taskcomm
+    base-path: /tc/api              # до 2.0.2 включительно — /api/taskcomm
     search-window: 30d              # окно чтения истории по времени создания дела
   schema:
     initialize: never               # never | embedded | always; для тестов — always

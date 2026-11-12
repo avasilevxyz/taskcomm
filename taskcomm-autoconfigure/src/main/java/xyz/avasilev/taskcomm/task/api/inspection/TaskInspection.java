@@ -3,6 +3,7 @@ package xyz.avasilev.taskcomm.task.api.inspection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.api.HistoryWindow;
 import xyz.avasilev.taskcomm.execution.api.Page;
 import xyz.avasilev.taskcomm.execution.api.PageRequest;
@@ -62,4 +63,13 @@ public interface TaskInspection {
      * @return строки сводки
      */
     List<TaskTypeSummary> summary(HistoryWindow window);
+
+    /**
+     * Счётчики подзадач дела по родителю и статусу — прогресс без чтения подзадач
+     * (docs/adr/0150-execution-outline-and-meta.md). Чтение идёт в партиции дела, окно не применяется.
+     *
+     * @param execution дело
+     * @return строки «задача, группа, статус, число»
+     */
+    List<TaskUnitCount> unitCounts(ExecutionRef execution);
 }

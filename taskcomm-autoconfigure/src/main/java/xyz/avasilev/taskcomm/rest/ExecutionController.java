@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationInspection;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationQuery;
+import xyz.avasilev.taskcomm.communication.api.inspection.CorrelationKeySnapshot;
 import xyz.avasilev.taskcomm.execution.api.Execution;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.api.ExecutionService;
@@ -23,14 +24,16 @@ import xyz.avasilev.taskcomm.execution.api.PageRequest;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskInspection;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskQuery;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskSnapshot;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskUnitCount;
 
 /**
  * Дело одной выдачей (docs/adr/0064-entity-origin-links.md, docs/adr/0140-rest-controllers.md): все задачи,
  * группы, подзадачи и коммуникации дела в порядке создания, у каждой — её создатель, и ключи корреляции.
- * Без предела: выдача читает всю партицию дела страницами и отдаёт её целиком.
+ * Без предела: выдача читает всю партицию дела страницами и отдаёт её целиком. Для экрана — выдача без
+ * подзадач со счётчиками (docs/adr/0150-execution-outline-and-meta.md).
  */
 @RestController
-@RequestMapping("${taskcomm.rest.base-path:/api/taskcomm}/executions")
+@RequestMapping("${taskcomm.rest.base-path:/tc/api}/executions")
 public class ExecutionController extends RestErrors {
 
     /** Размер страницы, которой выдача читает партицию дела. */
@@ -74,10 +77,39 @@ public class ExecutionController extends RestErrors {
     public ResponseEntity<RestDtos.ExecutionDto> execution(
             @PathVariable("id") final UUID id,
             @RequestParam(name = "createdAt", required = false) final Instant createdAt) {
-        final Optional<ExecutionRef> ref = createdAt == null
+        return this.ref(id, createdAt)
+                .map(found -> ResponseEntity.ok(this.whole(found)))
+                .orElseGet(() -> notFound("дело " + id));
+    }
+
+    /**
+     * Дело без подзадач (docs/adr/0150-execution-outline-and-meta.md): задачи, группы, коммуникации, ключи
+     * корреляции и счётчики подзадач по родителю и статусу. Сами подзадачи — списком {@code GET /tasks}
+     * с {@code level=UNIT}, делом и родителем, страницами.
+     *
+     * @param id идентификатор дела
+     * @param createdAt время создания дела; не задано — ищется по идентификатору
+     * @return дело или {@code 404}
+     */
+    @GetMapping("/{id}/outline")
+    public ResponseEntity<RestDtos.ExecutionOutlineDto> outline(
+            @PathVariable("id") final UUID id,
+            @RequestParam(name = "createdAt", required = false) final Instant createdAt) {
+        return this.ref(id, createdAt)
+                .map(found -> ResponseEntity.ok(new RestDtos.ExecutionOutlineDto(
+                        this.mapper.execution(found),
+                        this.level(found, TaskSnapshot.Level.TASK),
+                        this.level(found, TaskSnapshot.Level.BATCH),
+                        this.tasks == null ? List.<TaskUnitCount>of() : this.tasks.unitCounts(found),
+                        this.communications(found),
+                        this.correlationKeys(found))))
+                .orElseGet(() -> notFound("дело " + id));
+    }
+
+    private Optional<ExecutionRef> ref(final UUID id, final Instant createdAt) {
+        return createdAt == null
                 ? this.executions.find(id).map(Execution::ref)
                 : Optional.of(new ExecutionRef(id, createdAt));
-        return ref.map(found -> ResponseEntity.ok(this.whole(found))).orElseGet(() -> notFound("дело " + id));
     }
 
     private RestDtos.ExecutionDto whole(final ExecutionRef execution) {
@@ -86,15 +118,21 @@ public class ExecutionController extends RestErrors {
                 this.level(execution, TaskSnapshot.Level.TASK),
                 this.level(execution, TaskSnapshot.Level.BATCH),
                 this.level(execution, TaskSnapshot.Level.UNIT),
-                this.communications == null
-                        ? List.of()
-                        : all(
-                                cursor -> this.communications.list(
-                                        CommunicationQuery.all().inExecution(execution),
-                                        HistoryWindow.everywhere(),
-                                        cursor),
-                                this.mapper::communication),
-                this.communications == null ? List.of() : this.communications.correlationKeys(execution));
+                this.communications(execution),
+                this.correlationKeys(execution));
+    }
+
+    private List<RestDtos.CommunicationDto> communications(final ExecutionRef execution) {
+        return this.communications == null
+                ? List.of()
+                : all(
+                        cursor -> this.communications.list(
+                                CommunicationQuery.all().inExecution(execution), HistoryWindow.everywhere(), cursor),
+                        this.mapper::communication);
+    }
+
+    private List<CorrelationKeySnapshot> correlationKeys(final ExecutionRef execution) {
+        return this.communications == null ? List.of() : this.communications.correlationKeys(execution);
     }
 
     private List<RestDtos.TaskDto> level(final ExecutionRef execution, final TaskSnapshot.Level level) {

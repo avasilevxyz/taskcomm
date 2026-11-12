@@ -36,7 +36,7 @@ import xyz.avasilev.taskcomm.execution.api.Page;
  * Приём входящих сюда не входит: его ведёт контроллер потребителя (docs/adr/0133-synchronous-inbound-reception.md).
  */
 @RestController
-@RequestMapping("${taskcomm.rest.base-path:/api/taskcomm}/communications")
+@RequestMapping("${taskcomm.rest.base-path:/tc/api}/communications")
 public class CommunicationController extends RestErrors {
 
     private final CommunicationService communications;

@@ -12,6 +12,7 @@ import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.util.function.SingletonSupplier;
+import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.api.HistoryWindow;
 import xyz.avasilev.taskcomm.execution.api.Page;
 import xyz.avasilev.taskcomm.execution.api.PageRequest;
@@ -21,6 +22,7 @@ import xyz.avasilev.taskcomm.task.api.inspection.TaskInspection;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskQuery;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskSnapshot;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskTypeSummary;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskUnitCount;
 import xyz.avasilev.taskcomm.task.api.processor.FieldType;
 import xyz.avasilev.taskcomm.task.internal.TaskLevel;
 import xyz.avasilev.taskcomm.task.internal.TaskSql;
@@ -71,6 +73,14 @@ public class DefaultTaskInspection implements TaskInspection {
                    last_declared_at
               FROM tc_searchable_field
              ORDER BY level, task_type, field_name, json_path
+            """;
+
+    private static final String UNIT_COUNTS = """
+            SELECT e.task_id, e.batch_id, e.status, count(*) AS n
+              FROM tc_task_unit e
+             WHERE e.execution_created_at = :executionCreatedAt AND e.execution_id = :executionId
+             GROUP BY e.task_id, e.batch_id, e.status
+             ORDER BY e.task_id, e.batch_id NULLS FIRST, e.status
             """;
 
     private final JdbcClient jdbc;
@@ -209,6 +219,20 @@ public class DefaultTaskInspection implements TaskInspection {
                     .list());
         }
         return result;
+    }
+
+    @Override
+    public List<TaskUnitCount> unitCounts(final ExecutionRef execution) {
+        return this.jdbc
+                .sql(UNIT_COUNTS)
+                .param("executionCreatedAt", TaskSql.parameter(execution.createdAt()))
+                .param("executionId", execution.id())
+                .query((rs, rowNum) -> new TaskUnitCount(
+                        rs.getObject("task_id", UUID.class),
+                        rs.getObject("batch_id", UUID.class),
+                        rs.getString("status"),
+                        rs.getLong("n")))
+                .list();
     }
 
     private static String select(final TaskSnapshot.Level level) {

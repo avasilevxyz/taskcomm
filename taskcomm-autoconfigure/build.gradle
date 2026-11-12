@@ -103,6 +103,13 @@ tasks.named('processResources', ProcessResources) {
     }
 }
 
+// Версия стартера в манифесте — её отдаёт выдача REST meta (docs/adr/0150-execution-outline-and-meta.md).
+tasks.named('jar', Jar) {
+    manifest {
+        attributes('Implementation-Title': project.name, 'Implementation-Version': project.version)
+    }
+}
+
 // Ссылки на репозиторий в Javadoc публичного API ведут на тег версии. Поднял версию — ссылки обязаны
 // переехать вместе с ней, иначе Javadoc нового выпуска отправит читателя к правилам старого.
 def verifyVersionedLinks = tasks.register('verifyVersionedLinks') {

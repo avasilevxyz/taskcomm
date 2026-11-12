@@ -11,6 +11,7 @@ import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSnapshot;
 import xyz.avasilev.taskcomm.communication.api.inspection.CorrelationKeySnapshot;
 import xyz.avasilev.taskcomm.execution.api.Origin;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskSnapshot;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskUnitCount;
 
 /**
  * Формы ответов REST (docs/adr/0140-rest-controllers.md). Нагрузки и результаты — сырой JSON, вставленный
@@ -244,6 +245,68 @@ public final class RestDtos {
             List<TaskDto> units,
             List<CommunicationDto> communications,
             List<CorrelationKeySnapshot> correlationKeys) {}
+
+    /**
+     * Дело без подзадач (docs/adr/0150-execution-outline-and-meta.md): сущности в порядке создания
+     * и счётчики подзадач по родителю и статусу.
+     *
+     * @param execution дело
+     * @param tasks задачи
+     * @param batches группы
+     * @param unitCounts счётчики подзадач
+     * @param communications коммуникации
+     * @param correlationKeys ключи корреляции
+     */
+    public record ExecutionOutlineDto(
+            ExecutionRefDto execution,
+            List<TaskDto> tasks,
+            List<TaskDto> batches,
+            List<TaskUnitCount> unitCounts,
+            List<CommunicationDto> communications,
+            List<CorrelationKeySnapshot> correlationKeys) {}
+
+    /**
+     * Описание экземпляра для интерфейса (docs/adr/0150-execution-outline-and-meta.md). Выключенной
+     * подсистемы в выдаче нет.
+     *
+     * @param version версия стартера или {@code null} — запуск не из jar
+     * @param searchWindow окно чтения истории по умолчанию, ISO-8601
+     * @param tasks подсистема задач или {@code null} — выключена
+     * @param communications подсистема коммуникаций или {@code null} — выключена
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record MetaDto(
+            String version, String searchWindow, TasksMetaDto tasks, CommunicationsMetaDto communications) {}
+
+    /**
+     * Типы задач, у которых есть процессор.
+     *
+     * @param types типы по имени
+     */
+    public record TasksMetaDto(List<TaskTypeDto> types) {}
+
+    /**
+     * Тип задачи.
+     *
+     * @param type имя типа
+     * @param contract форма контракта: {@code FLAT}, {@code UNIT} или {@code BATCH}
+     */
+    public record TaskTypeDto(String type, String contract) {}
+
+    /**
+     * Внешние системы, у которых есть процессор.
+     *
+     * @param systems системы по имени
+     */
+    public record CommunicationsMetaDto(List<ExternalSystemDto> systems) {}
+
+    /**
+     * Внешняя система.
+     *
+     * @param system имя системы
+     * @param transport транспорт: {@code REST}, {@code SOAP}, {@code KAFKA} или {@code RAW}
+     */
+    public record ExternalSystemDto(String system, String transport) {}
 
     /**
      * Исход отмены или перезапуска.

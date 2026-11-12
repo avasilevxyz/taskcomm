@@ -13,7 +13,7 @@ REST **выключен по умолчанию**: в нём отмена, пе�
 taskcomm:
   rest:
     enabled: true
-    base-path: /api/taskcomm     # по умолчанию
+    base-path: /tc/api            # по умолчанию; до 2.0.2 было /api/taskcomm — см. «Обновление версии»
 ```
 
 Нужно servlet-приложение со Spring MVC (`spring-boot-starter-webmvc`). Контроллеры подсистемы
@@ -61,7 +61,7 @@ SecurityFilterChain security(HttpSecurity http,
 и `executionCreatedAt`, поля нагрузки — `field.<имя>`:
 
 ```
-GET /api/taskcomm/tasks?level=UNIT&field.order_id=A-1024&status=FAILED
+GET /tc/api/tasks?level=UNIT&field.order_id=A-1024&status=FAILED
 ```
 
 Постановка принимает `priority`, `notBefore` (ISO-8601) и дело парой `executionId`
@@ -101,7 +101,21 @@ GET /api/taskcomm/tasks?level=UNIT&field.order_id=A-1024&status=FAILED
 с идентификатором из лога.
 
 Предела размера у выдачи дела нет: дело с миллионом подзадач отдастся целиком. Для таких дел
-читайте подзадачи списком с фильтром по делу.
+есть выдача без подзадач.
+
+`GET {base-path}/executions/{id}/outline?createdAt={время создания дела}` — то же дело, но вместо
+подзадач — `unitCounts`: сколько подзадач у каждой задачи и группы в каком статусе (`batchId` пуст
+у подзадач без групп). Сами подзадачи читайте списком `GET {base-path}/tasks?level=UNIT` с делом
+(`executionId`, `executionCreatedAt`) и родителем (`parentId`), страницами. Из Java те же счётчики —
+`TaskInspection.unitCounts(executionRef)`. Счёт идёт по всем подзадачам дела, и на миллионе это
+секунды: не опрашивайте его чаще, чем раз в несколько секунд.
+
+## Описание экземпляра
+
+`GET {base-path}/meta` — что умеет этот экземпляр: `version` — версия стартера (нет при запуске
+не из jar), `searchWindow` — окно по умолчанию в ISO-8601, `tasks.types` — типы задач с процессором
+и формой контракта (`FLAT`, `UNIT`, `BATCH`), `communications.systems` — внешние системы с процессором
+и транспортом (`REST`, `SOAP`, `KAFKA`, `RAW`). Выключенной подсистемы в ответе нет.
 
 ## Поиск и окно
 
@@ -141,7 +155,7 @@ GET /api/taskcomm/tasks?level=UNIT&field.order_id=A-1024&status=FAILED
 **Поставить задачу:**
 
 ```
-POST /api/taskcomm/tasks?type=order-sync
+POST /tc/api/tasks?type=order-sync
 Content-Type: application/json
 
 {"order_id": "A-1024"}
@@ -162,7 +176,7 @@ Content-Type: application/json
 **Найти задачу по полю нагрузки:**
 
 ```
-GET /api/taskcomm/tasks?field.order_id=A-1024
+GET /tc/api/tasks?field.order_id=A-1024
 ```
 
 ```json
@@ -195,7 +209,7 @@ GET /api/taskcomm/tasks?field.order_id=A-1024
 **Поле, которое никто не объявил:**
 
 ```
-GET /api/taskcomm/tasks?field.customer=x
+GET /tc/api/tasks?field.customer=x
 ```
 
 ```json
@@ -209,7 +223,7 @@ GET /api/taskcomm/tasks?field.customer=x
 **Отменить и перезапустить:**
 
 ```
-POST /api/taskcomm/tasks/TASK/01a1b72c-7428-…/cancel
+POST /tc/api/tasks/TASK/01a1b72c-7428-…/cancel
 ```
 
 ```json
@@ -227,7 +241,7 @@ POST /api/taskcomm/tasks/TASK/01a1b72c-7428-…/cancel
 **Сводка по типам:**
 
 ```
-GET /api/taskcomm/tasks/summary
+GET /tc/api/tasks/summary
 ```
 
 ```json
@@ -238,7 +252,7 @@ GET /api/taskcomm/tasks/summary
 **Отправить коммуникацию и найти её:**
 
 ```
-POST /api/taskcomm/communications/outbound/bank
+POST /tc/api/communications/outbound/bank
 Content-Type: application/json
 
 {"id": "payment-77"}
@@ -250,7 +264,7 @@ Content-Type: application/json
 ```
 
 ```
-GET /api/taskcomm/communications?system=bank
+GET /tc/api/communications?system=bank
 ```
 
 ```json
@@ -280,7 +294,7 @@ GET /api/taskcomm/communications?system=bank
 **Дело целиком:**
 
 ```
-GET /api/taskcomm/executions/01a1b72c-7426-…?createdAt=2026-11-07T18:01:46.271987Z
+GET /tc/api/executions/01a1b72c-7426-…?createdAt=2026-11-07T18:01:46.271987Z
 ```
 
 ```json

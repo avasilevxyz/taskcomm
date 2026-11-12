@@ -46,7 +46,7 @@ import xyz.avasilev.taskcomm.task.api.processor.SearchableField;
  */
 class TaskcommRestAutoConfigurationIT {
 
-    private static final String BASE = "/api/taskcomm";
+    private static final String BASE = "/tc/api";
 
     private final WebApplicationContextRunner contextRunner = new WebApplicationContextRunner()
             .withConfiguration(AutoConfigurations.of(
@@ -183,6 +183,33 @@ class TaskcommRestAutoConfigurationIT {
         mvc.perform(get(BASE + "/executions/" + executionId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tasks[0].id").value(id));
+        mvc.perform(get(BASE + "/executions/" + executionId + "/outline"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tasks[0].id").value(id))
+                .andExpect(jsonPath("$.unitCounts", hasSize(0)))
+                .andExpect(jsonPath("$.units").doesNotExist());
+        mvc.perform(get(BASE + "/executions/" + UUID.randomUUID() + "/outline")).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void metaNamesProcessorsOfEnabledSubsystems() {
+        this.contextRunner.withPropertyValues("taskcomm.rest.enabled=true").run(context -> {
+            final MockMvc mvc = MockMvcBuilders.webAppContextSetup(context).build();
+            mvc.perform(get(BASE + "/meta"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.searchWindow").value("PT720H"))
+                    .andExpect(jsonPath("$.tasks.types[0].type").value("orders"))
+                    .andExpect(jsonPath("$.tasks.types[0].contract").value("FLAT"))
+                    .andExpect(jsonPath("$.communications.systems[?(@.system == 'bank')].transport")
+                            .value("REST"));
+        });
+        this.contextRunner
+                .withPropertyValues("taskcomm.rest.enabled=true", "taskcomm.task.enabled=false")
+                .run(context -> MockMvcBuilders.webAppContextSetup(context)
+                        .build()
+                        .perform(get(BASE + "/meta"))
+                        .andExpect(jsonPath("$.tasks").doesNotExist())
+                        .andExpect(jsonPath("$.communications.systems").isArray()));
     }
 
     private static void actions(final MockMvc mvc, final String id) throws Exception {

@@ -34,7 +34,7 @@ import xyz.avasilev.taskcomm.task.api.inspection.TaskTypeSummary;
  * параметры {@code from}, {@code to}, {@code everywhere}; выдача списка называет окно, в котором искали.
  */
 @RestController
-@RequestMapping("${taskcomm.rest.base-path:/api/taskcomm}/tasks")
+@RequestMapping("${taskcomm.rest.base-path:/tc/api}/tasks")
 public class TaskController extends RestErrors {
 
     private final TaskService tasks;

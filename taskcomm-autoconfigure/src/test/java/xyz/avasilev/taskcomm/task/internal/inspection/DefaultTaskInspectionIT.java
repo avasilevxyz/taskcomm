@@ -3,6 +3,7 @@ package xyz.avasilev.taskcomm.task.internal.inspection;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.sql.Types;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -20,8 +21,10 @@ import xyz.avasilev.taskcomm.task.api.inspection.TaskAttemptSnapshot;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskQuery;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskSnapshot;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskTypeSummary;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskUnitCount;
 import xyz.avasilev.taskcomm.task.api.inspection.UnknownSearchFieldException;
 import xyz.avasilev.taskcomm.task.internal.ContractShape;
+import xyz.avasilev.taskcomm.task.internal.TaskSql;
 import xyz.avasilev.taskcomm.task.internal.TaskTestDatabase;
 import xyz.avasilev.taskcomm.task.internal.TaskTestSettings;
 import xyz.avasilev.taskcomm.task.internal.creation.CreatedTask;
@@ -174,6 +177,24 @@ class DefaultTaskInspectionIT {
     }
 
     @Test
+    void unitCountsGroupByParentAndStatusInsideTheExecution() {
+        final CreatedTask task = this.submit("A-1");
+        final CreatedTask other = this.submit("A-2");
+        final UUID batch = this.db.ids.next();
+        this.unit(task, null, "PENDING");
+        this.unit(task, null, "PENDING");
+        this.unit(task, null, "SUCCEEDED");
+        this.unit(task, batch, "FAILED");
+        this.unit(other, null, "PENDING");
+
+        assertThat(this.inspection.unitCounts(task.execution()))
+                .containsExactly(
+                        new TaskUnitCount(task.id(), null, "PENDING", 2),
+                        new TaskUnitCount(task.id(), null, "SUCCEEDED", 1),
+                        new TaskUnitCount(task.id(), batch, "FAILED", 1));
+    }
+
+    @Test
     void foreignCursorIsRejected() {
         assertThatThrownBy(() ->
                         this.inspection.list(TaskQuery.of(TASK), this.window(), PageRequest.after("не курсор", 10)))
@@ -191,6 +212,26 @@ class DefaultTaskInspectionIT {
                         null,
                         null,
                         null));
+    }
+
+    private void unit(final CreatedTask task, final UUID batchId, final String status) {
+        this.db
+                .jdbc
+                .sql("""
+                        INSERT INTO tc_task_unit (id, created_at, updated_at, execution_id, execution_created_at,
+                                                  task_id, batch_id, parent_attempt_id, task_type, payload, status,
+                                                  priority, next_attempt_at, claim_order_at, retry_cycle_started_at)
+                        VALUES (:id, now(), now(), :executionId, :executionCreatedAt, :taskId, :batchId,
+                                gen_random_uuid(), :taskType, '{}', :status, 100, now(), now(), now())
+                        """)
+                .param("id", this.db.ids.next())
+                .param("executionId", task.execution().id())
+                .param("executionCreatedAt", TaskSql.parameter(task.execution().createdAt()))
+                .param("taskId", task.id())
+                .param("batchId", batchId, Types.OTHER)
+                .param("taskType", TaskTestDatabase.FLAT_TYPE)
+                .param("status", status)
+                .update();
     }
 
     private HistoryWindow window() {
