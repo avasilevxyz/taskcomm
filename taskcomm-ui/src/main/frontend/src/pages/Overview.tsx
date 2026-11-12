@@ -1,0 +1,211 @@
+import { useQuery } from '@tanstack/react-query';
+import { Alert, Card, Flex, Space, Table, Tag, Typography } from 'antd';
+import { Link } from 'react-router';
+import { getJson, type CircuitBreaker, type CommunicationSummary, type TaskTypeSummary } from '../api';
+import { useMeta } from '../meta';
+import { Loadable, OrphanTag, StatusTag, useTime, useWindowChoice, windowParams, WindowSelect } from '../common';
+import { useI18n } from '../i18n';
+
+/** Строка сводки: тип на уровне — и сколько в каждом статусе. */
+interface Row<TKey> {
+  key: string;
+  group: TKey;
+  name: string;
+  orphan: boolean;
+  counts: Record<string, number>;
+}
+
+export function pivot<TGroup extends string>(
+  rows: { group: TGroup; name: string; status: string; count: number; orphan: boolean }[],
+): Row<TGroup>[] {
+  const byKey = new Map<string, Row<TGroup>>();
+  for (const row of rows) {
+    const key = `${row.group}/${row.name}`;
+    const existing = byKey.get(key) ?? { key, group: row.group, name: row.name, orphan: row.orphan, counts: {} };
+    existing.counts[row.status] = (existing.counts[row.status] ?? 0) + row.count;
+    existing.orphan = existing.orphan || row.orphan;
+    byKey.set(key, existing);
+  }
+  return [...byKey.values()].sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name));
+}
+
+function Counts({ counts, link }: { counts: Record<string, number>; link: (status: string) => string }) {
+  return (
+    <Space size={[4, 4]} wrap>
+      {Object.entries(counts)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([status, count]) => (
+          <Link key={status} to={link(status)}>
+            <Space size={2}>
+              <StatusTag status={status} />
+              <Typography.Text>{count}</Typography.Text>
+            </Space>
+          </Link>
+        ))}
+    </Space>
+  );
+}
+
+export function Overview() {
+  const { t } = useI18n();
+  const meta = useMeta();
+  const [choice, setChoice] = useWindowChoice();
+  const params = () => windowParams(choice);
+  const tasks = useQuery({
+    queryKey: ['tasks', 'summary', choice],
+    queryFn: () => getJson<TaskTypeSummary[]>('/tasks/summary', params()),
+    enabled: meta.data?.tasks !== undefined,
+  });
+  const communications = useQuery({
+    queryKey: ['communications', 'summary', choice],
+    queryFn: () => getJson<CommunicationSummary[]>('/communications/summary', params()),
+    enabled: meta.data?.communications !== undefined,
+  });
+  const windowQuery = choice === 'default' ? '' : `&window=${choice}`;
+
+  return (
+    <Loadable loading={meta.isLoading} error={meta.error}>
+      {() => (
+        <Flex vertical gap={16}>
+          <div className="toolbar">
+            <WindowSelect value={choice} onChange={setChoice} searchWindow={meta.data?.searchWindow} />
+          </div>
+          <Card title={t('overview.tasks')} size="small">
+            {meta.data?.tasks === undefined ? (
+              <Typography.Text type="secondary">{t('overview.disabled')}</Typography.Text>
+            ) : (
+              <Loadable loading={tasks.isLoading} error={tasks.error}>
+                {() => (
+                  <Table
+                    size="small"
+                    pagination={false}
+                    dataSource={pivot(
+                      (tasks.data ?? []).map((row) => ({ ...row, group: row.level, name: row.taskType })),
+                    )}
+                    columns={[
+                      { title: t('overview.level'), dataIndex: 'group', render: (level: string) => t(`level.${level as 'TASK'}`) },
+                      {
+                        title: t('common.type'),
+                        render: (_, row) => (
+                          <Space>
+                            <Link to={`/tasks?level=${row.group}&type=${encodeURIComponent(row.name)}${windowQuery}`}>
+                              {row.name}
+                            </Link>
+                            <OrphanTag orphan={row.orphan} />
+                          </Space>
+                        ),
+                      },
+                      {
+                        title: t('common.status'),
+                        render: (_, row) => (
+                          <Counts
+                            counts={row.counts}
+                            link={(status) =>
+                              `/tasks?level=${row.group}&type=${encodeURIComponent(row.name)}&status=${status}${windowQuery}`
+                            }
+                          />
+                        ),
+                      },
+                    ]}
+                  />
+                )}
+              </Loadable>
+            )}
+          </Card>
+          <Card title={t('overview.communications')} size="small">
+            {meta.data?.communications === undefined ? (
+              <Typography.Text type="secondary">{t('overview.disabled')}</Typography.Text>
+            ) : (
+              <Loadable loading={communications.isLoading} error={communications.error}>
+                {() => (
+                  <Table
+                    size="small"
+                    pagination={false}
+                    dataSource={pivot(
+                      (communications.data ?? []).map((row) => ({
+                        ...row,
+                        group: row.direction,
+                        name: row.externalSystem,
+                      })),
+                    )}
+                    columns={[
+                      {
+                        title: t('communications.direction'),
+                        dataIndex: 'group',
+                        render: (direction: string) => t(`direction.${direction as 'INBOUND'}`),
+                      },
+                      {
+                        title: t('communications.system'),
+                        render: (_, row) => (
+                          <Space>
+                            <Link
+                              to={`/communications?direction=${row.group}&system=${encodeURIComponent(row.name)}${windowQuery}`}
+                            >
+                              {row.name}
+                            </Link>
+                            <OrphanTag orphan={row.orphan} />
+                          </Space>
+                        ),
+                      },
+                      {
+                        title: t('common.status'),
+                        render: (_, row) => (
+                          <Counts
+                            counts={row.counts}
+                            link={(status) =>
+                              `/communications?direction=${row.group}&system=${encodeURIComponent(row.name)}&status=${status}${windowQuery}`
+                            }
+                          />
+                        ),
+                      },
+                    ]}
+                  />
+                )}
+              </Loadable>
+            )}
+          </Card>
+          {meta.data?.communications !== undefined && <Breakers />}
+        </Flex>
+      )}
+    </Loadable>
+  );
+}
+
+function Breakers() {
+  const { t } = useI18n();
+  const time = useTime();
+  const breakers = useQuery({
+    queryKey: ['communications', 'circuit-breakers'],
+    queryFn: () => getJson<CircuitBreaker[]>('/communications/circuit-breakers'),
+  });
+  const instance = breakers.data?.[0]?.instance ?? '—';
+  return (
+    <Card title={t('overview.breakers', { instance })} size="small">
+      <Loadable loading={breakers.isLoading} error={breakers.error}>
+        {() =>
+          (breakers.data ?? []).length === 0 ? (
+            <Alert type="info" title={t('overview.breakersEmpty')} />
+          ) : (
+            <Table
+              size="small"
+              pagination={false}
+              rowKey="externalSystem"
+              dataSource={breakers.data}
+              columns={[
+                { title: t('communications.system'), dataIndex: 'externalSystem' },
+                { title: t('overview.state'), dataIndex: 'state', render: (state: string) => <StatusTag status={state} /> },
+                { title: t('overview.calls'), dataIndex: 'calls' },
+                {
+                  title: t('overview.failureRate'),
+                  dataIndex: 'failureRate',
+                  render: (rate: number) => <Tag>{Math.round(rate * 100)}%</Tag>,
+                },
+                { title: t('overview.nextProbe'), dataIndex: 'nextProbeAt', render: (at?: string | null) => time(at) },
+              ]}
+            />
+          )
+        }
+      </Loadable>
+    </Card>
+  );
+}

@@ -66,6 +66,28 @@ def buildFrontend = tasks.register('buildFrontend', NpmTask) {
     outputs.dir(frontendOutput)
 }
 
+// Тесты фронтенда — Vitest и Testing Library в jsdom, в составе check
+// (docs/adr/0152-web-interface-frontend-stack.md). Отметка об успехе — чтобы Gradle не гонял их без правок.
+def frontendTestMark = layout.buildDirectory.file('frontend-test/passed')
+def testFrontend = tasks.register('testFrontend', NpmTask) {
+    group = 'verification'
+    description = 'Тесты фронтенда: Vitest и Testing Library в jsdom.'
+    dependsOn tasks.named('npmInstall')
+    args = ['run', 'test']
+    inputs.dir(new File(frontend, 'src'))
+    inputs.files(
+            new File(frontend, 'package.json'),
+            new File(frontend, 'package-lock.json'),
+            new File(frontend, 'tsconfig.json'),
+            new File(frontend, 'vite.config.ts'))
+    outputs.file(frontendTestMark)
+    doLast {
+        def mark = frontendTestMark.get().asFile
+        mark.parentFile.mkdirs()
+        mark.text = 'passed'
+    }
+}
+
 // Статика — в META-INF/taskcomm/ui jar, а не в static/ или META-INF/resources/: оттуда Spring Boot
 // раздал бы её с корня приложения сам.
 tasks.named('processResources', ProcessResources) {
@@ -91,6 +113,7 @@ def integrationTest = tasks.register('integrationTest', Test) {
 
 tasks.named('check') {
     dependsOn integrationTest
+    dependsOn testFrontend
 }
 
 checkstyle {
