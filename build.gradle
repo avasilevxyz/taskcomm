@@ -3,6 +3,15 @@
 // не будет исходников. taskcomm-bom — java-platform (docs/adr/0144-taskcomm-bom.md), эти два
 // плагина несовместимы, поэтому общие настройки ниже его не касаются: сборка и проверки BOM —
 // в его собственном build.gradle.
+//
+// Плагины модулей объявлены здесь без применения: применённые в двух соседних модулях, они иначе
+// грузятся разными загрузчиками классов, и общий сервис сборки Spotless между ними ломается.
+plugins {
+    alias(libs.plugins.spotless) apply false
+    alias(libs.plugins.errorprone) apply false
+    alias(libs.plugins.node) apply false
+}
+
 allprojects {
     group = 'xyz.avasilev'
     version = '2.0.2'
@@ -39,6 +48,7 @@ allprojects {
                             'taskcomm-autoconfigure'      : 'Код и автоконфигурации taskcomm: задачи, коммуникации с внешними системами, REST',
                             'taskcomm-spring-boot-starter': 'Spring Boot стартер taskcomm: таск-менеджмент и коммуникации с внешними системами на PostgreSQL',
                             'taskcomm-bom'                : 'Версии taskcomm и согласованных с ним зависимостей',
+                            'taskcomm-ui'                 : 'Веб-интерфейс taskcomm поверх его REST',
                     ][project.name]
                     url = 'https://github.com/avasilevxyz/taskcomm'
                     developers {

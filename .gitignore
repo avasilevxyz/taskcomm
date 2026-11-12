@@ -4,6 +4,9 @@ build/
 !gradle/wrapper/gradle-wrapper.jar
 out/
 
+# Фронтенд taskcomm-ui
+node_modules/
+
 # IDE
 .idea/
 *.iml

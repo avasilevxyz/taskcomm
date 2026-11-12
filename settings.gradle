@@ -15,6 +15,21 @@ if (Runtime.version() < minimumJdk) {
 dependencyResolutionManagement {
     repositories {
         mavenCentral()
+        // Дистрибутивы Node для сборки фронтенда taskcomm-ui. Объявлены здесь, а не плагином в модуле:
+        // репозиторий модуля отменил бы для него все репозитории отсюда.
+        ivy {
+            name = 'Node.js'
+            url = 'https://nodejs.org/dist/'
+            patternLayout {
+                artifact 'v[revision]/[artifact](-v[revision]-[classifier]).[ext]'
+            }
+            metadataSources {
+                artifact()
+            }
+            content {
+                includeModule('org.nodejs', 'node')
+            }
+        }
     }
 
     // Version catalog. Версии фиксируются здесь явно — см. CLAUDE.md, раздел «Каталог версий».
@@ -52,6 +67,8 @@ dependencyResolutionManagement {
             // версии — из BOM.
             library('spring-webmvc', 'org.springframework', 'spring-webmvc').withoutVersion()
             library('spring-security-web', 'org.springframework.security', 'spring-security-web').withoutVersion()
+            // Контроллер статики taskcomm-ui (docs/adr/0149): только для компиляции, servlet API — у потребителя.
+            library('jakarta-servlet-api', 'jakarta.servlet', 'jakarta.servlet-api').withoutVersion()
             // Наблюдаемость (docs/adr/0141): метрики и health — только у тех, у кого Micrometer и Actuator свои.
             library('micrometer-core', 'io.micrometer', 'micrometer-core').withoutVersion()
             library('spring-boot-health', 'org.springframework.boot', 'spring-boot-health').withoutVersion()
@@ -86,6 +103,10 @@ dependencyResolutionManagement {
 
             plugin('spotless', 'com.diffplug.spotless').versionRef('spotless-plugin')
             plugin('errorprone', 'net.ltgt.errorprone').versionRef('errorprone-plugin')
+            // Сборка фронтенда taskcomm-ui (docs/adr/0149-web-interface-module.md): плагин сам скачивает Node,
+            // ставить его на машину и в CI не нужно. Версия Node — в taskcomm-ui/build.gradle.
+            version('node-plugin', '7.1.0')
+            plugin('node', 'com.github.node-gradle.node').versionRef('node-plugin')
         }
     }
 }
@@ -93,3 +114,4 @@ dependencyResolutionManagement {
 include 'taskcomm-autoconfigure'
 include 'taskcomm-spring-boot-starter'
 include 'taskcomm-bom'
+include 'taskcomm-ui'

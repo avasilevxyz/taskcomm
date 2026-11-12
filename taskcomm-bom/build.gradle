@@ -37,6 +37,8 @@ dependencies {
     constraints {
         api project(':taskcomm-autoconfigure')
         api project(':taskcomm-spring-boot-starter')
+        // Веб-интерфейс — подключается отдельно (docs/adr/0149-web-interface-module.md).
+        api project(':taskcomm-ui')
 
         // Прямые зависимости стартера — те же версии, что в его опубликованных метаданных.
         api libs.spring.boot.starter

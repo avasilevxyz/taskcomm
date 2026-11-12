@@ -112,6 +112,12 @@ taskcomm:
 `taskcomm.rest.*`: `enabled`, `base-path` и `search-window` — окно чтения истории
 по умолчанию, см. [REST API](../api/rest.md#поиск-и-окно).
 
+## Веб-интерфейс
+
+`taskcomm.ui.*` действует, только если подключён модуль `taskcomm-ui`, и только при включённом REST:
+`enabled` (по умолчанию `true`) выключает интерфейс, не трогая REST, — например, на отдельных стендах;
+`base-path` (по умолчанию `/tc`) — путь интерфейса. Пути интерфейса входят в `taskcommRequestMatcher`.
+
 ## Наблюдаемость
 
 - **`taskcomm.logging.mdc-prefix`** — префикс ключей MDC (`tc.executionId`, `tc.taskId`…).
@@ -249,6 +255,9 @@ taskcomm:
     enabled: false                  # выключен по умолчанию: пути надо закрыть самому
     base-path: /tc/api              # до 2.0.2 включительно — /api/taskcomm
     search-window: 30d              # окно чтения истории по времени создания дела
+  ui:                               # только с модулем taskcomm-ui и включённым REST
+    enabled: true                   # false — интерфейса нет, REST работает
+    base-path: /tc
   schema:
     initialize: never               # never | embedded | always; для тестов — always
     partitions:                     # один набор на всю схему

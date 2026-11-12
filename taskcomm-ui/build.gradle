@@ -1,0 +1,120 @@
+// Веб-интерфейс taskcomm (docs/adr/0149-web-interface-module.md): SPA на React, собранное Vite, и одна
+// автоконфигурация с контроллером, который раздаёт эту статику. Подключается потребителем явно, в стартер
+// не входит. Своего API нет — только REST стартера.
+import com.github.gradle.node.npm.task.NpmTask
+
+plugins {
+    id 'checkstyle'
+    alias(libs.plugins.spotless)
+    alias(libs.plugins.errorprone)
+    alias(libs.plugins.node)
+}
+
+dependencies {
+    compileOnly platform(libs.spring.boot.bom)
+    testImplementation platform(libs.spring.boot.bom)
+
+    // Свойства taskcomm.ui.* и бины REST, без которых интерфейса нет.
+    implementation project(':taskcomm-autoconfigure')
+
+    compileOnly libs.spring.boot.autoconfigure
+    compileOnly libs.spring.webmvc
+    compileOnly libs.jakarta.servlet.api
+    annotationProcessor libs.spring.boot.autoconfigure.processor
+
+    compileOnly libs.jetbrains.annotations
+
+    errorprone libs.errorprone.core
+
+    testImplementation libs.spring.boot.starter.test
+    testImplementation libs.spring.boot.starter.jdbc
+    testImplementation libs.spring.boot.starter.jackson
+    testImplementation libs.spring.boot.starter.webmvc
+    testImplementation libs.spring.security.web
+    testImplementation libs.archunit.junit5
+    testImplementation libs.testcontainers.postgresql
+    testImplementation libs.testcontainers.junit.jupiter
+    testRuntimeOnly libs.postgresql
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// Сборка фронтенда. Node и npm скачивает плагин; зависимости ставятся строго по package-lock.json.
+def frontend = file('src/main/frontend')
+def frontendOutput = layout.buildDirectory.dir('frontend')
+
+node {
+    version = '24.22.0'
+    download = true
+    // Репозиторий дистрибутивов — в settings.gradle; свой плагин не добавляет.
+    distBaseUrl = null
+    nodeProjectDir = frontend
+    npmInstallCommand = 'ci'
+}
+
+def buildFrontend = tasks.register('buildFrontend', NpmTask) {
+    group = 'build'
+    description = 'Собирает SPA интерфейса: проверка типов TypeScript и сборка Vite.'
+    dependsOn tasks.named('npmInstall')
+    args = ['run', 'build']
+    inputs.dir(new File(frontend, 'src'))
+    inputs.files(
+            new File(frontend, 'index.html'),
+            new File(frontend, 'package.json'),
+            new File(frontend, 'package-lock.json'),
+            new File(frontend, 'tsconfig.json'),
+            new File(frontend, 'vite.config.ts'))
+    outputs.dir(frontendOutput)
+}
+
+// Статика — в META-INF/taskcomm/ui jar, а не в static/ или META-INF/resources/: оттуда Spring Boot
+// раздал бы её с корня приложения сам.
+tasks.named('processResources', ProcessResources) {
+    from(buildFrontend) {
+        into 'META-INF/taskcomm/ui'
+    }
+}
+
+// Разделение тестов по имени класса, как в taskcomm-autoconfigure (docs/adr/0108-integration-test-task.md):
+// test — только *Test, integrationTest — только *IT на PostgreSQL в Testcontainers, входит в check.
+tasks.named('test', Test) {
+    include '**/*Test.class'
+}
+
+def integrationTest = tasks.register('integrationTest', Test) {
+    group = 'verification'
+    description = 'Интеграционные тесты (*IT) на PostgreSQL в Testcontainers. Нужен Docker.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    include '**/*IT.class'
+    shouldRunAfter tasks.named('test')
+}
+
+tasks.named('check') {
+    dependsOn integrationTest
+}
+
+checkstyle {
+    toolVersion = libs.versions.checkstyle.get()
+    configFile = rootProject.file('checkstyle.xml')
+    configProperties = ['taskcomm_config_dir': rootProject.projectDir.absolutePath]
+}
+
+spotless {
+    lineEndings = com.diffplug.spotless.LineEnding.GIT_ATTRIBUTES_FAST_ALLSAME
+
+    java {
+        palantirJavaFormat(libs.versions.palantir.java.format.get())
+        removeUnusedImports()
+        importOrder()
+        trimTrailingWhitespace()
+        endWithNewline()
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    // Те же флаги, что у taskcomm-autoconfigure: связка Error Prone на Java 25.
+    options.compilerArgs << '-XDcompilePolicy=simple' << '--should-stop=ifError=FLOW'
+    options.errorprone {
+        disableWarningsInGeneratedCode = true
+    }
+}

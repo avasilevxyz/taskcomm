@@ -116,7 +116,8 @@ Tomcat, Jackson 3, Liquibase (только в тестах). `jackson-dataformat
 taskcomm/
 ├── taskcomm-autoconfigure/        весь код: домен, реализация, REST, @AutoConfiguration
 ├── taskcomm-spring-boot-starter/  НИ ОДНОГО класса — только объявление зависимостей
-└── taskcomm-bom/                  только версии: стартер и его необязательные зависимости
+├── taskcomm-bom/                  только версии: стартер и его необязательные зависимости
+└── taskcomm-ui/                   веб-интерфейс: SPA в jar и его автоконфигурация (ADR 0149)
 ```
 
 Внутри `taskcomm-autoconfigure`:
@@ -212,7 +213,8 @@ gradlew.bat loadTest
   и `@TaskcommTransactionManager` ([ADR 0094](docs/adr/0094-creation-always-in-transaction.md)):
   у них своего бина по умолчанию нет. Все квалификаторы — в `autoconfigure`.
 - **Бинов чужих типов два, и стартер их отдаёт, а не потребляет**: `RequestMatcher` с именем
-  `taskcommRequestMatcher` — только вместе с REST и при Spring Security на classpath; `HealthIndicator`
+  `taskcommRequestMatcher` — только вместе с REST и при Spring Security на classpath, с путями
+  REST и, если подключён и включён `taskcomm-ui`, интерфейса ([ADR 0149](docs/adr/0149-web-interface-module.md)); `HealthIndicator`
   с именем `taskcommHealthIndicator` — только при Actuator ([ADR 0141](docs/adr/0141-observability-instance.md)).
 - Каждая подсистема выключается свойством `taskcomm.<подсистема>.enabled`, а **все сразу —
   `taskcomm.enabled`** ([ADR 0090](docs/adr/0090-root-switch-disables-everything.md)). Автоконфигурация

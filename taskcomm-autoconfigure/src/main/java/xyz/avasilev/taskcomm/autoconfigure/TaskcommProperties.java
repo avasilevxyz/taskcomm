@@ -47,6 +47,9 @@ public class TaskcommProperties {
     /** REST API. */
     private Rest rest = new Rest();
 
+    /** Веб-интерфейс — модуль taskcomm-ui. */
+    private Ui ui = new Ui();
+
     /** Логи. */
     private Logging logging = new Logging();
 
@@ -125,6 +128,26 @@ public class TaskcommProperties {
          * партиционирования. Запрос задаёт своё окно параметрами from и to или снимает его everywhere=true.
          */
         private Duration searchWindow = Duration.ofDays(30);
+    }
+
+    /**
+     * Свойства {@code taskcomm.ui.*} (docs/adr/0149-web-interface-module.md,
+     * docs/adr/0151-default-paths-under-tc.md). Действуют, только если подключён модуль taskcomm-ui: свойства
+     * лежат здесь, чтобы taskcommRequestMatcher знал путь интерфейса.
+     */
+    @Getter
+    @Setter
+    public static class Ui {
+
+        /**
+         * Включить веб-интерфейс. Включён по умолчанию: подключить модуль taskcomm-ui — уже явный шаг. Без
+         * включённого REST интерфейса нет при любом значении. Выключенный интерфейс не отдаёт ни одного пути,
+         * а REST продолжает работать.
+         */
+        private boolean enabled = true;
+
+        /** Префикс путей интерфейса. Не корень приложения и не путь REST. */
+        private String basePath = "/tc";
     }
 
     /**

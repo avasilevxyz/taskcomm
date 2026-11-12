@@ -9,7 +9,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplicat
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
+import org.springframework.util.ClassUtils;
 import org.springframework.web.servlet.DispatcherServlet;
 import xyz.avasilev.taskcomm.TaskcommConfigurationException;
 import xyz.avasilev.taskcomm.communication.api.CommunicationService;
@@ -166,16 +168,28 @@ public class TaskcommRestAutoConfiguration {
     static class Security {
 
         /**
-         * Все пути REST стартера. Отдаётся, а не потребляется: без условий, точкой замены не является
-         * (docs/adr/0096-no-foreign-type-beans.md).
+         * Автоконфигурация модуля taskcomm-ui — по имени: модуль необязателен, и стартер от него не зависит.
+         */
+        static final String UI_AUTO_CONFIGURATION = "xyz.avasilev.taskcomm.ui.TaskcommUiAutoConfiguration";
+
+        /**
+         * Все пути REST стартера и, если подключён и включён модуль taskcomm-ui, пути интерфейса
+         * (docs/adr/0149-web-interface-module.md). Отдаётся, а не потребляется: без условий, точкой замены
+         * не является (docs/adr/0096-no-foreign-type-beans.md).
          *
          * @param properties свойства стартера
          * @return сопоставитель путей
          */
         @Bean
         RequestMatcher taskcommRequestMatcher(final TaskcommProperties properties) {
-            return PathPatternRequestMatcher.withDefaults()
-                    .matcher(properties.getRest().getBasePath() + "/**");
+            final PathPatternRequestMatcher.Builder paths = PathPatternRequestMatcher.withDefaults();
+            final RequestMatcher rest = paths.matcher(properties.getRest().getBasePath() + "/**");
+            final boolean ui = properties.getUi().isEnabled()
+                    && ClassUtils.isPresent(UI_AUTO_CONFIGURATION, Security.class.getClassLoader());
+            return ui
+                    ? new OrRequestMatcher(
+                            rest, paths.matcher(properties.getUi().getBasePath() + "/**"))
+                    : rest;
         }
     }
 }

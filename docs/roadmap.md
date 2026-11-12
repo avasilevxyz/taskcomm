@@ -575,13 +575,18 @@
       `TaskInspection.unitCounts`, выдача `meta`, версия в манифесте
       ([ADR 0150](adr/0150-execution-outline-and-meta.md)); пути по умолчанию под `/tc`
       ([ADR 0151](adr/0151-default-paths-under-tc.md))
-- [ ] 11b — модуль `taskcomm-ui`: Gradle и сборка Vite, автоконфигурация, контроллер статики,
+- [x] 11b — модуль `taskcomm-ui`: Gradle и сборка Vite, автоконфигурация, контроллер статики,
       пути UI в `taskcommRequestMatcher`, BOM; пустой каркас SPA. Свойства `taskcomm.ui.enabled`
       (по умолчанию `true`) и `taskcomm.ui.base-path` (по умолчанию `/tc`): выключенный интерфейс
       не отдаёт ни одного пути и выпадает из `taskcommRequestMatcher`, REST при этом работает.
       Тесты контекста: интерфейс есть при модуле и REST; нет при `taskcomm.ui.enabled: false`,
       `taskcomm.rest.enabled: false`, `taskcomm.enabled: false`; неизвестный путь под `/tc/api` —
-      `404`, а не `index.html`
+      `404`, а не `index.html`.
+      Сделано: Node 24.22.0 скачивает `com.github.node-gradle.node` 7.1.0, репозиторий дистрибутивов
+      Node — в `settings.gradle` (репозиторий модуля отменил бы остальные); React 19.3.1, Vite 8.3.5,
+      TypeScript 7.0.2, `npm ci` по lock-файлу. Каркас SPA читает `/meta` и показывает типы и системы.
+      Тесты: раздача (`UiControllerTest`), границы модуля (`UiArchitectureTest`), контекст на PostgreSQL
+      (`TaskcommUiAutoConfigurationIT`) — включая «модуль добавляет только свой контроллер»
 - [ ] 11c — экраны: обзор, задачи, коммуникации, дело, создание
 - [ ] 11d — руководство, правила, памятка; ручной прогон в демо-приложении
 
@@ -589,7 +594,7 @@
 и коммуникация с колбэком видны от создания до терминального статуса, дело показывает рёбра,
 а без REST, с `taskcomm.ui.enabled: false` и с `taskcomm.enabled: false` интерфейса нет.
 
-**Остановились на:** 11a сделан, дальше — 11b.
+**Остановились на:** 11a и 11b сделаны, дальше — 11c.
 
 ---
 
