@@ -45,6 +45,7 @@ export function CommunicationTable({ pages, showWindow = true }: {
           {showWindow && <WindowNote window={pages.data?.pages[0]?.window} />}
           <Table<CommunicationItem>
             size="small"
+            scroll={{ x: 'max-content' }}
             rowKey="id"
             pagination={false}
             dataSource={items}
@@ -73,6 +74,7 @@ export function CommunicationTable({ pages, showWindow = true }: {
                 title: t('common.status'),
                 render: (_, row) => <StatusTag status={row.state.status} description={row.state.statusDescription} />,
               },
+              { title: t('common.reason'), ellipsis: true, render: (_, row) => row.state.statusDescription ?? '—' },
               { title: t('common.phase'), render: (_, row) => row.state.phase },
               { title: t('common.created'), render: (_, row) => time(row.state.createdAt) },
               { title: t('common.updated'), render: (_, row) => time(row.state.updatedAt) },

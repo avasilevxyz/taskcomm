@@ -116,6 +116,16 @@ tasks.named('check') {
     dependsOn testFrontend
 }
 
+// Демо-приложение для ручной проверки интерфейса: PostgreSQL в Testcontainers, процессоры трёх форм задач
+// и банк с колбэком. Вне check, нужен Docker; интерфейс — http://localhost:8088/tc. Под Vite (npm run dev)
+// оно же служит REST: прокси в vite.config.ts смотрит на этот порт.
+tasks.register('uiDemo', JavaExec) {
+    group = 'application'
+    description = 'Запускает демо-приложение с интерфейсом на http://localhost:8088/tc. Нужен Docker.'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'xyz.avasilev.taskcomm.ui.demo.UiDemoApplication'
+}
+
 checkstyle {
     toolVersion = libs.versions.checkstyle.get()
     configFile = rootProject.file('checkstyle.xml')

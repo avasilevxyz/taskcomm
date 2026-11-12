@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Button, ConfigProvider, Layout, Menu, Space, Spin, theme, Typography } from 'antd';
+import { Button, ConfigProvider, Grid, Layout, Menu, Space, Spin, theme, Typography } from 'antd';
 import enUS from 'antd/locale/en_US';
 import ruRU from 'antd/locale/ru_RU';
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
@@ -82,6 +82,7 @@ function Shell() {
   const location = useLocation();
   const section = location.pathname.split('/')[1] || 'overview';
   const { token } = theme.useToken();
+  const screens = Grid.useBreakpoint();
   return (
     <Layout style={{ minHeight: '100vh', background: token.colorBgLayout }}>
       <Layout.Header className="header" style={{ background: token.colorBgContainer }}>
@@ -102,7 +103,7 @@ function Shell() {
           ]}
         />
         <Space>
-          {meta.data?.version && (
+          {meta.data?.version && screens.md && (
             <Typography.Text type="secondary">{t('common.version', { version: meta.data.version })}</Typography.Text>
           )}
           <Button size="small" onClick={() => setLanguage(language === 'ru' ? 'en' : 'ru')}>

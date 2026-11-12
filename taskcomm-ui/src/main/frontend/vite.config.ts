@@ -15,9 +15,9 @@ export default defineConfig({
     chunkSizeWarningLimit: 2000,
   },
   server: {
-    // Разработка: приложение с taskcomm на 8080, REST по пути по умолчанию.
+    // Разработка: демо-приложение (gradlew.bat :taskcomm-ui:uiDemo) на 8088, REST по пути по умолчанию.
     proxy: {
-      '/tc/api': 'http://localhost:8080',
+      '/tc/api': 'http://localhost:8088',
     },
   },
   test: {

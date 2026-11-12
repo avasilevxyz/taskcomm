@@ -5,6 +5,7 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.tngtech.archunit.base.DescribedPredicate;
+import com.tngtech.archunit.core.importer.ImportOption;
 import com.tngtech.archunit.junit.AnalyzeClasses;
 import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
@@ -20,7 +21,7 @@ import org.springframework.stereotype.Component;
  * интерфейс стоит на REST и свойствах стартера и не трогает внутреннюю реализацию подсистем; сканирования
  * нет; автоконфигурация находится Spring Boot через файл imports.
  */
-@AnalyzeClasses(packages = "xyz.avasilev.taskcomm.ui")
+@AnalyzeClasses(packages = "xyz.avasilev.taskcomm.ui", importOptions = ImportOption.DoNotIncludeTests.class)
 class UiArchitectureTest {
 
     @ArchTest

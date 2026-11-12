@@ -14,6 +14,7 @@ import {
   useTime,
 } from '../common';
 import { useI18n } from '../i18n';
+import { useMeta } from '../meta';
 import { Actions, canCancel, canRestart } from './actions';
 import { TaskTable, useTaskPages } from './TaskTable';
 
@@ -39,6 +40,10 @@ function TaskDetails({ task }: { task: TaskItem }) {
   const time = useTime();
   const createdAt = task.execution.createdAt;
   const path = `/tasks/${task.level}/${task.id}`;
+  const meta = useMeta();
+  // У плоской задачи детей не бывает; у типа без процессора форма неизвестна — показываем.
+  const contract = meta.data?.tasks?.types.find((type) => type.type === task.taskType)?.contract;
+  const hasChildren = task.level === 'BATCH' || (task.level === 'TASK' && contract !== 'FLAT');
   const attempts = useQuery({
     queryKey: ['tasks', 'attempts', task.level, task.id],
     queryFn: () => getJson<TaskAttempt[]>(`${path}/attempts`, { executionCreatedAt: createdAt }),
@@ -97,6 +102,7 @@ function TaskDetails({ task }: { task: TaskItem }) {
           {() => (
             <Table<TaskAttempt>
               size="small"
+              scroll={{ x: 'max-content' }}
               rowKey="id"
               pagination={false}
               dataSource={attempts.data}
@@ -122,7 +128,7 @@ function TaskDetails({ task }: { task: TaskItem }) {
           )}
         </Loadable>
       </Card>
-      {task.level !== 'UNIT' && <Children task={task} />}
+      {hasChildren && <Children task={task} />}
       <Link to={`/tasks?level=${task.level}&executionId=${task.execution.id}&executionCreatedAt=${encodeURIComponent(createdAt)}`}>
         {t('tasks.inExecution', { id: task.execution.id })}
       </Link>

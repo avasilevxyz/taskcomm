@@ -99,6 +99,7 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
             children: (
               <Table
                 size="small"
+                scroll={{ x: 'max-content' }}
                 pagination={false}
                 dataSource={timeline}
                 columns={[
@@ -132,6 +133,7 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
             children: (
               <Table<CorrelationKey>
                 size="small"
+                scroll={{ x: 'max-content' }}
                 pagination={false}
                 rowKey={(row) => `${row.externalSystem}/${row.correlationId}`}
                 dataSource={outline.correlationKeys}
@@ -202,6 +204,7 @@ function NodeTitle({ node, onUnits }: { node: TreeNode; onUnits: () => void }) {
             <Progress
               style={{ width: 120, margin: 0 }}
               size="small"
+              showInfo={false}
               percent={Math.round((100 * (count - (node.units.PENDING ?? 0) - (node.units.RUNNING ?? 0) - (node.units.AWAITING_PARENT ?? 0))) / count)}
               success={{ percent: Math.round((100 * (node.units.SUCCEEDED ?? 0)) / count) }}
               status={(node.units.FAILED ?? 0) > 0 ? 'exception' : 'normal'}

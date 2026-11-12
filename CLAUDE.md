@@ -179,6 +179,14 @@ gradlew.bat publishToMavenLocal
 Локальная публикация для отладки в приложении-потребителе.
 
 ```powershell
+gradlew.bat :taskcomm-ui:uiDemo
+```
+
+Демо-приложение веб-интерфейса на http://localhost:8088/tc: PostgreSQL в Testcontainers, процессоры
+трёх форм задач и банк с колбэком. Вне `check`, нужен Docker. Правишь экраны — проверяй здесь,
+тесты в jsdom оформления не видят.
+
+```powershell
 gradlew.bat loadTest
 ```
 

@@ -93,6 +93,7 @@ function CommunicationDetails({ communication }: { communication: CommunicationI
           {() => (
             <Table<CommunicationAttempt>
               size="small"
+              scroll={{ x: 'max-content' }}
               rowKey="id"
               pagination={false}
               dataSource={attempts.data}

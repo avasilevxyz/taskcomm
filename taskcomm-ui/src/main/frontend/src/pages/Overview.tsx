@@ -26,7 +26,17 @@ export function pivot<TGroup extends string>(
     existing.orphan = existing.orphan || row.orphan;
     byKey.set(key, existing);
   }
-  return [...byKey.values()].sort((a, b) => a.group.localeCompare(b.group) || a.name.localeCompare(b.name));
+  return [...byKey.values()].sort(
+    (a, b) => rank(a.group) - rank(b.group) || a.group.localeCompare(b.group) || a.name.localeCompare(b.name),
+  );
+}
+
+/** Уровни — в порядке иерархии, а не по алфавиту. */
+const ORDER = ['TASK', 'BATCH', 'UNIT', 'INBOUND', 'OUTBOUND'];
+
+function rank(group: string): number {
+  const index = ORDER.indexOf(group);
+  return index < 0 ? ORDER.length : index;
 }
 
 function Counts({ counts, link }: { counts: Record<string, number>; link: (status: string) => string }) {
@@ -78,6 +88,7 @@ export function Overview() {
                 {() => (
                   <Table
                     size="small"
+                    scroll={{ x: 'max-content' }}
                     pagination={false}
                     dataSource={pivot(
                       (tasks.data ?? []).map((row) => ({ ...row, group: row.level, name: row.taskType })),
@@ -120,6 +131,7 @@ export function Overview() {
                 {() => (
                   <Table
                     size="small"
+                    scroll={{ x: 'max-content' }}
                     pagination={false}
                     dataSource={pivot(
                       (communications.data ?? []).map((row) => ({
@@ -178,9 +190,9 @@ function Breakers() {
     queryKey: ['communications', 'circuit-breakers'],
     queryFn: () => getJson<CircuitBreaker[]>('/communications/circuit-breakers'),
   });
-  const instance = breakers.data?.[0]?.instance ?? '—';
+  const instance = breakers.data?.[0]?.instance;
   return (
-    <Card title={t('overview.breakers', { instance })} size="small">
+    <Card title={instance ? t('overview.breakersOf', { instance }) : t('overview.breakers')} size="small">
       <Loadable loading={breakers.isLoading} error={breakers.error}>
         {() =>
           (breakers.data ?? []).length === 0 ? (
@@ -188,6 +200,7 @@ function Breakers() {
           ) : (
             <Table
               size="small"
+              scroll={{ x: 'max-content' }}
               pagination={false}
               rowKey="externalSystem"
               dataSource={breakers.data}

@@ -3,10 +3,11 @@ import { cleanup } from '@testing-library/react';
 import { afterEach, vi } from 'vitest';
 
 // jsdom не умеет того, чем пользуется Ant Design: медиазапросов и наблюдения за размером.
+// Экран тестов — широкий (min-width выполняется), тема — светлая.
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: vi.fn().mockImplementation((query: string) => ({
-    matches: false,
+    matches: query.includes('min-width'),
     media: query,
     onchange: null,
     addEventListener: vi.fn(),

@@ -18,5 +18,10 @@
         Тесты не документируются пакетами.
     -->
     <suppress checks="JavadocPackage" files="[\\/]src[\\/]test[\\/]"/>
+    <!--
+        Демо-приложение интерфейса запускается задачей uiDemo: его main — точка входа по назначению,
+        а не забытый отладочный метод, против которого правило.
+    -->
+    <suppress checks="UncommentedMain" files="[\\/]src[\\/]test[\\/].*[\\/]demo[\\/]UiDemoApplication\.java"/>
 
 </suppressions>
