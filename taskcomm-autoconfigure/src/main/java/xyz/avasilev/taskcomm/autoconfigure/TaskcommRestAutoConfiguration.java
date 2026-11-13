@@ -4,6 +4,7 @@ import java.time.Duration;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
@@ -20,6 +21,7 @@ import xyz.avasilev.taskcomm.communication.api.processor.CommunicationProcessor;
 import xyz.avasilev.taskcomm.execution.api.ExecutionService;
 import xyz.avasilev.taskcomm.rest.CommunicationController;
 import xyz.avasilev.taskcomm.rest.ExecutionController;
+import xyz.avasilev.taskcomm.rest.ManualInboundController;
 import xyz.avasilev.taskcomm.rest.MetaController;
 import xyz.avasilev.taskcomm.rest.RestMapper;
 import xyz.avasilev.taskcomm.rest.RestMapperImpl;
@@ -113,15 +115,18 @@ public class TaskcommRestAutoConfiguration {
             final ObjectProvider<TaskProcessor<?>> taskProcessors,
             final ObjectProvider<CommunicationInspection> communicationInspection,
             final ObjectProvider<CommunicationProcessor<?, ?, ?>> communicationProcessors) {
+        final TaskInspection tasks = taskInspection.getIfAvailable();
+        final CommunicationInspection communications = communicationInspection.getIfAvailable();
         return new MetaController(
                 TaskcommRestAutoConfiguration.class.getPackage().getImplementationVersion(),
                 properties.getRest().getSearchWindow(),
-                taskInspection.getIfAvailable() == null
+                tasks == null ? null : taskProcessors.orderedStream().toList(),
+                communications == null
                         ? null
-                        : taskProcessors.orderedStream().toList(),
-                communicationInspection.getIfAvailable() == null
-                        ? null
-                        : communicationProcessors.orderedStream().toList());
+                        : communicationProcessors.orderedStream().toList(),
+                tasks,
+                communications,
+                properties.getRest().isManualInbound());
     }
 
     /**
@@ -131,6 +136,7 @@ public class TaskcommRestAutoConfiguration {
      * @param inspection чтение задач
      * @param windows окна
      * @param mapper формы ответов
+     * @param executions дела
      * @return контроллер
      */
     @Bean
@@ -139,8 +145,9 @@ public class TaskcommRestAutoConfiguration {
             final TaskService tasks,
             final TaskInspection inspection,
             final RestWindows windows,
-            final RestMapper mapper) {
-        return new TaskController(tasks, inspection, windows, mapper);
+            final RestMapper mapper,
+            final ExecutionService executions) {
+        return new TaskController(tasks, inspection, windows, mapper, executions);
     }
 
     /**
@@ -150,6 +157,7 @@ public class TaskcommRestAutoConfiguration {
      * @param inspection чтение коммуникаций
      * @param windows окна
      * @param mapper формы ответов
+     * @param executions дела
      * @return контроллер
      */
     @Bean
@@ -158,8 +166,25 @@ public class TaskcommRestAutoConfiguration {
             final CommunicationService communications,
             final CommunicationInspection inspection,
             final RestWindows windows,
-            final RestMapper mapper) {
-        return new CommunicationController(communications, inspection, windows, mapper);
+            final RestMapper mapper,
+            final ExecutionService executions) {
+        return new CommunicationController(communications, inspection, windows, mapper, executions);
+    }
+
+    /**
+     * Ручной приём входящих — только при {@code taskcomm.rest.manual-inbound: true} и включённых
+     * коммуникациях (docs/adr/0153-ui-creation-refinements.md). Выключен — пути нет вовсе.
+     *
+     * @param communications сервис коммуникаций
+     * @param mapper формы ответов
+     * @return контроллер
+     */
+    @Bean
+    @ConditionalOnBean(CommunicationInspection.class)
+    @ConditionalOnBooleanProperty("taskcomm.rest.manual-inbound")
+    public ManualInboundController taskcommManualInboundController(
+            final CommunicationService communications, final RestMapper mapper) {
+        return new ManualInboundController(communications, mapper);
     }
 
     /** Пути стартера для конфигурации безопасности потребителя — только при Spring Security на classpath. */

@@ -1,6 +1,7 @@
 package xyz.avasilev.taskcomm.communication.internal.inspection;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
@@ -13,10 +14,13 @@ import org.junit.jupiter.api.Test;
 import xyz.avasilev.taskcomm.communication.api.CommunicationHeaders;
 import xyz.avasilev.taskcomm.communication.api.CommunicationStatus;
 import xyz.avasilev.taskcomm.communication.api.CorrelationKey;
+import xyz.avasilev.taskcomm.communication.api.DedupKey;
 import xyz.avasilev.taskcomm.communication.api.ExchangeMessage;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationQuery;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSnapshot;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSummary;
+import xyz.avasilev.taskcomm.communication.api.inspection.CorrelationKeySnapshot;
+import xyz.avasilev.taskcomm.communication.api.inspection.DedupKeySnapshot;
 import xyz.avasilev.taskcomm.communication.internal.CommunicationTestDatabase;
 import xyz.avasilev.taskcomm.communication.internal.ContractShape;
 import xyz.avasilev.taskcomm.communication.internal.Direction;
@@ -47,9 +51,14 @@ class DefaultCommunicationInspectionIT {
         this.creator = this.db.creator();
         final CommunicationProcessorRegistry registry =
                 new CommunicationProcessorRegistry(List.of(new CommunicationClaimIT.StockProcessor()));
-        this.inspection = new DefaultCommunicationInspection(this.db.dataSource, this.db.codec, () -> registry, () -> {
-            throw new IllegalStateException("движок в этом тесте не нужен");
-        });
+        this.inspection = new DefaultCommunicationInspection(
+                this.db.dataSource,
+                this.db.codec,
+                () -> registry,
+                () -> {
+                    throw new IllegalStateException("движок в этом тесте не нужен");
+                },
+                () -> null);
     }
 
     @Test
@@ -137,6 +146,42 @@ class DefaultCommunicationInspectionIT {
                     assertThat(key.correlationId()).isEqualTo("corr-1");
                     assertThat(key.communicationId()).isEqualTo(anchor.id());
                 });
+    }
+
+    @Test
+    void keysOfCommunicationAndSearchByThem() {
+        final CreatedCommunication owner = this.outbound(
+                "stock",
+                new NewCommunication.Keys(
+                        List.of(new DedupKey.WholeHistory("k-1"), new DedupKey.LastSucceeded("sku-1", "price-1")),
+                        List.of(CorrelationKey.of("corr-1"))));
+        final CreatedCommunication other =
+                this.outbound("stock", new NewCommunication.Keys(List.of(new DedupKey.WholeHistory("k-2")), List.of()));
+        final CommunicationSnapshot found =
+                this.inspection.find(owner.id(), this.window()).orElseThrow();
+
+        assertThat(this.inspection.dedupKeys(found))
+                .extracting(DedupKeySnapshot::subject, DedupKeySnapshot::key)
+                .containsExactly(tuple(null, "k-1"), tuple("sku-1", "price-1"));
+        assertThat(this.inspection.correlationKeys(found))
+                .extracting(CorrelationKeySnapshot::externalSystem, CorrelationKeySnapshot::correlationId)
+                .containsExactly(tuple("stock", "corr-1"));
+        final CommunicationQuery stock = CommunicationQuery.all()
+                .withDirection(CommunicationSnapshot.Direction.OUTBOUND)
+                .withSystem("stock");
+        assertThat(this.items(stock.withDedupKey("k-1")))
+                .extracting(CommunicationSnapshot::id)
+                .containsExactly(owner.id());
+        assertThat(this.items(CommunicationQuery.all().withDedupKey("k-2")))
+                .extracting(CommunicationSnapshot::id)
+                .containsExactly(other.id());
+        assertThat(this.items(stock.withDedupKey("sku-1", "price-1")))
+                .extracting(CommunicationSnapshot::id)
+                .containsExactly(owner.id());
+        assertThat(this.items(stock.withDedupKey("price-1"))).isEmpty();
+        assertThat(this.items(CommunicationQuery.all().withCorrelationKey("stock", "corr-1")))
+                .extracting(CommunicationSnapshot::id)
+                .containsExactly(owner.id());
     }
 
     @Test

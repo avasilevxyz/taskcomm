@@ -1,12 +1,16 @@
+import { MoonOutlined, SunOutlined } from '@ant-design/icons';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Button, ConfigProvider, Grid, Layout, Menu, Space, Spin, theme, Typography } from 'antd';
+import { Button, ConfigProvider, Layout, Menu, Segmented, Space, Spin, theme, Tooltip, Typography } from 'antd';
 import enUS from 'antd/locale/en_US';
 import ruRU from 'antd/locale/ru_RU';
-import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useContext, useState, type ReactNode } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router';
-import { ApiError, routerBase } from './api';
+import { ApiError, appTitle, routerBase } from './api';
+import { CreateDrawerProvider, CreateLink } from './createDrawer';
+import { EntityDrawerProvider } from './entityDrawer';
+import { RefreshControl, refreshInterval } from './refresh';
 import { I18nProvider, useI18n, type Language } from './i18n';
-import { DarkContext, useMeta } from './meta';
+import { DarkContext, ThemeContext, useMeta, type Scheme } from './meta';
 import { CommunicationCard } from './pages/CommunicationCard';
 import { Communications } from './pages/Communications';
 import { Execution } from './pages/Execution';
@@ -17,14 +21,15 @@ import { Tasks } from './pages/Tasks';
 // Создание грузится отдельно: в нём редактор CodeMirror, остальным экранам он не нужен.
 const Create = lazy(() => import('./pages/Create').then((module) => ({ default: module.Create })));
 
-/** Опрос открытого экрана (docs/adr/0152-web-interface-frontend-stack.md). */
-export const REFRESH_MILLIS = 10_000;
+const THEME_KEY = 'taskcomm.theme';
 
 export function createQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
       queries: {
-        refetchInterval: REFRESH_MILLIS,
+        refetchInterval: () => refreshInterval(),
+        // «Вручную» — и без загрузки при возврате на вкладку: только по кнопке.
+        refetchOnWindowFocus: () => refreshInterval() !== false,
         refetchIntervalInBackground: false,
         retry: (failures, error) => !(error instanceof ApiError && error.status < 500) && failures < 2,
       },
@@ -32,19 +37,24 @@ export function createQueryClient(): QueryClient {
   });
 }
 
-function useDarkScheme(): boolean {
-  const query = '(prefers-color-scheme: dark)';
-  const [dark, setDark] = useState(() => window.matchMedia?.(query).matches ?? false);
-  useEffect(() => {
-    const media = window.matchMedia?.(query);
-    if (!media) {
-      return undefined;
+/** Тема: тёмная по умолчанию, выбор помнится в браузере (docs/adr/0154-ui-shell.md). */
+function useStoredScheme(): [Scheme, (scheme: Scheme) => void] {
+  const [scheme, setState] = useState<Scheme>(() => {
+    try {
+      return window.localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark';
+    } catch {
+      return 'dark';
     }
-    const listener = (event: MediaQueryListEvent) => setDark(event.matches);
-    media.addEventListener('change', listener);
-    return () => media.removeEventListener('change', listener);
+  });
+  const setScheme = useCallback((next: Scheme) => {
+    setState(next);
+    try {
+      window.localStorage.setItem(THEME_KEY, next);
+    } catch {
+      // не запомнили — выбор действует до перезагрузки
+    }
   }, []);
-  return dark;
+  return [scheme, setScheme];
 }
 
 export function App({ client = createQueryClient(), language }: { client?: QueryClient; language?: Language }) {
@@ -53,7 +63,11 @@ export function App({ client = createQueryClient(), language }: { client?: Query
       <QueryClientProvider client={client}>
         <Themed>
           <BrowserRouter basename={routerBase()}>
-            <Shell />
+            <CreateDrawerProvider>
+              <EntityDrawerProvider>
+                <Shell />
+              </EntityDrawerProvider>
+            </CreateDrawerProvider>
           </BrowserRouter>
         </Themed>
       </QueryClientProvider>
@@ -63,32 +77,33 @@ export function App({ client = createQueryClient(), language }: { client?: Query
 
 function Themed({ children }: { children: ReactNode }) {
   const { language } = useI18n();
-  const dark = useDarkScheme();
+  const [scheme, setScheme] = useStoredScheme();
+  const dark = scheme === 'dark';
   return (
     <ConfigProvider
       locale={language === 'ru' ? ruRU : enUS}
       theme={{ algorithm: dark ? theme.darkAlgorithm : theme.defaultAlgorithm }}
     >
-      <DarkContext.Provider value={dark}>
-        <div className={dark ? 'scheme-dark' : 'scheme-light'}>{children}</div>
-      </DarkContext.Provider>
+      <ThemeContext.Provider value={{ scheme, setScheme }}>
+        <DarkContext.Provider value={dark}>
+          <div className={dark ? 'scheme-dark' : 'scheme-light'}>{children}</div>
+        </DarkContext.Provider>
+      </ThemeContext.Provider>
     </ConfigProvider>
   );
 }
 
 function Shell() {
-  const { t, language, setLanguage } = useI18n();
-  const meta = useMeta();
+  const { t } = useI18n();
   const location = useLocation();
-  const section = location.pathname.split('/')[1] || 'overview';
+  const section = location.pathname.split('/')[1] || 'tasks';
   const { token } = theme.useToken();
-  const screens = Grid.useBreakpoint();
   return (
     <Layout style={{ minHeight: '100vh', background: token.colorBgLayout }}>
       <Layout.Header className="header" style={{ background: token.colorBgContainer }}>
         <Link to="/" className="brand">
           <Typography.Title level={4} style={{ margin: 0 }}>
-            {t('app.title')}
+            {appTitle()}
           </Typography.Title>
         </Link>
         <Menu
@@ -96,35 +111,64 @@ function Shell() {
           selectedKeys={[section]}
           style={{ flex: 1, minWidth: 0, borderBottom: 'none' }}
           items={[
-            { key: 'overview', label: <Link to="/">{t('nav.overview')}</Link> },
             { key: 'tasks', label: <Link to="/tasks">{t('nav.tasks')}</Link> },
             { key: 'communications', label: <Link to="/communications">{t('nav.communications')}</Link> },
-            { key: 'create', label: <Link to="/create">{t('nav.create')}</Link> },
+            { key: 'overview', label: <Link to="/overview">{t('nav.overview')}</Link> },
+            { key: 'create', label: <CreateLink>{t('nav.create')}</CreateLink> },
           ]}
         />
-        <Space>
-          {meta.data?.version && screens.md && (
-            <Typography.Text type="secondary">{t('common.version', { version: meta.data.version })}</Typography.Text>
-          )}
-          <Button size="small" onClick={() => setLanguage(language === 'ru' ? 'en' : 'ru')}>
-            {t('lang.switch')}
-          </Button>
-        </Space>
+        <RefreshControl />
       </Layout.Header>
       <Layout.Content className="content">
         <Suspense fallback={<Spin />}>
           <Routes>
-            <Route path="/" element={<Overview />} />
+            <Route path="/" element={<Navigate to="/tasks" replace />} />
+            <Route path="/overview" element={<Overview />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/tasks/:level/:id" element={<TaskCard />} />
             <Route path="/communications" element={<Communications />} />
             <Route path="/communications/:id" element={<CommunicationCard />} />
             <Route path="/executions/:id" element={<Execution />} />
             <Route path="/create" element={<Create />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to="/tasks" replace />} />
           </Routes>
         </Suspense>
       </Layout.Content>
+      <Footer />
     </Layout>
+  );
+}
+
+/** Подвал: экземпляр, версия, тема и язык — справа. */
+function Footer() {
+  const { t, language, setLanguage } = useI18n();
+  const meta = useMeta();
+  const { scheme, setScheme } = useContext(ThemeContext);
+  const { token } = theme.useToken();
+  return (
+    <Layout.Footer className="footer" style={{ background: token.colorBgContainer }}>
+      <Space size={16} wrap>
+        {meta.data?.instance && (
+          <Tooltip title={t('footer.instanceHint')}>
+            <Typography.Text type="secondary">{t('footer.instance', { instance: meta.data.instance })}</Typography.Text>
+          </Tooltip>
+        )}
+        {meta.data?.version && (
+          <Typography.Text type="secondary">{t('common.version', { version: meta.data.version })}</Typography.Text>
+        )}
+        <Segmented<Scheme>
+          size="small"
+          value={scheme}
+          onChange={setScheme}
+          options={[
+            { value: 'light', icon: <SunOutlined />, title: t('theme.light') },
+            { value: 'dark', icon: <MoonOutlined />, title: t('theme.dark') },
+          ]}
+        />
+        <Button size="small" onClick={() => setLanguage(language === 'ru' ? 'en' : 'ru')}>
+          {t('lang.switch')}
+        </Button>
+      </Space>
+    </Layout.Footer>
   );
 }

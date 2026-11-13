@@ -5,15 +5,19 @@ import { useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import { getJson, type CorrelationKey, type ExecutionOutline } from '../api';
 import {
+  CountLabel,
   communicationPath,
   IdLink,
   Loadable,
   OrphanTag,
+  ProcessorTitle,
   shortId,
   StatusTag,
+  by,
   taskPath,
   useTime,
 } from '../common';
+import { CreateInExecutionButton } from '../createDrawer';
 import { useI18n } from '../i18n';
 import { buildTree, total, type TreeNode } from './executionTree';
 import { TaskTable, useTaskPages } from './TaskTable';
@@ -52,6 +56,7 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
       kind: row.kind as 'TASK' | 'BATCH' | 'COMMUNICATION',
       id: row.item.id,
       name: row.item.taskType,
+      label: <ProcessorTitle kind="task" id={row.item.taskType} />,
       status: row.item.state.status,
       description: row.item.state.statusDescription,
       createdAt: row.createdAt,
@@ -62,6 +67,11 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
         kind: 'COMMUNICATION' as const,
         id: item.id,
         name: `${t(`direction.${item.direction}`)} · ${item.externalSystem}`,
+        label: (
+          <span>
+            {t(`direction.${item.direction}`)} · <ProcessorTitle kind="system" id={item.externalSystem} />
+          </span>
+        ),
         status: item.state.status,
         description: item.state.statusDescription,
         createdAt: item.state.createdAt,
@@ -80,6 +90,7 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
           {outline.execution.id}
         </Typography.Text>
         <Typography.Text type="secondary">{time(createdAt)}</Typography.Text>
+        <CreateInExecutionButton executionId={outline.execution.id} executionCreatedAt={createdAt} />
       </Space>
       <Tabs
         items={[
@@ -95,7 +106,7 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
           },
           {
             key: 'timeline',
-            label: t('execution.timeline'),
+            label: <CountLabel label={t('execution.timeline')} count={timeline.length} />,
             children: (
               <Table
                 size="small"
@@ -103,10 +114,11 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
                 pagination={false}
                 dataSource={timeline}
                 columns={[
-                  { title: t('common.created'), dataIndex: 'createdAt', render: (value: string) => time(value) },
-                  { title: t('common.type'), dataIndex: 'kind', render: (kind: 'TASK') => t(`level.${kind}`) },
+                  { title: t('common.created'), sorter: by((row: { createdAt: string; kind: string; id: string; name: string; status: string }) => row.createdAt), dataIndex: 'createdAt', render: (value: string) => time(value) },
+                  { title: t('common.type'), sorter: by((row: { createdAt: string; kind: string; id: string; name: string; status: string }) => row.kind), dataIndex: 'kind', render: (kind: 'TASK') => t(`level.${kind}`) },
                   {
                     title: t('common.id'),
+                    sorter: by((row: { createdAt: string; kind: string; id: string; name: string; status: string }) => row.id),
                     render: (_, row) => (
                       <IdLink
                         to={
@@ -118,9 +130,10 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
                       />
                     ),
                   },
-                  { title: '', dataIndex: 'name' },
+                  { title: '', sorter: by((row: { createdAt: string; kind: string; id: string; name: string; status: string }) => row.name), dataIndex: 'label' },
                   {
                     title: t('common.status'),
+                    sorter: by((row: { createdAt: string; kind: string; id: string; name: string; status: string }) => row.status),
                     render: (_, row) => <StatusTag status={row.status} description={row.description} />,
                   },
                 ]}
@@ -129,7 +142,7 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
           },
           {
             key: 'correlation',
-            label: `${t('execution.correlation')} (${outline.correlationKeys.length})`,
+            label: <CountLabel label={t('execution.correlation')} count={outline.correlationKeys.length} />,
             children: (
               <Table<CorrelationKey>
                 size="small"
@@ -138,14 +151,14 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
                 rowKey={(row) => `${row.externalSystem}/${row.correlationId}`}
                 dataSource={outline.correlationKeys}
                 columns={[
-                  { title: t('communications.system'), dataIndex: 'externalSystem' },
-                  { title: t('execution.correlationId'), dataIndex: 'correlationId' },
+                  { title: t('communications.system'), sorter: by((row: CorrelationKey) => row.externalSystem), dataIndex: 'externalSystem', render: (system: string) => <ProcessorTitle kind="system" id={system} /> },
+                  { title: t('execution.correlationId'), sorter: by((row: CorrelationKey) => row.correlationId), dataIndex: 'correlationId' },
                   {
                     title: t('level.COMMUNICATION'),
                     dataIndex: 'communicationId',
                     render: (id: string) => <IdLink to={communicationPath(id, createdAt)} id={id} />,
                   },
-                  { title: t('common.created'), dataIndex: 'createdAt', render: (value: string) => time(value) },
+                  { title: t('common.created'), sorter: by((row: CorrelationKey) => row.createdAt), dataIndex: 'createdAt', render: (value: string) => time(value) },
                 ]}
               />
             ),
@@ -160,7 +173,7 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
         destroyOnHidden
       >
         {units?.task && (
-          <UnitsOf parentId={units.task.id} executionId={outline.execution.id} executionCreatedAt={createdAt} />
+          <UnitsOf parentId={units.task.id} taskType={units.task.taskType} executionId={outline.execution.id} executionCreatedAt={createdAt} />
         )}
       </Drawer>
     </Flex>
@@ -177,7 +190,7 @@ function NodeTitle({ node, onUnits }: { node: TreeNode; onUnits: () => void }) {
       {node.task && (
         <>
           <IdLink to={taskPath(node.kind, node.task.id, createdAt)} id={node.task.id} />
-          <span>{node.task.taskType}</span>
+          <ProcessorTitle kind="task" id={node.task.taskType} />
           <StatusTag status={node.task.state.status} description={node.task.state.statusDescription} />
           <OrphanTag orphan={node.task.state.orphan} />
         </>
@@ -186,7 +199,7 @@ function NodeTitle({ node, onUnits }: { node: TreeNode; onUnits: () => void }) {
         <>
           <IdLink to={communicationPath(node.communication.id, createdAt)} id={node.communication.id} />
           <span>
-            {t(`direction.${node.communication.direction}`)} · {node.communication.externalSystem}
+            {t(`direction.${node.communication.direction}`)} · <ProcessorTitle kind="system" id={node.communication.externalSystem} />
           </span>
           <StatusTag status={node.communication.state.status} description={node.communication.state.statusDescription} />
           <OrphanTag orphan={node.communication.state.orphan} />
@@ -225,8 +238,9 @@ function NodeTitle({ node, onUnits }: { node: TreeNode; onUnits: () => void }) {
   );
 }
 
-function UnitsOf({ parentId, executionId, executionCreatedAt }: {
+function UnitsOf({ parentId, taskType, executionId, executionCreatedAt }: {
   parentId: string;
+  taskType: string;
   executionId: string;
   executionCreatedAt: string;
 }) {
@@ -236,5 +250,5 @@ function UnitsOf({ parentId, executionId, executionCreatedAt }: {
     executionId,
     executionCreatedAt,
   }));
-  return <TaskTable pages={pages} showWindow={false} />;
+  return <TaskTable pages={pages} showWindow={false} level="UNIT" taskType={taskType} />;
 }

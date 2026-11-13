@@ -19,7 +19,7 @@ import xyz.avasilev.taskcomm.communication.api.Communication;
  * с одной {@link #externalSystem()} — падение при старте. Процессор не удаляется никогда, пока в базе
  * есть коммуникации его системы. Имя системы, поля {@code TRequest} и транспорт — формат уже
  * записанных данных: у живой системы их не меняют, часть таких правок теряет данные молча
- * (<a href="https://github.com/avasilevxyz/taskcomm/blob/v2.1.0/docs/guide/evolution/compatibility.md">Совместимость</a>).
+ * (<a href="https://github.com/avasilevxyz/taskcomm/blob/v2.1.1/docs/guide/evolution/compatibility.md">Совместимость</a>).
  *
  * <p><b>Гарантия — at-least-once</b>: аренда может истечь у живого, но медленного воркера, и ту же
  * коммуникацию подберёт другой. {@link #process} и {@link #handleResponse} обязаны быть идемпотентными;
@@ -45,6 +45,27 @@ public sealed interface CommunicationProcessor<TRequest, TSyncResponse, TAsyncRe
      * @return имя внешней системы
      */
     String externalSystem();
+
+    /**
+     * Название внешней системы для человека — в интерфейсе и выдаче {@code meta}
+     * (docs/adr/0159-processor-title-and-description.md). Оформление, а не ключ: правится на месте
+     * и в базу не пишется.
+     *
+     * @return название системы; по умолчанию — {@link #externalSystem()}
+     */
+    default String title() {
+        return this.externalSystem();
+    }
+
+    /**
+     * Описание внешней системы для человека — что это за система и что с ней обмениваются
+     * (docs/adr/0159-processor-title-and-description.md). Оформление, правится на месте.
+     *
+     * @return описание или {@code null}; по умолчанию — {@code null}
+     */
+    default String description() {
+        return null;
+    }
 
     /**
      * Вызывается движком при захвате <b>перед</b> {@link #process}, чтобы задать ключи дедупликации

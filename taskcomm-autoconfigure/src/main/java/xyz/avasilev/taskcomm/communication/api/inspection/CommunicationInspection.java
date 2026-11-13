@@ -1,6 +1,7 @@
 package xyz.avasilev.taskcomm.communication.api.inspection;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import xyz.avasilev.taskcomm.communication.api.CommunicationService;
@@ -54,6 +55,24 @@ public interface CommunicationInspection {
     List<CorrelationKeySnapshot> correlationKeys(ExecutionRef execution);
 
     /**
+     * Ключи корреляции, для которых коммуникация — якорь
+     * (docs/adr/0156-communication-keys-and-pollers-in-reading.md).
+     *
+     * @param communication коммуникация
+     * @return ключи в порядке регистрации
+     */
+    List<CorrelationKeySnapshot> correlationKeys(CommunicationSnapshot communication);
+
+    /**
+     * Ключи дедупликации коммуникации (docs/adr/0156-communication-keys-and-pollers-in-reading.md).
+     * У дубликата ключей нет: ключи дубликатов не хранятся.
+     *
+     * @param communication коммуникация
+     * @return ключи в порядке регистрации
+     */
+    List<DedupKeySnapshot> dedupKeys(CommunicationSnapshot communication);
+
+    /**
      * Размыкатели систем с включённым размыкателем — на этом экземпляре.
      *
      * @return состояния
@@ -67,4 +86,21 @@ public interface CommunicationInspection {
      * @return строки сводки
      */
     List<CommunicationSummary> summary(HistoryWindow window);
+
+    /**
+     * Приоритет по умолчанию у внешних систем с процессором — итог лестницы настроек
+     * (docs/adr/0153-ui-creation-refinements.md): его получит коммуникация, созданная без своего приоритета.
+     *
+     * @return внешняя система → приоритет, по имени системы
+     */
+    Map<String, Integer> defaultPriorities();
+
+    /**
+     * Поллер, который захватывает коммуникации внешней системы на этом экземпляре: выделенный
+     * или {@code main} (docs/adr/0156-communication-keys-and-pollers-in-reading.md). Вычисляется
+     * из настроек, в попытке не хранится.
+     *
+     * @return внешняя система с процессором → имя поллера, по имени системы
+     */
+    Map<String, String> pollers();
 }

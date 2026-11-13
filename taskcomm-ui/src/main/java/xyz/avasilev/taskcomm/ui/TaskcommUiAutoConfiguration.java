@@ -54,6 +54,7 @@ public class TaskcommUiAutoConfiguration {
             throw new TaskcommConfigurationException("taskcomm.ui.base-path совпадает с taskcomm.rest.base-path: " + ui
                     + " (docs/adr/0151-default-paths-under-tc.md)");
         }
-        return new UiController(ui, rest, TaskcommUiAutoConfiguration.class.getClassLoader());
+        return new UiController(
+                ui, rest, properties.getUi().getTitle(), TaskcommUiAutoConfiguration.class.getClassLoader());
     }
 }

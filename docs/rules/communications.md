@@ -49,7 +49,9 @@ sealed interface HttpCommunicationProcessor<TRequest, TSyncResponse, TAsyncRespo
 ## Приём входящих
 
 Входящие коммуникации создаёт потребитель — из своего контроллера или слушателя, через API
-стартера. Собственного приёмного endpoint стартер не даёт.
+стартера. Собственного приёмного endpoint для внешних систем стартер не даёт. Ручной приём в REST
+для запуска процесса человеком — отдельно, за `taskcomm.rest.manual-inbound`, по умолчанию выключен
+([ADR 0153](../adr/0153-ui-creation-refinements.md), правила — в [rest-and-search.md](rest-and-search.md)).
 
 **Механика у всех коммуникаций одна** ([ADR 0074](../adr/0074-uniform-communication-processing.md)):
 входящие и исходящие, без режимов приёма, могут иметь много попыток. Создание пишется

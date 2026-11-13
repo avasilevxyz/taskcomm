@@ -199,6 +199,7 @@ public class TaskcommCommunicationAutoConfiguration {
     public CommunicationInspection taskcommCommunicationInspection(
             final ObjectProvider<CommunicationProcessorRegistry> registry,
             final ObjectProvider<CommunicationEngine> engine,
+            final ObjectProvider<CommunicationSettings> settings,
             final CommunicationCodec codec,
             @TaskcommDataSource final ObjectProvider<DataSource> qualified,
             final ObjectProvider<DataSource> dataSources,
@@ -207,7 +208,8 @@ public class TaskcommCommunicationAutoConfiguration {
                 TaskcommBeanSelection.dataSource(qualified, dataSources, beanFactory),
                 codec,
                 registry::getObject,
-                engine::getObject);
+                engine::getObject,
+                settings::getObject);
     }
 
     /**

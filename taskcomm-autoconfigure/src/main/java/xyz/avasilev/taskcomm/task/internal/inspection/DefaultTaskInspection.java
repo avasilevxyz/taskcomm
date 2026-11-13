@@ -2,11 +2,13 @@ package xyz.avasilev.taskcomm.task.internal.inspection;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
@@ -27,6 +29,7 @@ import xyz.avasilev.taskcomm.task.api.processor.FieldType;
 import xyz.avasilev.taskcomm.task.internal.TaskLevel;
 import xyz.avasilev.taskcomm.task.internal.TaskSql;
 import xyz.avasilev.taskcomm.task.internal.processor.TaskProcessorRegistry;
+import xyz.avasilev.taskcomm.task.internal.settings.TaskSettings;
 
 /**
  * Реализация {@link TaskInspection} (docs/adr/0138-inspection-api.md): списки по ключу
@@ -87,49 +90,29 @@ public class DefaultTaskInspection implements TaskInspection {
 
     private final Supplier<TaskProcessorRegistry> registry;
 
+    private final Supplier<TaskSettings> settings;
+
     /**
      * Собирает чтение.
      *
      * @param dataSource {@code DataSource} стартера
      * @param registry реестр процессоров — лениво; по нему — признак осиротевшего типа
+     * @param settings итоговые настройки — лениво; по ним — приоритет по умолчанию
      */
-    public DefaultTaskInspection(final DataSource dataSource, final Supplier<TaskProcessorRegistry> registry) {
+    public DefaultTaskInspection(
+            final DataSource dataSource,
+            final Supplier<TaskProcessorRegistry> registry,
+            final Supplier<TaskSettings> settings) {
         this.jdbc = JdbcClient.create(dataSource);
         this.registry = SingletonSupplier.of(registry);
+        this.settings = SingletonSupplier.of(settings);
     }
 
     @Override
     public Page<TaskSnapshot> list(final TaskQuery query, final HistoryWindow window, final PageRequest page) {
         final List<String> where = new ArrayList<>();
         final Map<String, Object> params = new LinkedHashMap<>();
-        query.execution()
-                .ifPresentOrElse(
-                        execution -> {
-                            where.add("e.execution_created_at = :executionCreatedAt AND e.execution_id = :executionId");
-                            params.put("executionCreatedAt", TaskSql.parameter(execution.createdAt()));
-                            params.put("executionId", execution.id());
-                        },
-                        () -> window(window, where, params));
-        query.taskType().ifPresent(type -> {
-            where.add("e.task_type = :taskType");
-            params.put("taskType", type);
-        });
-        if (!query.statuses().isEmpty()) {
-            where.add("e.status IN (:statuses)");
-            params.put("statuses", List.copyOf(query.statuses()));
-        }
-        query.parentId().ifPresent(parent -> {
-            where.add(
-                    query.level() == TaskSnapshot.Level.UNIT
-                            ? "(e.task_id = :parent OR e.batch_id = :parent)"
-                            : "e.task_id = :parent");
-            params.put("parent", parent);
-        });
-        final PayloadSearch.Condition search = PayloadSearch.condition(this.jdbc, query);
-        if (search != null) {
-            where.add(search.sql());
-            params.putAll(search.params());
-        }
+        this.conditions(query, window, where, params);
         page.cursor().map(TaskCursor::decode).ifPresent(cursor -> {
             where.add("(e.execution_created_at, e.created_at, e.id) < (:cursorExecution, :cursorCreated, :cursorId)");
             params.put("cursorExecution", TaskSql.parameter(cursor.executionCreatedAt()));
@@ -153,6 +136,76 @@ public class DefaultTaskInspection implements TaskInspection {
                 rows.subList(0, page.size()),
                 new TaskCursor(last.executionRef().createdAt(), last.createdAt(), last.id()).encode(),
                 window);
+    }
+
+    @Override
+    public long count(final TaskQuery query, final HistoryWindow window) {
+        final List<String> where = new ArrayList<>();
+        final Map<String, Object> params = new LinkedHashMap<>();
+        this.conditions(query, window, where, params);
+        final Long count = this.jdbc
+                .sql("SELECT count(*) FROM "
+                        + TaskLevel.valueOf(query.level().name()).table() + " e"
+                        + (where.isEmpty() ? "" : " WHERE " + String.join(" AND ", where)))
+                .params(params)
+                .query(Long.class)
+                .single();
+        return count == null ? 0 : count;
+    }
+
+    /** Условия выдачи — общие у списка и счёта: дело или окно, тип, статусы, родитель, поиск. */
+    private void conditions(
+            final TaskQuery query,
+            final HistoryWindow window,
+            final List<String> where,
+            final Map<String, Object> params) {
+        query.execution()
+                .ifPresentOrElse(
+                        execution -> {
+                            where.add("e.execution_created_at = :executionCreatedAt AND e.execution_id = :executionId");
+                            params.put("executionCreatedAt", TaskSql.parameter(execution.createdAt()));
+                            params.put("executionId", execution.id());
+                        },
+                        () -> window(window, where, params));
+        query.taskType().ifPresent(type -> {
+            where.add("e.task_type = :taskType");
+            params.put("taskType", type);
+        });
+        if (!query.statuses().isEmpty()) {
+            where.add("e.status IN (:statuses)");
+            params.put("statuses", List.copyOf(query.statuses()));
+        }
+        query.parentId().ifPresent(parent -> {
+            where.add(
+                    query.level() == TaskSnapshot.Level.UNIT
+                            ? "(e.task_id = :parent OR e.batch_id = :parent)"
+                            : "e.task_id = :parent");
+            params.put("parent", parent);
+        });
+        query.parentAttemptId().ifPresent(attempt -> {
+            where.add(parentAttempt(query.level()));
+            params.put("parentAttempt", attempt);
+        });
+        final PayloadSearch.Condition search = PayloadSearch.condition(this.jdbc, query);
+        if (search != null) {
+            where.add(search.sql());
+            params.putAll(search.params());
+        }
+    }
+
+    /**
+     * Дети попытки раскрытия (docs/adr/0157-attempt-children-through-batches.md): у групп — прямые,
+     * у подзадач — прямые и подзадачи групп этой попытки. У задач попытки-родителя нет — выдача пуста.
+     */
+    private static String parentAttempt(final TaskSnapshot.Level level) {
+        return switch (level) {
+            case TASK -> "FALSE";
+            case BATCH -> "e.parent_attempt_id = :parentAttempt";
+            case UNIT -> """
+                (e.parent_attempt_id = :parentAttempt OR e.batch_id IN (
+                    SELECT b.id FROM tc_task_batch b
+                     WHERE b.execution_created_at = e.execution_created_at AND b.parent_attempt_id = :parentAttempt))                """;
+        };
     }
 
     @Override
@@ -233,6 +286,24 @@ public class DefaultTaskInspection implements TaskInspection {
                         rs.getString("status"),
                         rs.getLong("n")))
                 .list();
+    }
+
+    @Override
+    public Map<String, Integer> defaultPriorities() {
+        final Map<String, Integer> priorities = new TreeMap<>();
+        for (final String type : this.registry.get().types()) {
+            priorities.put(type, this.settings.get().priority(type));
+        }
+        return Collections.unmodifiableMap(priorities);
+    }
+
+    @Override
+    public Map<String, String> pollers() {
+        final Map<String, String> pollers = new TreeMap<>();
+        for (final String type : this.registry.get().types()) {
+            pollers.put(type, this.settings.get().pollers().pollerOf(type).name());
+        }
+        return Collections.unmodifiableMap(pollers);
     }
 
     private static String select(final TaskSnapshot.Level level) {

@@ -2,11 +2,13 @@ package xyz.avasilev.taskcomm.communication.internal.inspection;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
@@ -20,10 +22,12 @@ import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationQuery;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSnapshot;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSummary;
 import xyz.avasilev.taskcomm.communication.api.inspection.CorrelationKeySnapshot;
+import xyz.avasilev.taskcomm.communication.api.inspection.DedupKeySnapshot;
 import xyz.avasilev.taskcomm.communication.internal.CommunicationCodec;
 import xyz.avasilev.taskcomm.communication.internal.CommunicationSql;
 import xyz.avasilev.taskcomm.communication.internal.engine.CommunicationEngine;
 import xyz.avasilev.taskcomm.communication.internal.processor.CommunicationProcessorRegistry;
+import xyz.avasilev.taskcomm.communication.internal.settings.CommunicationSettings;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.api.HistoryWindow;
 import xyz.avasilev.taskcomm.execution.api.Page;
@@ -63,6 +67,32 @@ public class DefaultCommunicationInspection implements CommunicationInspection {
              ORDER BY created_at, id
             """;
 
+    private static final String COMMUNICATION_CORRELATION = """
+            SELECT external_system, correlation_id, communication_id, created_at
+              FROM tc_communication_correlation
+             WHERE execution_created_at = :executionCreatedAt AND communication_id = :id
+             ORDER BY created_at, id
+            """;
+
+    private static final String DEDUP = """
+            SELECT subject, dedup_key, created_at
+              FROM tc_communication_dedup
+             WHERE execution_created_at = :executionCreatedAt AND communication_id = :id
+             ORDER BY created_at, id
+            """;
+
+    // Пространство ключа — направление и система; заданные в условиях, они ведут по индексу ключей.
+    private static final String DEDUP_KEY = """
+            (c.execution_created_at, c.id) IN (
+                SELECT d.execution_created_at, d.communication_id FROM tc_communication_dedup d
+                 WHERE d.dedup_key = :dedupKey AND d.subject IS NOT DISTINCT FROM CAST(:dedupSubject AS text)            """;
+
+    private static final String CORRELATION_KEY = """
+            (c.execution_created_at, c.id) IN (
+                SELECT k.execution_created_at, k.communication_id FROM tc_communication_correlation k
+                 WHERE k.external_system = :correlationSystem AND k.correlation_id = :correlationId)
+            """;
+
     private static final String SUMMARY = """
             SELECT c.direction, coalesce(c.source, c.destination) AS system, c.status, count(*) AS n
               FROM tc_communication c
@@ -84,6 +114,8 @@ public class DefaultCommunicationInspection implements CommunicationInspection {
 
     private final Supplier<CommunicationEngine> engine;
 
+    private final Supplier<CommunicationSettings> settings;
+
     /**
      * Собирает чтение.
      *
@@ -91,16 +123,68 @@ public class DefaultCommunicationInspection implements CommunicationInspection {
      * @param codec кодек — для заголовков обмена
      * @param registry реестр процессоров — лениво; по нему — признак осиротевшей системы
      * @param engine движок — лениво; по нему — размыкатели этого экземпляра
+     * @param settings итоговые настройки — лениво; по ним — приоритет по умолчанию
      */
     public DefaultCommunicationInspection(
             final DataSource dataSource,
             final CommunicationCodec codec,
             final Supplier<CommunicationProcessorRegistry> registry,
-            final Supplier<CommunicationEngine> engine) {
+            final Supplier<CommunicationEngine> engine,
+            final Supplier<CommunicationSettings> settings) {
         this.jdbc = JdbcClient.create(dataSource);
         this.codec = codec;
         this.registry = SingletonSupplier.of(registry);
         this.engine = SingletonSupplier.of(engine);
+        this.settings = SingletonSupplier.of(settings);
+    }
+
+    @Override
+    public Map<String, Integer> defaultPriorities() {
+        final Map<String, Integer> priorities = new TreeMap<>();
+        for (final String system : this.registry.get().systems()) {
+            priorities.put(system, this.settings.get().priority(system));
+        }
+        return Collections.unmodifiableMap(priorities);
+    }
+
+    @Override
+    public Map<String, String> pollers() {
+        final Map<String, String> pollers = new TreeMap<>();
+        for (final String system : this.registry.get().systems()) {
+            pollers.put(system, this.settings.get().pollers().pollerOf(system).name());
+        }
+        return Collections.unmodifiableMap(pollers);
+    }
+
+    @Override
+    public List<CorrelationKeySnapshot> correlationKeys(final CommunicationSnapshot communication) {
+        return this.jdbc
+                .sql(COMMUNICATION_CORRELATION)
+                .param(
+                        "executionCreatedAt",
+                        CommunicationSql.parameter(communication.executionRef().createdAt()))
+                .param("id", communication.id())
+                .query((rs, rowNum) -> new CorrelationKeySnapshot(
+                        rs.getString("external_system"),
+                        rs.getString("correlation_id"),
+                        rs.getObject("communication_id", UUID.class),
+                        rs.getObject("created_at", OffsetDateTime.class).toInstant()))
+                .list();
+    }
+
+    @Override
+    public List<DedupKeySnapshot> dedupKeys(final CommunicationSnapshot communication) {
+        return this.jdbc
+                .sql(DEDUP)
+                .param(
+                        "executionCreatedAt",
+                        CommunicationSql.parameter(communication.executionRef().createdAt()))
+                .param("id", communication.id())
+                .query((rs, rowNum) -> new DedupKeySnapshot(
+                        rs.getString("subject"),
+                        rs.getString("dedup_key"),
+                        rs.getObject("created_at", OffsetDateTime.class).toInstant()))
+                .list();
     }
 
     @Override
@@ -225,6 +309,23 @@ public class DefaultCommunicationInspection implements CommunicationInspection {
         query.requestId().ifPresent(requestId -> {
             where.add(REQUEST_ID);
             params.put("requestId", requestId);
+        });
+        query.dedupKey().ifPresent(key -> {
+            where.add(DEDUP_KEY
+                    + query.direction()
+                            .map(direction -> " AND d.direction = :direction")
+                            .orElse("")
+                    + query.externalSystem()
+                            .map(system -> " AND d.external_system = :system")
+                            .orElse("")
+                    + ")");
+            params.put("dedupKey", key);
+            params.put("dedupSubject", query.dedupSubject().orElse(null));
+        });
+        query.correlationId().ifPresent(value -> {
+            where.add(CORRELATION_KEY);
+            params.put("correlationSystem", query.correlationSystem().orElseThrow());
+            params.put("correlationId", value);
         });
     }
 

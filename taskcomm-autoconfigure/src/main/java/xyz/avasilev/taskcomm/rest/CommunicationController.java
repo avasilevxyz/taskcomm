@@ -26,7 +26,9 @@ import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationInspectio
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationQuery;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSnapshot;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSummary;
+import xyz.avasilev.taskcomm.execution.api.Execution;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
+import xyz.avasilev.taskcomm.execution.api.ExecutionService;
 import xyz.avasilev.taskcomm.execution.api.HistoryWindow;
 import xyz.avasilev.taskcomm.execution.api.Page;
 
@@ -47,6 +49,8 @@ public class CommunicationController extends RestErrors {
 
     private final RestMapper mapper;
 
+    private final ExecutionService executions;
+
     /**
      * Собирает контроллер.
      *
@@ -54,16 +58,19 @@ public class CommunicationController extends RestErrors {
      * @param inspection чтение коммуникаций
      * @param windows окна чтения истории
      * @param mapper формы ответов
+     * @param executions дела — поиск дела по одному идентификатору при отправке
      */
     public CommunicationController(
             final CommunicationService communications,
             final CommunicationInspection inspection,
             final RestWindows windows,
-            final RestMapper mapper) {
+            final RestMapper mapper,
+            final ExecutionService executions) {
         this.communications = communications;
         this.inspection = inspection;
         this.windows = windows;
         this.mapper = mapper;
+        this.executions = executions;
     }
 
     /**
@@ -91,6 +98,7 @@ public class CommunicationController extends RestErrors {
         if (p.text("requestId") != null) {
             query = query.withRequestId(p.text("requestId"));
         }
+        query = byKeys(query, p);
         final ExecutionRef execution = p.execution();
         if (execution != null) {
             query = query.inExecution(execution);
@@ -132,6 +140,23 @@ public class CommunicationController extends RestErrors {
                 found -> ResponseEntity.ok(this.inspection.attempts(found).stream()
                         .map(this.mapper::communicationAttempt)
                         .toList()));
+    }
+
+    /**
+     * Ключи коммуникации: дедупликации и корреляции.
+     *
+     * @param id идентификатор
+     * @param params окно или {@code executionCreatedAt}
+     * @return ключи или {@code 404}
+     */
+    @GetMapping("/{id}/keys")
+    public ResponseEntity<RestDtos.KeysDto> keys(
+            @PathVariable("id") final UUID id, @RequestParam final Map<String, String> params) {
+        return this.withCommunication(
+                id,
+                params,
+                found -> ResponseEntity.ok(new RestDtos.KeysDto(
+                        this.inspection.dedupKeys(found), this.inspection.correlationKeys(found))));
     }
 
     /**
@@ -179,13 +204,15 @@ public class CommunicationController extends RestErrors {
             @PathVariable("destination") final String destination,
             @RequestBody final String payload,
             @RequestParam final Map<String, String> params) {
-        final SendResult<?> sent = this.communications.sendJson(destination, payload, options(new RestParams(params)));
+        final SendResult<?> sent =
+                this.communications.sendJson(destination, payload, this.options(new RestParams(params)));
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new RestDtos.CreatedDto(
                         sent.communication().id(),
                         this.mapper.execution(sent.communication().executionRef()),
                         sent.communication().status().name(),
-                        sent instanceof SendResult.Duplicate<?> duplicate ? duplicate.duplicateOf() : null));
+                        sent instanceof SendResult.Duplicate<?> duplicate ? duplicate.duplicateOf() : null,
+                        null));
     }
 
     /**
@@ -210,9 +237,10 @@ public class CommunicationController extends RestErrors {
         return this.inspection.circuitBreakers();
     }
 
-    private static CommunicationSendOptions options(final RestParams p) {
+    private CommunicationSendOptions options(final RestParams p) {
         CommunicationSendOptions options = CommunicationSendOptions.defaults();
-        final ExecutionRef execution = p.execution();
+        final ExecutionRef execution =
+                p.execution(id -> this.executions.find(id).map(Execution::ref));
         if (execution != null) {
             options = options.inExecution(execution);
         }
@@ -242,5 +270,22 @@ public class CommunicationController extends RestErrors {
                 .find(id, window)
                 .map(action)
                 .orElseGet(() -> notFound("коммуникация " + id + " в окне " + window));
+    }
+
+    /** Ключи в условиях: {@code dedupKey} с необязательным {@code dedupSubject}, {@code correlationSystem} с {@code correlationId}. */
+    private static CommunicationQuery byKeys(final CommunicationQuery query, final RestParams p) {
+        CommunicationQuery result = query;
+        if (p.text("dedupKey") != null) {
+            result = p.text("dedupSubject") != null
+                    ? result.withDedupKey(p.text("dedupSubject"), p.text("dedupKey"))
+                    : result.withDedupKey(p.text("dedupKey"));
+        }
+        if (p.text("correlationId") != null) {
+            if (p.text("correlationSystem") == null) {
+                throw new IllegalArgumentException("correlationId задаётся вместе с correlationSystem");
+            }
+            result = result.withCorrelationKey(p.text("correlationSystem"), p.text("correlationId"));
+        }
+        return result;
     }
 }

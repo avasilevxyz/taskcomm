@@ -128,6 +128,13 @@ public class TaskcommProperties {
          * партиционирования. Запрос задаёт своё окно параметрами from и to или снимает его everywhere=true.
          */
         private Duration searchWindow = Duration.ofDays(30);
+
+        /**
+         * Ручной приём входящих: POST {base-path}/communications/inbound/{source} — запустить руками процесс,
+         * который начинается входящей. Выключен по умолчанию: включённый, он позволяет выдать себя за внешнюю
+         * систему каждому, кому открыт POST REST. Включайте там, где ручной запуск нужен.
+         */
+        private boolean manualInbound;
     }
 
     /**
@@ -148,6 +155,12 @@ public class TaskcommProperties {
 
         /** Префикс путей интерфейса. Не корень приложения и не путь REST. */
         private String basePath = "/tc";
+
+        /**
+         * Заголовок интерфейса: надпись в шапке и название вкладки браузера. Удобно назвать по приложению
+         * или стенду, чтобы не путать вкладки.
+         */
+        private String title = "taskcomm";
     }
 
     /**

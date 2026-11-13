@@ -32,6 +32,8 @@ public class UiDemoApplication {
         System.setProperty("spring.datasource.password", postgres.getPassword());
         System.setProperty("server.port", System.getProperty("server.port", "8088"));
         System.setProperty("taskcomm.rest.enabled", "true");
+        System.setProperty("taskcomm.rest.manual-inbound", "true");
+        System.setProperty("taskcomm.ui.title", "taskcomm · демо");
         System.setProperty("taskcomm.schema.initialize", "always");
         System.setProperty("taskcomm.task.poll.interval", "1s");
         System.setProperty("taskcomm.communication.poll.interval", "1s");

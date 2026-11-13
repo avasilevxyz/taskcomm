@@ -66,13 +66,13 @@ Spring Boot стартер для надёжной фоновой работы �
 - exactly-once — только at-least-once, процессоры обязаны быть идемпотентными;
 - гарантии порядка выполнения;
 - поддержки других баз, кроме PostgreSQL;
-- приёмного endpoint для входящих — их создаёт ваш контроллер или слушатель;
+- приёмного endpoint для внешних систем — входящие создаёт ваш контроллер или слушатель;
 - защиты своего REST и интерфейса — пути закрываете вы.
 
 ## Пример за минуту
 
 ```groovy
-implementation platform('xyz.avasilev:taskcomm-bom:2.1.0')
+implementation platform('xyz.avasilev:taskcomm-bom:2.1.1')
 implementation 'xyz.avasilev:taskcomm-spring-boot-starter'
 runtimeOnly 'org.postgresql:postgresql'
 ```
@@ -124,7 +124,7 @@ public void close(YearMonth month) {
 
 ## Статус и версии
 
-Текущая версия — `2.1.0`, опубликована в Maven Central: отдельный репозиторий объявлять
+Текущая версия — `2.1.1`, опубликована в Maven Central: отдельный репозиторий объявлять
 не нужно. Что дальше — [roadmap](docs/roadmap.md).
 
 Версии — по semver: мажорная поднимается только при потере обратной совместимости. Свойства

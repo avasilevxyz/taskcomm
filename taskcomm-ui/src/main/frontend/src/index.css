@@ -7,10 +7,25 @@ body {
   align-items: center;
   gap: 24px;
   padding: 0 16px;
+  overflow: hidden;
 }
 
 .brand {
   white-space: nowrap;
+  min-width: 0;
+  max-width: 40%;
+  overflow: hidden;
+}
+
+.brand h4 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 16px;
 }
 
 .content {
@@ -63,4 +78,25 @@ body {
 .json-editor .cm-scroller {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
+}
+
+.refresh {
+  flex: none;
+}
+
+/* Две колонки, пока каждой хватает 420px, иначе одна под другой — по ширине блока, а не экрана. */
+.sides {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+  gap: 12px;
+}
+
+.sides > * {
+  min-width: 0;
+}
+
+/* Значения описания переносятся по словам, длинные идентификаторы — где придётся. */
+.facts .ant-descriptions-item-content {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

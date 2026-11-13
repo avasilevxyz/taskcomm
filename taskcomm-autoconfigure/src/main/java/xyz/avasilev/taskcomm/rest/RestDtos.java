@@ -9,6 +9,7 @@ import java.util.UUID;
 import xyz.avasilev.taskcomm.communication.api.CommunicationStatus;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSnapshot;
 import xyz.avasilev.taskcomm.communication.api.inspection.CorrelationKeySnapshot;
+import xyz.avasilev.taskcomm.communication.api.inspection.DedupKeySnapshot;
 import xyz.avasilev.taskcomm.execution.api.Origin;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskSnapshot;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskUnitCount;
@@ -270,13 +271,18 @@ public final class RestDtos {
      * подсистемы в выдаче нет.
      *
      * @param version версия стартера или {@code null} — запуск не из jar
+     * @param instance имя ответившего экземпляра — то же, что в {@code locked_by} попыток
      * @param searchWindow окно чтения истории по умолчанию, ISO-8601
      * @param tasks подсистема задач или {@code null} — выключена
      * @param communications подсистема коммуникаций или {@code null} — выключена
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record MetaDto(
-            String version, String searchWindow, TasksMetaDto tasks, CommunicationsMetaDto communications) {}
+            String version,
+            String instance,
+            String searchWindow,
+            TasksMetaDto tasks,
+            CommunicationsMetaDto communications) {}
 
     /**
      * Типы задач, у которых есть процессор.
@@ -289,24 +295,55 @@ public final class RestDtos {
      * Тип задачи.
      *
      * @param type имя типа
+     * @param title название типа для человека; без своего — имя типа
+     * @param description описание типа или {@code null}
      * @param contract форма контракта: {@code FLAT}, {@code UNIT} или {@code BATCH}
+     * @param defaultPriority приоритет по умолчанию — итог лестницы настроек
+     * @param poller поллер, который захватывает работу типа на ответившем экземпляре
      */
-    public record TaskTypeDto(String type, String contract) {}
+    public record TaskTypeDto(
+            String type, String title, String description, String contract, Integer defaultPriority, String poller) {}
 
     /**
      * Внешние системы, у которых есть процессор.
      *
      * @param systems системы по имени
+     * @param manualInbound включён ли ручной приём входящих (docs/adr/0153-ui-creation-refinements.md)
      */
-    public record CommunicationsMetaDto(List<ExternalSystemDto> systems) {}
+    public record CommunicationsMetaDto(List<ExternalSystemDto> systems, boolean manualInbound) {}
 
     /**
      * Внешняя система.
      *
      * @param system имя системы
+     * @param title название системы для человека; без своего — имя системы
+     * @param description описание системы или {@code null}
      * @param transport транспорт: {@code REST}, {@code SOAP}, {@code KAFKA} или {@code RAW}
+     * @param defaultPriority приоритет по умолчанию — итог лестницы настроек
+     * @param poller поллер, который захватывает коммуникации системы на ответившем экземпляре
      */
-    public record ExternalSystemDto(String system, String transport) {}
+    public record ExternalSystemDto(
+            String system,
+            String title,
+            String description,
+            String transport,
+            Integer defaultPriority,
+            String poller) {}
+
+    /**
+     * Число.
+     *
+     * @param count число сущностей
+     */
+    public record CountDto(long count) {}
+
+    /**
+     * Ключи коммуникации.
+     *
+     * @param dedup ключи дедупликации
+     * @param correlation ключи корреляции, для которых она якорь
+     */
+    public record KeysDto(List<DedupKeySnapshot> dedup, List<CorrelationKeySnapshot> correlation) {}
 
     /**
      * Исход отмены или перезапуска.
@@ -323,9 +360,10 @@ public final class RestDtos {
      * @param execution дело
      * @param status статус
      * @param duplicateOf совпавшая коммуникация — у дубликата, иначе {@code null}
+     * @param reason почему входящая сразу {@code FAILED} — у неразбираемого тела, иначе {@code null}
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record CreatedDto(UUID id, ExecutionRefDto execution, String status, UUID duplicateOf) {}
+    public record CreatedDto(UUID id, ExecutionRefDto execution, String status, UUID duplicateOf, String reason) {}
 
     /**
      * Ручное удаление результатов.

@@ -33,7 +33,7 @@ class UiControllerTest {
     @BeforeEach
     void setUp() {
         this.mvc = MockMvcBuilders.standaloneSetup(
-                        new UiController("/tc", "/tc/api", UiControllerTest.class.getClassLoader()))
+                        new UiController("/tc", "/tc/api", "Заказы <prod>", UiControllerTest.class.getClassLoader()))
                 .build();
     }
 
@@ -48,6 +48,15 @@ class UiControllerTest {
                     .andExpect(content().string(Matchers.containsString("<base href=\"/tc/\" />")))
                     .andExpect(content().string(Matchers.containsString("name=\"taskcomm-api\" content=\"/tc/api\"")));
         }
+    }
+
+    @Test
+    void titleComesFromSettingsEscaped() throws Exception {
+        this.mvc
+                .perform(get("/tc"))
+                .andExpect(content().string(Matchers.containsString("<title>Заказы &lt;prod&gt;</title>")))
+                .andExpect(content()
+                        .string(Matchers.containsString("name=\"taskcomm-title\" content=\"Заказы &lt;prod&gt;\"")));
     }
 
     @Test
@@ -94,7 +103,7 @@ class UiControllerTest {
             }
         };
 
-        assertThatThrownBy(() -> new UiController("/tc", "/tc/api", empty))
+        assertThatThrownBy(() -> new UiController("/tc", "/tc/api", "taskcomm", empty))
                 .isInstanceOf(TaskcommConfigurationException.class)
                 .hasMessageContaining("index.html");
     }

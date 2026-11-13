@@ -1,8 +1,31 @@
-import { Alert, Button, Select, Space, Spin, Tag, Tooltip, Typography } from 'antd';
-import type { ReactNode } from 'react';
+import { Alert, Button, Descriptions, Select, Space, Spin, Tag, Tooltip, Typography } from 'antd';
+import { useLayoutEffect, useRef, useState, type ComponentProps, type Key, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { ApiError, type Origin, type Params, type Window } from './api';
 import { useI18n } from './i18n';
+import { useMeta } from './meta';
+
+/**
+ * Сравнение для сортировки по столбцу: числа — по значению, остальное — как строки (время ISO-8601
+ * сравнивается так же верно), пустые — первыми.
+ */
+/**
+ * Значение autocomplete, при котором браузер не подставляет прошлые вводы и сохранённые данные.
+ * {@code off} Chrome не слушает, если id поля похож на знакомое ему — имя, адрес, номер. Значение то же,
+ * что Ant Design сам ставит в поле поиска выпадающего списка.
+ */
+export const NO_AUTOFILL = 'new-password';
+
+export function by<TRow>(get: (row: TRow) => string | number | boolean | undefined | null) {
+  return (left: TRow, right: TRow): number => {
+    const a = get(left);
+    const b = get(right);
+    if (a === undefined || a === null || b === undefined || b === null) {
+      return (a === undefined || a === null ? 0 : 1) - (b === undefined || b === null ? 0 : 1);
+    }
+    return typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b));
+  };
+}
 
 /** Время по часам базы — в часовом поясе и формате браузера. */
 export function useTime(): (value?: string | null) => string {
@@ -29,13 +52,211 @@ const STATUS_COLORS: Record<string, string> = {
   PROBING: 'warning',
 };
 
-/** Статус — значением перечисления стартера, как в логах и документации. */
+/**
+ * Выбор одной попытки в таблице — щелчком по строке или переключателем. Пока ничего не трогали —
+ * выбрана последняя.
+ */
+export function useAttemptSelection<TAttempt extends { id: string }>(attempts: TAttempt[] | undefined) {
+  const [chosen, setChosen] = useState<string>();
+  const selected = attempts?.find((attempt) => attempt.id === chosen) ?? attempts?.[attempts.length - 1];
+  return {
+    selected,
+    rowSelection: {
+      type: 'radio' as const,
+      selectedRowKeys: selected ? [selected.id] : [],
+      onChange: (next: Key[]) => setChosen(next.length ? String(next[0]) : undefined),
+    },
+    onRow: (attempt: TAttempt) => ({
+      onClick: () => setChosen(attempt.id),
+      style: { cursor: 'pointer' },
+    }),
+  };
+}
+
+/** Подпись вкладки с числом элементов; пока число не пришло — без него. */
+export function CountLabel({ label, count }: { label: string; count?: number }) {
+  return (
+    <Space size={6}>
+      {label}
+      {count !== undefined && <Tag bordered={false}>{count.toLocaleString()}</Tag>}
+    </Space>
+  );
+}
+
+/** Ширина блока, с которой описание раскладывается в две колонки, и с которой — в три. */
+const TWO_COLUMNS = 560;
+const THREE_COLUMNS = 900;
+
+/** Уже этого подпись встаёт над значением: иначе идентификаторы рвутся посимвольно. */
+const LABEL_ABOVE = 420;
+
+/**
+ * Описание «подпись — значение», разложенное по ширине своего блока, а не экрана: та же карточка
+ * открывается и на странице, и в узкой боковой панели. До первого замера — одна колонка.
+ */
+export function Facts({ items, max = 3 }: { items: ComponentProps<typeof Descriptions>['items']; max?: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element || typeof ResizeObserver === 'undefined') {
+      return undefined;
+    }
+    setWidth(element.clientWidth);
+    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const fits = width >= THREE_COLUMNS ? 3 : width >= TWO_COLUMNS ? 2 : 1;
+  return (
+    <div ref={ref} className="facts">
+      <Descriptions
+        size="small"
+        column={Math.min(fits, max)}
+        layout={width > 0 && width < LABEL_ABOVE ? 'vertical' : 'horizontal'}
+        items={items}
+      />
+    </div>
+  );
+}
+
+/** Исход попытки: статус и причина целиком — в блоке выбранной попытки. */
+export function Outcome({ outcome }: { outcome: { status?: string | null; statusDescription?: string | null } }) {
+  const { t } = useI18n();
+  return (
+    <Facts
+      max={1}
+      items={[
+        { key: 'status', label: t('common.status'), children: <StatusTag status={outcome.status ?? 'RUNNING'} /> },
+        {
+          key: 'reason',
+          label: t('common.reason'),
+          children: outcome.statusDescription ? (
+            <Typography.Paragraph copyable style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              {outcome.statusDescription}
+            </Typography.Paragraph>
+          ) : (
+            '—'
+          ),
+        },
+      ]}
+    />
+  );
+}
+
+/** Причина в строке таблицы: одна строка с многоточием, целиком — в подсказке. */
+export function Reason({ text, width = 280 }: { text?: string | null; width?: number }) {
+  if (!text) {
+    return <>—</>;
+  }
+  return (
+    <Typography.Text ellipsis={{ tooltip: text }} style={{ maxWidth: width }}>
+      {text}
+    </Typography.Text>
+  );
+}
+
+/**
+ * Статус — подписью; значение перечисления стартера, как в логах, REST и документации, и причина —
+ * в подсказке.
+ */
 export function StatusTag({ status, description }: { status?: string | null; description?: string | null }) {
+  const { code } = useI18n();
   if (!status) {
     return <Tag>—</Tag>;
   }
-  const tag = <Tag color={STATUS_COLORS[status] ?? 'default'}>{status}</Tag>;
-  return description ? <Tooltip title={description}>{tag}</Tooltip> : tag;
+  return (
+    <Tooltip
+      title={
+        <>
+          <div>{status}</div>
+          {description && <div>{description}</div>}
+        </>
+      }
+    >
+      <Tag color={STATUS_COLORS[status] ?? 'default'}>{code('status', status)}</Tag>
+    </Tooltip>
+  );
+}
+
+/** Фаза — подписью, значение перечисления стартера — в подсказке. */
+export function PhaseLabel({ phase }: { phase?: string | null }) {
+  const { code } = useI18n();
+  if (!phase) {
+    return <>—</>;
+  }
+  return (
+    <Tooltip title={phase}>
+      <span>{code('phase', phase)}</span>
+    </Tooltip>
+  );
+}
+
+/** Варианты фильтра по статусу: подпись, значение — код. */
+export function useStatusOptions(): (statuses: string[]) => { value: string; label: string }[] {
+  const { code } = useI18n();
+  return (statuses) => statuses.map((status) => ({ value: status, label: code('status', status) }));
+}
+
+/** Чей процессор: тип задачи или внешняя система. */
+export type ProcessorKind = 'task' | 'system';
+
+export interface ProcessorName {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+/**
+ * Названия и описания процессоров из meta (docs/adr/0159-processor-title-and-description.md).
+ * У типа без процессора на экземпляре названия нет — показывается его имя.
+ */
+export function useProcessorNames(): (kind: ProcessorKind, id: string) => ProcessorName {
+  const meta = useMeta();
+  return (kind, id) => {
+    const found =
+      kind === 'task'
+        ? meta.data?.tasks?.types.find((item) => item.type === id)
+        : meta.data?.communications?.systems.find((item) => item.system === id);
+    return { id, title: found?.title || id, description: found?.description || undefined };
+  };
+}
+
+/** Вариант списка выбора: название и имя в скобках, если они различаются. */
+export function processorOption(name: ProcessorName) {
+  return { value: name.id, label: name.title === name.id ? name.id : `${name.title} (${name.id})` };
+}
+
+/** Название процессора; имя и описание — в подсказке. */
+export function ProcessorTitle({ kind, id }: { kind: ProcessorKind; id: string }) {
+  const name = useProcessorNames()(kind, id);
+  if (name.title === id && !name.description) {
+    return <span>{id}</span>;
+  }
+  return (
+    <Tooltip
+      title={
+        <>
+          {name.title !== id && <div>{id}</div>}
+          {name.description && <div>{name.description}</div>}
+        </>
+      }
+    >
+      <span>{name.title}</span>
+    </Tooltip>
+  );
+}
+
+/** Имя процессора мелко рядом с названием — в заголовке карточки, где подсказка неудобна. */
+export function ProcessorId({ kind, id }: { kind: ProcessorKind; id: string }) {
+  const name = useProcessorNames()(kind, id);
+  return name.title === id ? null : <Typography.Text type="secondary" code>{id}</Typography.Text>;
+}
+
+/** Описание процессора под заголовком карточки. */
+export function ProcessorDescription({ kind, id }: { kind: ProcessorKind; id: string }) {
+  const name = useProcessorNames()(kind, id);
+  return name.description ? <Typography.Text type="secondary">{name.description}</Typography.Text> : null;
 }
 
 export function OrphanTag({ orphan }: { orphan: boolean }) {
@@ -141,23 +362,38 @@ export function WindowSelect({ value, onChange, searchWindow }: {
   searchWindow?: string;
 }) {
   const { t } = useI18n();
+  // Умолчание экземпляра — taskcomm.rest.search-window: совпало с готовым пунктом — выбран он,
+  // иначе пункт со своим значением. Выбор умолчания убирает окно из адреса экрана.
+  const preset = defaultPreset(searchWindow);
+  const presets: { value: WindowChoice; label: string }[] = [
+    { value: 'P1D', label: t('window.day') },
+    { value: 'P7D', label: t('window.week') },
+    { value: 'P30D', label: t('window.month') },
+  ];
+  const options = [
+    ...(preset ? [] : [{ value: 'default' as WindowChoice, label: duration(searchWindow) }]),
+    ...presets,
+    { value: 'everywhere' as WindowChoice, label: t('window.everywhere') },
+  ];
   return (
-    <Tooltip title={t('window.hint')}>
+    <Tooltip title={`${t('window.label')}: ${t('window.hint')}`}>
       <Select<WindowChoice>
         aria-label={t('window.label')}
-        value={value}
-        onChange={onChange}
-        style={{ minWidth: 180 }}
-        options={[
-          { value: 'default', label: t('window.default', { window: duration(searchWindow) }) },
-          { value: 'P1D', label: t('window.day') },
-          { value: 'P7D', label: t('window.week') },
-          { value: 'P30D', label: t('window.month') },
-          { value: 'everywhere', label: t('window.everywhere') },
-        ]}
+        prefix={t('window.label')}
+        value={value === 'default' ? (preset ?? 'default') : value}
+        onChange={(next) => onChange(next === preset ? 'default' : next)}
+        style={{ minWidth: 200 }}
+        options={options}
       />
     </Tooltip>
   );
+}
+
+/** Готовый пункт, совпадающий с окном по умолчанию, или пусто. */
+function defaultPreset(searchWindow?: string): WindowChoice | undefined {
+  const hours = /^PT(\d+)H$/.exec(searchWindow ?? '');
+  const byHours: Record<string, WindowChoice> = { '24': 'P1D', '168': 'P7D', '720': 'P30D' };
+  return hours ? byHours[hours[1]] : undefined;
 }
 
 /** ISO-8601 вида PT720H — в дни или часы. */

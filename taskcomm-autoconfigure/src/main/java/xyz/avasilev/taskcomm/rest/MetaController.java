@@ -1,16 +1,20 @@
 package xyz.avasilev.taskcomm.rest;
 
+import java.lang.management.ManagementFactory;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationInspection;
 import xyz.avasilev.taskcomm.communication.api.processor.CommunicationProcessor;
 import xyz.avasilev.taskcomm.communication.api.processor.KafkaCommunicationProcessor;
 import xyz.avasilev.taskcomm.communication.api.processor.RawCommunicationProcessor;
 import xyz.avasilev.taskcomm.communication.api.processor.RestCommunicationProcessor;
 import xyz.avasilev.taskcomm.communication.api.processor.SoapCommunicationProcessor;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskInspection;
 import xyz.avasilev.taskcomm.task.api.processor.BatchTaskProcessor;
 import xyz.avasilev.taskcomm.task.api.processor.FlatTaskProcessor;
 import xyz.avasilev.taskcomm.task.api.processor.TaskProcessor;
@@ -34,28 +38,54 @@ public class MetaController {
      * @param searchWindow окно чтения истории по умолчанию
      * @param taskProcessors процессоры задач или {@code null}, если подсистема задач выключена
      * @param communicationProcessors процессоры коммуникаций или {@code null}, если подсистема выключена
+     * @param tasks чтение задач — приоритеты и поллеры типов; {@code null}, если подсистема выключена
+     * @param communications чтение коммуникаций — приоритеты и поллеры систем; {@code null}, если выключена
+     * @param manualInbound включён ли ручной приём входящих
      */
     public MetaController(
             final String version,
             final Duration searchWindow,
             final List<TaskProcessor<?>> taskProcessors,
-            final List<CommunicationProcessor<?, ?, ?>> communicationProcessors) {
+            final List<CommunicationProcessor<?, ?, ?>> communicationProcessors,
+            final TaskInspection tasks,
+            final CommunicationInspection communications,
+            final boolean manualInbound) {
+        final Map<String, Integer> taskPriorities = tasks == null ? Map.of() : tasks.defaultPriorities();
+        final Map<String, String> taskPollers = tasks == null ? Map.of() : tasks.pollers();
+        final Map<String, Integer> systemPriorities =
+                communications == null ? Map.of() : communications.defaultPriorities();
+        final Map<String, String> systemPollers = communications == null ? Map.of() : communications.pollers();
         this.meta = new RestDtos.MetaDto(
                 version,
+                // То же выражение, что у движков: оно стоит в locked_by попыток (docs/adr/0154-ui-shell.md).
+                ManagementFactory.getRuntimeMXBean().getName(),
                 searchWindow.toString(),
-                taskProcessors == null
+                taskProcessors == null || tasks == null
                         ? null
                         : new RestDtos.TasksMetaDto(taskProcessors.stream()
-                                .map(processor -> new RestDtos.TaskTypeDto(processor.taskType(), contract(processor)))
+                                .map(processor -> new RestDtos.TaskTypeDto(
+                                        processor.taskType(),
+                                        titleOr(processor.title(), processor.taskType()),
+                                        blankToNull(processor.description()),
+                                        contract(processor),
+                                        taskPriorities.get(processor.taskType()),
+                                        taskPollers.get(processor.taskType())))
                                 .sorted(Comparator.comparing(RestDtos.TaskTypeDto::type))
                                 .toList()),
-                communicationProcessors == null
+                communicationProcessors == null || communications == null
                         ? null
-                        : new RestDtos.CommunicationsMetaDto(communicationProcessors.stream()
-                                .map(processor -> new RestDtos.ExternalSystemDto(
-                                        processor.externalSystem(), transport(processor)))
-                                .sorted(Comparator.comparing(RestDtos.ExternalSystemDto::system))
-                                .toList()));
+                        : new RestDtos.CommunicationsMetaDto(
+                                communicationProcessors.stream()
+                                        .map(processor -> new RestDtos.ExternalSystemDto(
+                                                processor.externalSystem(),
+                                                titleOr(processor.title(), processor.externalSystem()),
+                                                blankToNull(processor.description()),
+                                                transport(processor),
+                                                systemPriorities.get(processor.externalSystem()),
+                                                systemPollers.get(processor.externalSystem())))
+                                        .sorted(Comparator.comparing(RestDtos.ExternalSystemDto::system))
+                                        .toList(),
+                                manualInbound));
     }
 
     /**
@@ -85,5 +115,17 @@ public class MetaController {
             case KafkaCommunicationProcessor<?, ?, ?> _ -> "KAFKA";
             case RawCommunicationProcessor<?, ?, ?> _ -> "RAW";
         };
+    }
+
+    /**
+     * Название процессора, а без своего — его ключ: процессор вправе вернуть пустое
+     * (docs/adr/0159-processor-title-and-description.md).
+     */
+    private static String titleOr(final String title, final String key) {
+        return title == null || title.isBlank() ? key : title;
+    }
+
+    private static String blankToNull(final String text) {
+        return text == null || text.isBlank() ? null : text;
     }
 }

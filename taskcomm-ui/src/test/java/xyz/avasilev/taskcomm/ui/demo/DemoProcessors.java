@@ -1,6 +1,8 @@
 package xyz.avasilev.taskcomm.ui.demo;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -11,6 +13,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Lazy;
 import xyz.avasilev.taskcomm.communication.api.CallbackRequest;
 import xyz.avasilev.taskcomm.communication.api.Communication;
+import xyz.avasilev.taskcomm.communication.api.CommunicationHeaders;
+import xyz.avasilev.taskcomm.communication.api.CommunicationSendOptions;
 import xyz.avasilev.taskcomm.communication.api.CommunicationService;
 import xyz.avasilev.taskcomm.communication.api.ExchangeMessage;
 import xyz.avasilev.taskcomm.communication.api.processor.CommunicationContext;
@@ -59,10 +63,12 @@ class DemoProcessors {
     @Bean
     ApplicationRunner demoWork(final TaskService tasks) {
         return args -> {
-            tasks.submit("demo-orders", new Order("A-1", false));
-            tasks.submit("demo-orders", new Order("A-2", true));
-            tasks.submit("demo-reconciliation", new Reconciliation("A-3", 24, 7));
-            tasks.submit("demo-export", new Export(3, 5));
+            final Customer romashka = new Customer("ООО Ромашка", "7701234567");
+            tasks.submit("demo-orders", new Order("A-1", romashka, 1500, false));
+            tasks.submit("demo-orders", new Order("A-2", new Customer("ИП Петров", "500100732259"), 320, true));
+            tasks.submit("demo-orders", new Order("A-4", romashka, 87000, false));
+            tasks.submit("demo-reconciliation", new Reconciliation("A-3", "40702810900000000001", 24, 7));
+            tasks.submit("demo-export", new Export("весна-2026", 3, 5));
         };
     }
 
@@ -76,53 +82,68 @@ class DemoProcessors {
     }
 
     /**
+     * Клиент заказа — вложенный объект, чтобы показать путь поля поиска глубже корня.
+     *
+     * @param name название
+     * @param inn ИНН
+     */
+    record Customer(String name, String inn) {}
+
+    /**
      * Заказ.
      *
      * @param orderId номер заказа
+     * @param customer клиент
+     * @param amount сумма, рублей
      * @param fail упасть без повтора
      */
-    record Order(String orderId, boolean fail) {}
+    record Order(String orderId, Customer customer, int amount, boolean fail) {}
 
     /**
      * Сверка: сколько строк и какая из них падает.
      *
      * @param orderId номер заказа
+     * @param account счёт выписки
      * @param count строк
      * @param failEvery падает каждая такая строка; 0 — ни одна
      */
-    record Reconciliation(String orderId, int count, int failEvery) {}
+    record Reconciliation(String orderId, String account, int count, int failEvery) {}
 
     /**
      * Строка сверки.
      *
      * @param line номер строки
+     * @param document номер платёжного документа строки
      * @param fail упасть
      */
-    record Line(int line, boolean fail) {}
+    record Line(int line, String document, boolean fail) {}
 
     /**
      * Выгрузка по поставщикам.
      *
+     * @param catalog каталог
      * @param suppliers поставщиков
      * @param perSupplier позиций у каждого
      */
-    record Export(int suppliers, int perSupplier) {}
+    record Export(String catalog, int suppliers, int perSupplier) {}
 
     /**
      * Поставщик.
      *
      * @param supplier номер поставщика
+     * @param region регион поставщика
      * @param items позиций
      */
-    record Supplier(int supplier, int items) {}
+    record Supplier(int supplier, String region, int items) {}
 
     /**
      * Позиция поставщика.
      *
      * @param supplier поставщик
      * @param item позиция
+     * @param sku артикул
      */
-    record Item(int supplier, int item) {}
+    record Item(int supplier, int item, String sku) {}
 
     /**
      * Платёж.
@@ -154,8 +175,22 @@ class DemoProcessors {
         }
 
         @Override
+        public String title() {
+            return "Оплата заказов";
+        }
+
+        @Override
+        public String description() {
+            return "Отправляет платёж в банк или падает без повтора";
+        }
+
+        @Override
         public List<SearchableField> searchableTaskFields() {
-            return List.of(SearchableField.string("orderId", "$.orderId", "Номер заказа"));
+            return List.of(
+                    SearchableField.string("orderId", "$.orderId", "Номер заказа"),
+                    SearchableField.string("customer", "$.customer.name", "Клиент", "Название, как в договоре"),
+                    SearchableField.string("inn", "$.customer.inn", "ИНН клиента"),
+                    SearchableField.number("amount", "$.amount", "Сумма", "В рублях, без копеек"));
         }
 
         @Override
@@ -164,7 +199,12 @@ class DemoProcessors {
                 context.doNotRetry("заказ " + task.payload().orderId() + " помечен как неисправимый");
                 throw new IllegalStateException("заказ не прошёл проверку");
             }
-            this.communications.send("demo-bank", new Payment(task.payload().orderId(), 100));
+            // Ключ дедупликации — чтобы на карточке коммуникации было что показать и по чему искать.
+            this.communications.send(
+                    "demo-bank",
+                    new Payment(task.payload().orderId(), task.payload().amount()),
+                    CommunicationSendOptions.defaults()
+                            .dedupKey("payment-" + task.payload().orderId()));
             return "оплата заказа " + task.payload().orderId() + " отправлена";
         }
     }
@@ -178,8 +218,27 @@ class DemoProcessors {
         }
 
         @Override
+        public String title() {
+            return "Сверка выписки";
+        }
+
+        @Override
+        public String description() {
+            return "Подзадача на каждую строку; часть строк нарочно не сходится";
+        }
+
+        @Override
         public List<SearchableField> searchableTaskFields() {
-            return List.of(SearchableField.string("orderId", "$.orderId", "Номер заказа"));
+            return List.of(
+                    SearchableField.string("orderId", "$.orderId", "Номер заказа"),
+                    SearchableField.string("account", "$.account", "Счёт", "Расчётный счёт выписки"));
+        }
+
+        @Override
+        public List<SearchableField> searchableUnitFields() {
+            return List.of(
+                    SearchableField.number("line", "$.line", "Строка выписки"),
+                    SearchableField.string("document", "$.document", "Платёжный документ"));
         }
 
         @Override
@@ -187,7 +246,8 @@ class DemoProcessors {
                 final Task<Reconciliation> task, final Emitter<Line> units, final ProcessingContext context) {
             final Reconciliation payload = task.payload();
             for (int line = 1; line <= payload.count(); line++) {
-                units.emit(new Line(line, payload.failEvery() > 0 && line % payload.failEvery() == 0));
+                units.emit(new Line(
+                        line, "ПП-" + (1000 + line), payload.failEvery() > 0 && line % payload.failEvery() == 0));
             }
         }
 
@@ -214,15 +274,49 @@ class DemoProcessors {
     /** Выгрузка группами по поставщикам. */
     static final class ExportProcessor implements BatchTaskProcessor<Export, Supplier, Item, String, Long, Long> {
 
+        private static final List<String> REGIONS = List.of("Москва", "Казань", "Новосибирск");
+
         @Override
         public String taskType() {
             return "demo-export";
         }
 
         @Override
+        public String title() {
+            return "Выгрузка каталога";
+        }
+
+        @Override
+        public String description() {
+            return "Группы по поставщикам, в каждой — подзадачи по позициям";
+        }
+
+        @Override
+        public List<SearchableField> searchableTaskFields() {
+            return List.of(SearchableField.string("catalog", "$.catalog", "Каталог"));
+        }
+
+        @Override
+        public List<SearchableField> searchableBatchFields() {
+            return List.of(
+                    SearchableField.number("supplier", "$.supplier", "Поставщик"),
+                    SearchableField.string("region", "$.region", "Регион", "Регион склада поставщика"));
+        }
+
+        @Override
+        public List<SearchableField> searchableUnitFields() {
+            return List.of(
+                    SearchableField.number("supplier", "$.supplier", "Поставщик"),
+                    SearchableField.string("sku", "$.sku", "Артикул"));
+        }
+
+        @Override
         public void expand(final Task<Export> task, final Emitter<Supplier> batches, final ProcessingContext context) {
             for (int supplier = 1; supplier <= task.payload().suppliers(); supplier++) {
-                batches.emit(new Supplier(supplier, task.payload().perSupplier()));
+                batches.emit(new Supplier(
+                        supplier,
+                        REGIONS.get((supplier - 1) % REGIONS.size()),
+                        task.payload().perSupplier()));
             }
         }
 
@@ -230,7 +324,10 @@ class DemoProcessors {
         public void expandBatch(
                 final TaskBatch<Supplier> batch, final Emitter<Item> units, final ProcessingContext context) {
             for (int item = 1; item <= batch.payload().items(); item++) {
-                units.emit(new Item(batch.payload().supplier(), item));
+                units.emit(new Item(
+                        batch.payload().supplier(),
+                        item,
+                        "SKU-" + batch.payload().supplier() + "-" + (100 + item)));
             }
         }
 
@@ -275,19 +372,54 @@ class DemoProcessors {
         }
 
         @Override
+        public String title() {
+            return "Банк";
+        }
+
+        @Override
+        public String description() {
+            return "Принимает платёж и через 5 секунд присылает колбэк";
+        }
+
+        @Override
         public String process(final Communication<Payment> communication, final CommunicationContext context) {
             final Payment payment = communication.requestPayload();
+            if (communication instanceof Communication.Inbound<Payment>) {
+                // Входящая: запрос уже записан приёмом, процессор пишет ответ отправителю.
+                context.recordResponse(ExchangeMessage.of("{\"received\":true}")
+                        .withId("ack-" + UUID.randomUUID())
+                        .withAt(Instant.now())
+                        .withStatus(200)
+                        .withHeaders(json()));
+                return "принято от банка";
+            }
+            final String requestId = "req-" + payment.id() + "-" + context.attemptNumber();
             context.recordRequest(
-                    ExchangeMessage.of("{\"order\":\"" + payment.id() + "\",\"amount\":" + payment.amount() + "}"));
-            context.recordResponse(ExchangeMessage.of("{\"accepted\":true}").withStatus(202));
+                    ExchangeMessage.of("{\"order\":\"" + payment.id() + "\",\"amount\":" + payment.amount() + "}")
+                            .withId(requestId)
+                            .withAt(Instant.now())
+                            .withHeaders(json().with("X-Request-Id", requestId).with("Idempotency-Key", payment.id())));
             final String reference = "ref-" + payment.id();
+            context.recordResponse(ExchangeMessage.of("{\"accepted\":true,\"reference\":\"" + reference + "\"}")
+                    .withId("bank-" + UUID.randomUUID())
+                    .withAt(Instant.now())
+                    .withStatus(202)
+                    .withHeaders(json().with("X-Bank-Reference", reference)));
             context.registerCorrelationId(reference);
             var _ = this.callbacks.schedule(
                     () -> this.communications.receiveResponse(
-                            "demo-bank", CallbackRequest.of(reference, "{\"status\":\"settled\"}")),
+                            "demo-bank",
+                            CallbackRequest.of(reference, "{\"status\":\"settled\"}")
+                                    .withRequestId("cb-" + UUID.randomUUID())
+                                    .withRequestAt(Instant.now())
+                                    .withHeaders(json().with("X-Signature", "demo-signature"))),
                     5,
                     TimeUnit.SECONDS);
             return "принято банком";
+        }
+
+        private static CommunicationHeaders json() {
+            return CommunicationHeaders.empty().with("Content-Type", "application/json");
         }
 
         @Override

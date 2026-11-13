@@ -1,6 +1,7 @@
 package xyz.avasilev.taskcomm.task.api.inspection;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
@@ -30,6 +31,18 @@ public interface TaskInspection {
      *     целиком ни один тип; значение не подошло ни одному объявлению
      */
     Page<TaskSnapshot> list(TaskQuery query, HistoryWindow window, PageRequest page);
+
+    /**
+     * Число сущностей уровня по тем же условиям, что у {@link #list}
+     * (docs/adr/0157-attempt-children-through-batches.md). Считает строки: для детей попытки
+     * раскрытия — по индексу попытки, а по окну без других условий — дорого, и это не для опроса.
+     *
+     * @param query условия; с делом — счёт в его партиции, окно не применяется
+     * @param window окно чтения истории
+     * @return число сущностей
+     * @throws UnknownSearchFieldException как у {@link #list}
+     */
+    long count(TaskQuery query, HistoryWindow window);
 
     /**
      * Сущность по идентификатору — в окне.
@@ -72,4 +85,21 @@ public interface TaskInspection {
      * @return строки «задача, группа, статус, число»
      */
     List<TaskUnitCount> unitCounts(ExecutionRef execution);
+
+    /**
+     * Приоритет по умолчанию у типов задач с процессором — итог лестницы настроек
+     * (docs/adr/0153-ui-creation-refinements.md): его получит задача, поставленная без своего приоритета.
+     *
+     * @return тип задачи → приоритет, по имени типа
+     */
+    Map<String, Integer> defaultPriorities();
+
+    /**
+     * Поллер, который захватывает работу типа на этом экземпляре: выделенный или {@code main}
+     * (docs/adr/0156-communication-keys-and-pollers-in-reading.md). Вычисляется из настроек,
+     * в попытке не хранится.
+     *
+     * @return тип задачи с процессором → имя поллера, по имени типа
+     */
+    Map<String, String> pollers();
 }

@@ -21,7 +21,9 @@ function routes(answers: Record<string, { status: number; body: unknown }>) {
 
 describe('интерфейс', () => {
   it('показывает «нет прав», когда приложение закрыло REST', async () => {
-    routes({ '/meta': { status: 403, body: {} } });
+    const denied = { status: 403, body: {} };
+    routes({ '/meta': denied, '/tasks': denied, '/tasks/search-fields': denied });
+    window.history.pushState({}, '', '/tasks');
 
     render(<App client={client()} language="ru" />);
 
@@ -53,6 +55,7 @@ describe('интерфейс', () => {
       '/communications/circuit-breakers': { status: 200, body: [] },
     });
 
+    window.history.pushState({}, '', '/overview');
     render(<App client={client()} language="en" />);
 
     expect(await screen.findByText('orders')).toBeInTheDocument();

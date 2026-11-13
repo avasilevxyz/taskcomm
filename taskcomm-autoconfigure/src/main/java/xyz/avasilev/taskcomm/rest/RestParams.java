@@ -3,7 +3,9 @@ package xyz.avasilev.taskcomm.rest;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.api.PageRequest;
 
@@ -61,6 +63,22 @@ final class RestParams {
             throw new IllegalArgumentException("Дело задаётся парой executionId и executionCreatedAt");
         }
         return new ExecutionRef(id, createdAt);
+    }
+
+    /**
+     * Дело при создании: парой либо одним {@code executionId} — тогда время создания ищется
+     * (docs/adr/0153-ui-creation-refinements.md).
+     *
+     * @param lookup поиск дела по идентификатору
+     * @return дело или {@code null}
+     * @throws IllegalArgumentException если задано только время или дело не найдено
+     */
+    ExecutionRef execution(final Function<UUID, Optional<ExecutionRef>> lookup) {
+        final UUID id = this.uuid("executionId");
+        if (id != null && this.instant("executionCreatedAt") == null) {
+            return lookup.apply(id).orElseThrow(() -> new IllegalArgumentException("Дело " + id + " не найдено"));
+        }
+        return this.execution();
     }
 
     PageRequest page() {

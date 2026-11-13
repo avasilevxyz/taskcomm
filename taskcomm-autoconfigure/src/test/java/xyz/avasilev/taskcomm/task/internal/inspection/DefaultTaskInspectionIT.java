@@ -53,7 +53,7 @@ class DefaultTaskInspectionIT {
         final TaskProcessorRegistry registry = new TaskProcessorRegistry(List.of(report));
         new TaskStartup(this.db.dataSource, this.db.transactionManager, this.db.ids, registry, false)
                 .afterPropertiesSet();
-        this.inspection = new DefaultTaskInspection(this.db.dataSource, () -> registry);
+        this.inspection = new DefaultTaskInspection(this.db.dataSource, () -> registry, () -> null);
     }
 
     @Test
@@ -195,6 +195,61 @@ class DefaultTaskInspectionIT {
     }
 
     @Test
+    void childrenOfOneExpansionAttemptOnly() {
+        final CreatedTask task = this.submit("A-1");
+        final UUID first = this.db.ids.next();
+        final UUID second = this.db.ids.next();
+        this.unit(task, null, "ABANDONED", first);
+        final UUID current = this.unit(task, null, "PENDING", second);
+
+        final Page<TaskSnapshot> units = this.inspection.list(
+                TaskQuery.of(TaskSnapshot.Level.UNIT)
+                        .inExecution(task.execution())
+                        .withParent(task.id())
+                        .withParentAttempt(second),
+                this.window(),
+                PageRequest.first(10));
+        final Page<TaskSnapshot> tasks = this.inspection.list(
+                TaskQuery.of(TASK).inExecution(task.execution()).withParentAttempt(second),
+                this.window(),
+                PageRequest.first(10));
+
+        assertThat(units.items()).extracting(TaskSnapshot::id).containsExactly(current);
+        assertThat(tasks.items()).isEmpty();
+    }
+
+    @Test
+    void unitsOfTaskAttemptGoThroughItsBatchesAndAreCounted() {
+        final CreatedTask task = this.submit("A-1");
+        final UUID taskAttempt = this.db.ids.next();
+        final UUID batch = this.batch(task, taskAttempt);
+        final UUID stale = this.batch(task, this.db.ids.next());
+        final UUID batchAttempt = this.db.ids.next();
+        final UUID first = this.unit(task, batch, "PENDING", batchAttempt);
+        final UUID second = this.unit(task, batch, "SUCCEEDED", batchAttempt);
+        this.unit(task, stale, "ABANDONED", this.db.ids.next());
+
+        final TaskQuery units = TaskQuery.of(TaskSnapshot.Level.UNIT)
+                .inExecution(task.execution())
+                .withParent(task.id())
+                .withParentAttempt(taskAttempt);
+        final TaskQuery batches = TaskQuery.of(TaskSnapshot.Level.BATCH)
+                .inExecution(task.execution())
+                .withParentAttempt(taskAttempt);
+
+        assertThat(this.inspection
+                        .list(units, this.window(), PageRequest.first(10))
+                        .items())
+                .extracting(TaskSnapshot::id)
+                .containsExactlyInAnyOrder(first, second);
+        assertThat(this.inspection.count(units, this.window())).isEqualTo(2);
+        assertThat(this.inspection.count(batches, this.window())).isEqualTo(1);
+        assertThat(this.inspection.count(
+                        TaskQuery.of(TaskSnapshot.Level.UNIT).withParentAttempt(batchAttempt), this.window()))
+                .isEqualTo(2);
+    }
+
+    @Test
     void foreignCursorIsRejected() {
         assertThatThrownBy(() ->
                         this.inspection.list(TaskQuery.of(TASK), this.window(), PageRequest.after("не курсор", 10)))
@@ -215,6 +270,11 @@ class DefaultTaskInspectionIT {
     }
 
     private void unit(final CreatedTask task, final UUID batchId, final String status) {
+        this.unit(task, batchId, status, this.db.ids.next());
+    }
+
+    private UUID unit(final CreatedTask task, final UUID batchId, final String status, final UUID parentAttemptId) {
+        final UUID id = this.db.ids.next();
         this.db
                 .jdbc
                 .sql("""
@@ -222,9 +282,10 @@ class DefaultTaskInspectionIT {
                                                   task_id, batch_id, parent_attempt_id, task_type, payload, status,
                                                   priority, next_attempt_at, claim_order_at, retry_cycle_started_at)
                         VALUES (:id, now(), now(), :executionId, :executionCreatedAt, :taskId, :batchId,
-                                gen_random_uuid(), :taskType, '{}', :status, 100, now(), now(), now())
+                                :parentAttemptId, :taskType, '{}', :status, 100, now(), now(), now())
                         """)
-                .param("id", this.db.ids.next())
+                .param("id", id)
+                .param("parentAttemptId", parentAttemptId)
                 .param("executionId", task.execution().id())
                 .param("executionCreatedAt", TaskSql.parameter(task.execution().createdAt()))
                 .param("taskId", task.id())
@@ -232,6 +293,28 @@ class DefaultTaskInspectionIT {
                 .param("taskType", TaskTestDatabase.FLAT_TYPE)
                 .param("status", status)
                 .update();
+        return id;
+    }
+
+    private UUID batch(final CreatedTask task, final UUID parentAttemptId) {
+        final UUID id = this.db.ids.next();
+        this.db
+                .jdbc
+                .sql("""
+                        INSERT INTO tc_task_batch (id, created_at, updated_at, execution_id, execution_created_at,
+                                                   task_id, parent_attempt_id, task_type, payload, status, phase,
+                                                   priority, next_attempt_at, claim_order_at, retry_cycle_started_at)
+                        VALUES (:id, now(), now(), :executionId, :executionCreatedAt, :taskId, :parentAttemptId,
+                                :taskType, '{}', 'PENDING', 'EXPAND', 100, now(), now(), now())
+                        """)
+                .param("id", id)
+                .param("executionId", task.execution().id())
+                .param("executionCreatedAt", TaskSql.parameter(task.execution().createdAt()))
+                .param("taskId", task.id())
+                .param("parentAttemptId", parentAttemptId)
+                .param("taskType", TaskTestDatabase.FLAT_TYPE)
+                .update();
+        return id;
     }
 
     private HistoryWindow window() {

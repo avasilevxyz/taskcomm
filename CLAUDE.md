@@ -84,7 +84,7 @@ Spring Boot стартер, инкапсулирующий таск-менедж
   со стандартным набором проверок
 - Кодировка UTF-8, перевод строки LF, финальная пустая строка. `.editorconfig` и `.gitattributes`
   с `* text=auto eol=lf` — иначе при разработке под Windows в репозиторий поедут CRLF
-- group `xyz.avasilev`, базовый package `xyz.avasilev.taskcomm`, текущая версия `2.1.0`.
+- group `xyz.avasilev`, базовый package `xyz.avasilev.taskcomm`, текущая версия `2.1.1`.
   Публикация — в Maven Central и GitHub Packages, **только из GitHub Actions по тегу `v<версия>`**
   ([ADR 0146](docs/adr/0146-publishing-to-github-packages.md),
   [ADR 0147](docs/adr/0147-publishing-to-maven-central.md)); локально — `publishToMavenLocal`.
@@ -384,7 +384,7 @@ classpath — Spring уже всё нашёл.
 
 ## Совместимость и публикация
 
-- Semver. Текущая версия — `2.1.0`.
+- Semver. Текущая версия — `2.1.1`.
 - Мажорная версия поднимается **только** при потере обратной совместимости, и этого стараемся не
   допускать. Прежде чем менять публичную сигнатуру — предложи вариант с сохранением совместимости
   (перегрузка, `default`-метод, новый тип) и явно скажи, что альтернатива требует мажорной версии.

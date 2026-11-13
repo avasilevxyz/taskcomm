@@ -10,8 +10,8 @@ import java.util.UUID;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 
 /**
- * Условия выдачи сущностей задач одного уровня: тип, статусы, дело, родитель и поля поиска
- * по нагрузке (docs/adr/0138-inspection-api.md). Неизменяемое значение; каждый метод {@code with…}
+ * Условия выдачи сущностей задач одного уровня: тип, статусы, дело, родитель, попытка раскрытия
+ * и поля поиска по нагрузке (docs/adr/0138-inspection-api.md). Неизменяемое значение; каждый метод {@code with…}
  * возвращает новое. Всё, кроме уровня, необязательно.
  *
  * <p>Поля поиска — только объявленные процессорами (docs/adr/0037-search-field-registry.md); тип
@@ -35,6 +35,8 @@ public final class TaskQuery {
 
     private final UUID parentId;
 
+    private final UUID parentAttemptId;
+
     private final Map<String, String> fields;
 
     private TaskQuery(
@@ -43,12 +45,14 @@ public final class TaskQuery {
             final Set<String> statuses,
             final ExecutionRef execution,
             final UUID parentId,
+            final UUID parentAttemptId,
             final Map<String, String> fields) {
         this.level = level;
         this.taskType = taskType;
         this.statuses = statuses;
         this.execution = execution;
         this.parentId = parentId;
+        this.parentAttemptId = parentAttemptId;
         this.fields = fields;
     }
 
@@ -59,7 +63,7 @@ public final class TaskQuery {
      * @return условия
      */
     public static TaskQuery of(final TaskSnapshot.Level level) {
-        return new TaskQuery(Objects.requireNonNull(level, "level"), null, Set.of(), null, null, Map.of());
+        return new TaskQuery(Objects.requireNonNull(level, "level"), null, Set.of(), null, null, null, Map.of());
     }
 
     /**
@@ -75,6 +79,7 @@ public final class TaskQuery {
                 this.statuses,
                 this.execution,
                 this.parentId,
+                this.parentAttemptId,
                 this.fields);
     }
 
@@ -85,7 +90,14 @@ public final class TaskQuery {
      * @return новые условия
      */
     public TaskQuery withStatuses(final Set<String> values) {
-        return new TaskQuery(this.level, this.taskType, Set.copyOf(values), this.execution, this.parentId, this.fields);
+        return new TaskQuery(
+                this.level,
+                this.taskType,
+                Set.copyOf(values),
+                this.execution,
+                this.parentId,
+                this.parentAttemptId,
+                this.fields);
     }
 
     /**
@@ -101,6 +113,7 @@ public final class TaskQuery {
                 this.statuses,
                 Objects.requireNonNull(value, "execution"),
                 this.parentId,
+                this.parentAttemptId,
                 this.fields);
     }
 
@@ -117,6 +130,27 @@ public final class TaskQuery {
                 this.statuses,
                 this.execution,
                 Objects.requireNonNull(value, "parent"),
+                this.parentAttemptId,
+                this.fields);
+    }
+
+    /**
+     * Только дети этой попытки раскрытия (docs/adr/0047-children-belong-to-attempt.md): у групп — попытки
+     * задачи, у подзадач — задачи или группы, а для попытки задачи с группами — и подзадачи групп,
+     * которые она породила (docs/adr/0157-attempt-children-through-batches.md). У задач
+     * попытки-родителя нет, и выдача по такому условию пуста.
+     *
+     * @param value идентификатор попытки раскрытия
+     * @return новые условия
+     */
+    public TaskQuery withParentAttempt(final UUID value) {
+        return new TaskQuery(
+                this.level,
+                this.taskType,
+                this.statuses,
+                this.execution,
+                this.parentId,
+                Objects.requireNonNull(value, "parentAttempt"),
                 this.fields);
     }
 
@@ -136,6 +170,7 @@ public final class TaskQuery {
                 this.statuses,
                 this.execution,
                 this.parentId,
+                this.parentAttemptId,
                 Collections.unmodifiableMap(copy));
     }
 
@@ -182,6 +217,15 @@ public final class TaskQuery {
      */
     public Optional<UUID> parentId() {
         return Optional.ofNullable(this.parentId);
+    }
+
+    /**
+     * Попытка раскрытия, которой принадлежат дети.
+     *
+     * @return идентификатор попытки или пусто
+     */
+    public Optional<UUID> parentAttemptId() {
+        return Optional.ofNullable(this.parentAttemptId);
     }
 
     /**

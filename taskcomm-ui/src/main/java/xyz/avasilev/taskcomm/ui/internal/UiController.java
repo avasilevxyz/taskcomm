@@ -63,14 +63,18 @@ public class UiController {
      *
      * @param uiBase путь интерфейса
      * @param restBase путь REST
+     * @param title заголовок интерфейса — {@code taskcomm.ui.title} (docs/adr/0154-ui-shell.md)
      * @param classLoader загрузчик, которым читается статика
      * @throws TaskcommConfigurationException если в jar нет собранного {@code index.html} или в нём нет метки
      */
-    public UiController(final String uiBase, final String restBase, final ClassLoader classLoader) {
+    public UiController(final String uiBase, final String restBase, final String title, final ClassLoader classLoader) {
         this.uiBase = uiBase;
         this.restBase = restBase;
         this.classLoader = classLoader;
-        this.index = readIndex(classLoader);
+        final String escaped = HtmlUtils.htmlEscape(title);
+        this.index = readIndex(classLoader)
+                .replace("<title>taskcomm</title>", "<title>" + escaped + "</title>")
+                .replace(MARKER, MARKER + "\n    <meta name=\"taskcomm-title\" content=\"" + escaped + "\" />");
     }
 
     /**

@@ -132,6 +132,27 @@ class TaskRestartIT {
     }
 
     @Test
+    void flatTaskRestartsWithProcessing() {
+        final Map<String, ContractShape> flat = Map.of(TYPE, ContractShape.FLAT);
+        final CreatedTask task = this.db.submit(TYPE, 100);
+        final ClaimedAttempt first = this.claimer.claim(DEADLINE, flat, 1).getFirst();
+        assertThat(first.phase()).isEqualTo(TaskPhase.PROCESS);
+        assertThat(this.closer.fail(first, "упал", "битая")).isTrue();
+        assertThat(this.db.status(TaskLevel.TASK, task.id())).isEqualTo("FAILED");
+
+        final TaskRestartResult result = this.restart.restart(
+                new TaskEntityRef(TaskLevel.TASK, task.id(), task.execution().createdAt()));
+
+        assertThat(result.accepted()).as(result.reason()).isTrue();
+        assertThat(result.reason()).contains("обработка заново");
+        final ClaimedAttempt again = this.claimer.claim(DEADLINE, flat, 1).getFirst();
+        assertThat(again.target().id()).isEqualTo(task.id());
+        assertThat(again.phase()).isEqualTo(TaskPhase.PROCESS);
+        assertThat(this.closer.succeed(again, "\"готово\"")).isTrue();
+        assertThat(this.db.status(TaskLevel.TASK, task.id())).isEqualTo("SUCCEEDED");
+    }
+
+    @Test
     void discardedResultsBlockUnitRestartAndMarkIsDroppedByParentRestart() {
         final Family family = this.collected();
         final TaskResultDiscard discard = this.db.discard(TaskTestSettings.KEEP_RESULTS);

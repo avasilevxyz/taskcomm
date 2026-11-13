@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import org.springframework.http.HttpStatus;
@@ -16,6 +17,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import xyz.avasilev.taskcomm.execution.api.Execution;
+import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
+import xyz.avasilev.taskcomm.execution.api.ExecutionService;
 import xyz.avasilev.taskcomm.execution.api.HistoryWindow;
 import xyz.avasilev.taskcomm.execution.api.Page;
 import xyz.avasilev.taskcomm.task.api.Task;
@@ -45,6 +49,8 @@ public class TaskController extends RestErrors {
 
     private final RestMapper mapper;
 
+    private final ExecutionService executions;
+
     /**
      * Собирает контроллер.
      *
@@ -52,16 +58,19 @@ public class TaskController extends RestErrors {
      * @param inspection чтение задач
      * @param windows окна чтения истории
      * @param mapper формы ответов
+     * @param executions дела — поиск дела по одному идентификатору при постановке
      */
     public TaskController(
             final TaskService tasks,
             final TaskInspection inspection,
             final RestWindows windows,
-            final RestMapper mapper) {
+            final RestMapper mapper,
+            final ExecutionService executions) {
         this.tasks = tasks;
         this.inspection = inspection;
         this.windows = windows;
         this.mapper = mapper;
+        this.executions = executions;
     }
 
     /**
@@ -166,7 +175,7 @@ public class TaskController extends RestErrors {
      *
      * @param type тип задачи
      * @param payload нагрузка в JSON
-     * @param params {@code executionId} с {@code executionCreatedAt}, {@code priority}, {@code notBefore}
+     * @param params {@code executionId} — с {@code executionCreatedAt} или один, {@code priority}, {@code notBefore}
      * @return {@code 201} с созданной задачей
      */
     @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -174,13 +183,18 @@ public class TaskController extends RestErrors {
             @RequestParam("type") final String type,
             @RequestBody final String payload,
             @RequestParam final Map<String, String> params) {
-        final Task<?> task = this.tasks.submitJson(type, payload, TaskRequests.options(params));
+        final Task<?> task = this.tasks.submitJson(type, payload, TaskRequests.options(params, this::findExecution));
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new RestDtos.CreatedDto(
                         task.id(),
                         this.mapper.execution(task.executionRef()),
                         task.status().name(),
+                        null,
                         null));
+    }
+
+    private Optional<ExecutionRef> findExecution(final UUID id) {
+        return this.executions.find(id).map(Execution::ref);
     }
 
     /**
@@ -191,6 +205,24 @@ public class TaskController extends RestErrors {
     @GetMapping("/search-fields")
     public List<SearchableFieldSnapshot> searchFields() {
         return this.inspection.searchableFields();
+    }
+
+    /**
+     * Число сущностей по тем же фильтрам, что у списка.
+     *
+     * @param level уровень
+     * @param params все параметры: фильтры, окно, поля поиска {@code field.<имя>}
+     * @param status статусы
+     * @return число
+     */
+    @GetMapping("/count")
+    public RestDtos.CountDto count(
+            @RequestParam(name = "level", defaultValue = "TASK") final TaskSnapshot.Level level,
+            @RequestParam final Map<String, String> params,
+            @RequestParam(name = "status", required = false) final List<String> status) {
+        final RestParams p = new RestParams(params);
+        final HistoryWindow window = this.windows.resolve(p.instant("from"), p.instant("to"), p.everywhere());
+        return new RestDtos.CountDto(this.inspection.count(TaskRequests.query(level, params, status), window));
     }
 
     /**

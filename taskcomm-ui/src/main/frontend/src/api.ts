@@ -10,6 +10,12 @@ export function apiBase(): string {
   return value === '' ? DEFAULT_API : value;
 }
 
+/** Заголовок интерфейса — taskcomm.ui.title из <meta name="taskcomm-title"> (docs/adr/0154-ui-shell.md). */
+export function appTitle(): string {
+  const value = document.querySelector<HTMLMetaElement>('meta[name="taskcomm-title"]')?.content ?? '';
+  return value === '' ? 'taskcomm' : value;
+}
+
 /** Базовый путь экранов — из <base href>, который вставляет контроллер; без него — корень. */
 export function routerBase(): string {
   if (!document.querySelector('base')) {
@@ -89,6 +95,7 @@ export async function postJson<TBody>(
   path: string,
   params: Params = {},
   body?: string,
+  contentType = 'application/json',
 ): Promise<{ status: number; body: TBody }> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   const token = csrfToken();
@@ -96,7 +103,7 @@ export async function postJson<TBody>(
     headers['X-XSRF-TOKEN'] = token;
   }
   if (body !== undefined) {
-    headers['Content-Type'] = 'application/json';
+    headers['Content-Type'] = contentType;
   }
   const response = await fetch(apiBase() + path + query(params), {
     method: 'POST',
@@ -174,6 +181,12 @@ export interface TaskAttempt {
   lockedBy?: string;
   leaseRenewals: number;
   result?: unknown;
+}
+
+/** Ключи коммуникации: дедупликации и корреляции. */
+export interface CommunicationKeys {
+  dedup: { subject?: string | null; key: string; createdAt: string }[];
+  correlation: { externalSystem: string; correlationId: string; communicationId: string; createdAt: string }[];
 }
 
 export interface CommunicationItem {
@@ -286,6 +299,8 @@ export interface Created {
   execution: ExecutionRef;
   status: string;
   duplicateOf?: string;
+  /** Почему входящая сразу FAILED — у неразбираемого тела. */
+  reason?: string;
 }
 
 export interface ErrorBody {
@@ -296,9 +311,24 @@ export interface ErrorBody {
 /** Описание экземпляра — выдача GET /meta (docs/adr/0150-execution-outline-and-meta.md). */
 export interface Meta {
   version?: string;
+  /** Имя ответившего экземпляра — то же, что в locked_by попыток. */
+  instance?: string;
   searchWindow: string;
-  tasks?: { types: { type: string; contract: string }[] };
-  communications?: { systems: { system: string; transport: string }[] };
+  tasks?: {
+    types: { type: string; title: string; description?: string | null; contract: string; defaultPriority?: number; poller?: string }[];
+  };
+  communications?: {
+    systems: {
+      system: string;
+      title: string;
+      description?: string | null;
+      transport: string;
+      defaultPriority?: number;
+      poller?: string;
+    }[];
+    /** Включён ли ручной приём входящих (docs/adr/0153-ui-creation-refinements.md). */
+    manualInbound: boolean;
+  };
 }
 
 /** Статусы по уровням — значения перечислений стартера. */

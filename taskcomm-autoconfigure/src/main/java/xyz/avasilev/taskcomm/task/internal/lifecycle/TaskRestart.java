@@ -13,8 +13,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 import xyz.avasilev.taskcomm.task.api.TaskRestartResult;
 import xyz.avasilev.taskcomm.task.internal.ClaimRows;
 import xyz.avasilev.taskcomm.task.internal.ClaimedEntity;
+import xyz.avasilev.taskcomm.task.internal.ContractShape;
 import xyz.avasilev.taskcomm.task.internal.TaskEntityRef;
 import xyz.avasilev.taskcomm.task.internal.TaskLevel;
+import xyz.avasilev.taskcomm.task.internal.TaskPhase;
 import xyz.avasilev.taskcomm.task.internal.TaskSql;
 import xyz.avasilev.taskcomm.task.internal.settings.PollerLayout;
 
@@ -88,14 +90,25 @@ public class TaskRestart {
              WHERE execution_created_at = :executionCreatedAt AND id = :id
             """;
 
-    /** Новое раскрытие: отметка об удалённых результатах снимается — у новых детей результаты будут. */
+    /**
+     * Группа и задача — с первой фазы своей формы: новое раскрытие, а у плоской задачи — обработка.
+     * Отметка об удалённых результатах снимается — у новых детей результаты будут.
+     */
     private static final String RESTART_PARENT = """
             UPDATE {table}
-               SET status = 'PENDING', phase = 'EXPAND', status_description = NULL, next_attempt_at = now(),
+               SET status = 'PENDING', phase = {phase}, status_description = NULL, next_attempt_at = now(),
                    retry_cycle_started_at = now(), child_results_discarded_at = NULL,
                    claim_order_at = now() + make_interval(secs => priority * :deadlineStep), updated_at = now()
              WHERE execution_created_at = :executionCreatedAt AND id = :id
+            RETURNING phase
             """;
+
+    /**
+     * Первая фаза задачи по записанной форме контракта ({@link ContractShape#firstPhase()}). Формы нет
+     * только до первого захвата — тогда нет и фазы, её выберет захват по текущему процессору.
+     */
+    private static final String TASK_FIRST_PHASE = """
+            CASE contract_shape WHEN 'FLAT' THEN 'PROCESS' WHEN 'UNIT' THEN 'EXPAND' WHEN 'BATCH' THEN 'EXPAND' END""";
 
     private final JdbcClient jdbc;
 
@@ -143,23 +156,36 @@ public class TaskRestart {
             status.setRollbackOnly();
             return new TaskRestartResult.Rejected(ancestors);
         }
-        this.jdbc
-                .sql(
-                        target.level() == TaskLevel.UNIT
-                                ? RESTART_UNIT
-                                : RESTART_PARENT.replace(
-                                        TaskRetries.TABLE, target.level().table()))
-                .param(
-                        "deadlineStep",
-                        TaskSql.seconds(this.pollers.deadlineStep(locked.get().taskType())))
-                .param("executionCreatedAt", TaskSql.parameter(target.executionCreatedAt()))
-                .param("id", target.id())
-                .update();
+        final String reason;
+        if (target.level() == TaskLevel.UNIT) {
+            this.restartQuery(RESTART_UNIT, target, locked.get()).update();
+            reason = "подзадача снова в очереди: обработка заново, новый цикл попыток";
+        } else {
+            final String phase = this.restartQuery(parentRestart(target.level()), target, locked.get())
+                    .query(String.class)
+                    .optional()
+                    .orElse(null);
+            reason = TaskPhase.PROCESS.name().equals(phase)
+                    ? "задача снова в очереди: обработка заново, новый цикл попыток"
+                    : "снова в очереди: новое раскрытие, прежние дети остаются историей";
+        }
         log.info("{} перезапущена вручную", name(target));
-        return new TaskRestartResult.Accepted(
-                target.level() == TaskLevel.UNIT
-                        ? "подзадача снова в очереди: обработка заново, новый цикл попыток"
-                        : "снова в очереди: новое раскрытие, прежние дети остаются историей");
+        return new TaskRestartResult.Accepted(reason);
+    }
+
+    private JdbcClient.StatementSpec restartQuery(final String sql, final TaskEntityRef target, final Locked locked) {
+        return this.jdbc
+                .sql(sql)
+                .param("deadlineStep", TaskSql.seconds(this.pollers.deadlineStep(locked.taskType())))
+                .param("executionCreatedAt", TaskSql.parameter(target.executionCreatedAt()))
+                .param("id", target.id());
+    }
+
+    /** Перезапуск группы или задачи: у группы первая фаза всегда раскрытие, у задачи — по форме. */
+    private static String parentRestart(final TaskLevel level) {
+        return RESTART_PARENT
+                .replace(TaskRetries.TABLE, level.table())
+                .replace("{phase}", level == TaskLevel.TASK ? TASK_FIRST_PHASE : "'EXPAND'");
     }
 
     private Optional<Locked> lock(final TaskEntityRef target) {

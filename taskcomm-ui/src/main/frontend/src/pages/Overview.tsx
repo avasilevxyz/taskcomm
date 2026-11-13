@@ -3,7 +3,7 @@ import { Alert, Card, Flex, Space, Table, Tag, Typography } from 'antd';
 import { Link } from 'react-router';
 import { getJson, type CircuitBreaker, type CommunicationSummary, type TaskTypeSummary } from '../api';
 import { useMeta } from '../meta';
-import { Loadable, OrphanTag, StatusTag, useTime, useWindowChoice, windowParams, WindowSelect } from '../common';
+import { by, Loadable, OrphanTag, ProcessorTitle, StatusTag, useTime, useWindowChoice, windowParams, WindowSelect } from '../common';
 import { useI18n } from '../i18n';
 
 /** Строка сводки: тип на уровне — и сколько в каждом статусе. */
@@ -94,13 +94,14 @@ export function Overview() {
                       (tasks.data ?? []).map((row) => ({ ...row, group: row.level, name: row.taskType })),
                     )}
                     columns={[
-                      { title: t('overview.level'), dataIndex: 'group', render: (level: string) => t(`level.${level as 'TASK'}`) },
+                      { title: t('overview.level'), sorter: by((row: { group: string; name: string; counts: Record<string, number> }) => rank(row.group)), dataIndex: 'group', render: (level: string) => t(`level.${level as 'TASK'}`) },
                       {
                         title: t('common.type'),
+                        sorter: by((row: { group: string; name: string; counts: Record<string, number> }) => row.name),
                         render: (_, row) => (
                           <Space>
                             <Link to={`/tasks?level=${row.group}&type=${encodeURIComponent(row.name)}${windowQuery}`}>
-                              {row.name}
+                              <ProcessorTitle kind="task" id={row.name} />
                             </Link>
                             <OrphanTag orphan={row.orphan} />
                           </Space>
@@ -108,6 +109,7 @@ export function Overview() {
                       },
                       {
                         title: t('common.status'),
+                        sorter: by((row: { group: string; name: string; counts: Record<string, number> }) => Object.values(row.counts).reduce((sum, count) => sum + count, 0)),
                         render: (_, row) => (
                           <Counts
                             counts={row.counts}
@@ -143,17 +145,19 @@ export function Overview() {
                     columns={[
                       {
                         title: t('communications.direction'),
+                        sorter: by((row: { group: string; name: string; counts: Record<string, number> }) => row.group),
                         dataIndex: 'group',
                         render: (direction: string) => t(`direction.${direction as 'INBOUND'}`),
                       },
                       {
                         title: t('communications.system'),
+                        sorter: by((row: { group: string; name: string; counts: Record<string, number> }) => row.name),
                         render: (_, row) => (
                           <Space>
                             <Link
                               to={`/communications?direction=${row.group}&system=${encodeURIComponent(row.name)}${windowQuery}`}
                             >
-                              {row.name}
+                              <ProcessorTitle kind="system" id={row.name} />
                             </Link>
                             <OrphanTag orphan={row.orphan} />
                           </Space>
@@ -161,6 +165,7 @@ export function Overview() {
                       },
                       {
                         title: t('common.status'),
+                        sorter: by((row: { group: string; name: string; counts: Record<string, number> }) => Object.values(row.counts).reduce((sum, count) => sum + count, 0)),
                         render: (_, row) => (
                           <Counts
                             counts={row.counts}
@@ -205,15 +210,16 @@ function Breakers() {
               rowKey="externalSystem"
               dataSource={breakers.data}
               columns={[
-                { title: t('communications.system'), dataIndex: 'externalSystem' },
-                { title: t('overview.state'), dataIndex: 'state', render: (state: string) => <StatusTag status={state} /> },
-                { title: t('overview.calls'), dataIndex: 'calls' },
+                { title: t('communications.system'), sorter: by((row: CircuitBreaker) => row.externalSystem), dataIndex: 'externalSystem', render: (system: string) => <ProcessorTitle kind="system" id={system} /> },
+                { title: t('overview.state'), sorter: by((row: CircuitBreaker) => row.state), dataIndex: 'state', render: (state: string) => <StatusTag status={state} /> },
+                { title: t('overview.calls'), sorter: by((row: CircuitBreaker) => row.calls), dataIndex: 'calls' },
                 {
                   title: t('overview.failureRate'),
+                  sorter: by((row: CircuitBreaker) => row.failureRate),
                   dataIndex: 'failureRate',
                   render: (rate: number) => <Tag>{Math.round(rate * 100)}%</Tag>,
                 },
-                { title: t('overview.nextProbe'), dataIndex: 'nextProbeAt', render: (at?: string | null) => time(at) },
+                { title: t('overview.nextProbe'), sorter: by((row: CircuitBreaker) => row.nextProbeAt), dataIndex: 'nextProbeAt', render: (at?: string | null) => time(at) },
               ]}
             />
           )

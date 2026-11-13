@@ -54,18 +54,21 @@ SecurityFilterChain security(HttpSecurity http,
 | `POST /tasks/{level}/{id}/restart`  | Перезапуск                                                                                     |
 | `POST /tasks?type={taskType}`       | Постановка; тело — нагрузка в JSON                                                             |
 | `GET /tasks/search-fields`          | Поля, доступные для поиска, с подписями и описаниями                                           |
+| `GET /tasks/count`                  | Число по тем же фильтрам, что у списка                                                         |
 | `GET /tasks/summary`                | Сводка: уровень, тип, статус, количество, признак осиротевшего типа                            |
 | `POST /tasks/discard-child-results` | Удалить результаты детей у собранных родителей; `olderThan` — только старше, например `PT168H` |
 
-Фильтры списка: `type`, `status` (можно несколько), `parentId`, дело парой `executionId`
+Фильтры списка: `type`, `status` (можно несколько), `parentId`, `parentAttemptId` — дети одной
+попытки раскрытия (у подзадач попытки задачи — и подзадачи её групп), дело парой `executionId`
 и `executionCreatedAt`, поля нагрузки — `field.<имя>`:
 
 ```
 GET /tc/api/tasks?level=UNIT&field.order_id=A-1024&status=FAILED
 ```
 
-Постановка принимает `priority`, `notBefore` (ISO-8601) и дело парой `executionId`
-и `executionCreatedAt`; отвечает `201` с идентификатором, делом и статусом. Нагрузка разбирается
+Постановка принимает `priority`, `notBefore` (ISO-8601) и дело — парой `executionId`
+и `executionCreatedAt` или одним `executionId`: тогда время создания стартер найдёт сам, ценой
+одного поиска по партициям; отвечает `201` с идентификатором, делом и статусом. Нагрузка разбирается
 в тип процессора до записи: не разобралась — `400`.
 
 ## Коммуникации
@@ -77,6 +80,7 @@ GET /tc/api/tasks?level=UNIT&field.order_id=A-1024&status=FAILED
 | `GET /communications`                         | Список с фильтрами                                               |
 | `GET /communications/{id}`                    | Одна коммуникация                                                |
 | `GET /communications/{id}/attempts`           | Попытки с полным обменом: запрос, ответ, заголовки, тела, статус |
+| `GET /communications/{id}/keys`               | Ключи дедупликации и ключи корреляции, для которых она якорь     |
 | `POST /communications/{id}/cancel`            | Отмена                                                           |
 | `POST /communications/{id}/restart`           | Перезапуск                                                       |
 | `POST /communications/outbound/{destination}` | Отправка; тело — запрос в JSON                                   |
@@ -85,13 +89,22 @@ GET /tc/api/tasks?level=UNIT&field.order_id=A-1024&status=FAILED
 
 Фильтры списка: `direction` (`INBOUND`, `OUTBOUND`), `system`, `status`, дело парой
 `executionId` и `executionCreatedAt`, `requestId` — идентификатор запроса во внешней системе,
-для разбора «вы нам это присылали?».
+для разбора «вы нам это присылали?». По ключам: `dedupKey` с необязательным `dedupSubject` — кому
+принадлежит ключ дедупликации (дубликаты ключей не хранят и не находятся; быстро — вместе
+с `direction` и `system`), `correlationSystem` с `correlationId` — кого ждёт ключ корреляции.
 
 Отправка принимает `priority`, `notBefore`, `dedupKey`, `correlationId` и дело; отвечает `201`,
 а при совпавшем ключе дедупликации — с `duplicateOf`.
 
-Приёма входящих в REST нет и не будет: входящие создаёт ваш контроллер, см.
-[Коммуникации](../communications/README.md).
+Дело в отправке — как в постановке: парой или одним `executionId`.
+
+Входящие создаёт ваш контроллер или слушатель, см. [Коммуникации](../communications/README.md).
+Для ручного запуска процесса, который начинается входящей, есть
+`POST {base-path}/communications/inbound/{source}` — тело как есть, его тип — `Content-Type`
+запроса, необязательные `requestId`, `dedupKey`, `correlationId`. Отвечает `201`; у дубликата —
+`duplicateOf`, у неразбираемого тела — `reason`, а входящая сразу `FAILED`. Путь есть, только если
+`taskcomm.rest.manual-inbound: true` (по умолчанию `false`). Внешней системе его не отдавайте:
+кто может слать в него `POST`, тот может выдать себя за систему.
 
 ## Дела
 
@@ -115,7 +128,13 @@ GET /tc/api/tasks?level=UNIT&field.order_id=A-1024&status=FAILED
 `GET {base-path}/meta` — что умеет этот экземпляр: `version` — версия стартера (нет при запуске
 не из jar), `searchWindow` — окно по умолчанию в ISO-8601, `tasks.types` — типы задач с процессором
 и формой контракта (`FLAT`, `UNIT`, `BATCH`), `communications.systems` — внешние системы с процессором
-и транспортом (`REST`, `SOAP`, `KAFKA`, `RAW`). Выключенной подсистемы в ответе нет.
+и транспортом (`REST`, `SOAP`, `KAFKA`, `RAW`); у типа и системы — `defaultPriority`, итог настроек,
+и `poller` — поллер, который их захватывает на этом экземпляре, `title` и `description` — название
+и описание из процессора (без своего названия — ключ, без описания — `null`);
+`communications.manualInbound` — включён ли ручной приём; `instance` — имя ответившего экземпляра,
+то же, что в `lockedBy` попыток. Выключенной подсистемы в ответе нет.
+Из Java те же приоритеты и поллеры — `defaultPriorities()` и `pollers()` у `TaskInspection`
+и `CommunicationInspection`.
 
 ## Поиск и окно
 

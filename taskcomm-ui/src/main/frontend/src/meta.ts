@@ -9,3 +9,11 @@ export function useMeta() {
 
 /** Тёмная ли тема — для того, что Ant Design не красит сам, например редактора. */
 export const DarkContext = createContext(false);
+
+export type Scheme = 'light' | 'dark';
+
+/** Выбранная тема и её переключение (docs/adr/0154-ui-shell.md). */
+export const ThemeContext = createContext<{ scheme: Scheme; setScheme: (scheme: Scheme) => void }>({
+  scheme: 'dark',
+  setScheme: () => undefined,
+});

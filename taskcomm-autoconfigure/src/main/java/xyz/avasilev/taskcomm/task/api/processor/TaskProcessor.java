@@ -17,7 +17,7 @@ import java.util.List;
  * при старте. <b>Процессор не удаляется никогда</b>, пока в базе есть задачи его типа: он и есть
  * их исполнитель. Имя типа, контракт и поля нагрузки — формат уже записанных данных: у живого типа
  * их не меняют, а заводят новый тип, часть таких правок теряет данные молча
- * (<a href="https://github.com/avasilevxyz/taskcomm/blob/v2.1.0/docs/guide/evolution/compatibility.md">Совместимость</a>).
+ * (<a href="https://github.com/avasilevxyz/taskcomm/blob/v2.1.1/docs/guide/evolution/compatibility.md">Совместимость</a>).
  *
  * <p><b>Гарантия — at-least-once, не exactly-once.</b> Аренда может истечь у живого, но медленного
  * воркера, и ту же работу подберёт другой. Каждый метод процессора обязан быть идемпотентным.
@@ -32,6 +32,27 @@ public sealed interface TaskProcessor<TTaskPayload> permits FlatTaskProcessor, U
      * @return тип задачи
      */
     String taskType();
+
+    /**
+     * Название типа для человека — в интерфейсе и выдаче {@code meta}
+     * (docs/adr/0159-processor-title-and-description.md). Оформление, а не ключ: правится на месте
+     * и в базу не пишется.
+     *
+     * @return название типа; по умолчанию — {@link #taskType()}
+     */
+    default String title() {
+        return this.taskType();
+    }
+
+    /**
+     * Описание типа для человека — что делает задача этого типа
+     * (docs/adr/0159-processor-title-and-description.md). Оформление, правится на месте.
+     *
+     * @return описание или {@code null}; по умолчанию — {@code null}
+     */
+    default String description() {
+        return null;
+    }
 
     /**
      * Поля нагрузки задачи, по которым разрешён поиск (docs/adr/0037-search-field-registry.md).

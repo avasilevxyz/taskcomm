@@ -201,11 +201,14 @@ public class TaskcommTaskAutoConfiguration {
     @Bean
     public TaskInspection taskcommTaskInspection(
             final ObjectProvider<TaskProcessorRegistry> registry,
+            final ObjectProvider<TaskSettings> settings,
             @TaskcommDataSource final ObjectProvider<DataSource> qualified,
             final ObjectProvider<DataSource> dataSources,
             final ListableBeanFactory beanFactory) {
         return new DefaultTaskInspection(
-                TaskcommBeanSelection.dataSource(qualified, dataSources, beanFactory), registry::getObject);
+                TaskcommBeanSelection.dataSource(qualified, dataSources, beanFactory),
+                registry::getObject,
+                settings::getObject);
     }
 
     /**
