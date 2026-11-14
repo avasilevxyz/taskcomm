@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { Card, Empty, Flex, Space, Table, Tabs, Tag, Typography } from 'antd';
+import { Card, Empty, Flex, Space, Tabs, Tag, Typography } from 'antd';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { getJson, type CommunicationAttempt, type CommunicationItem, type CommunicationKeys, type ExchangeMessage } from '../api';
 import {
+  CountLabel,
   executionPath,
   IdLink,
   JsonBlock,
@@ -21,9 +22,10 @@ import {
   useTime,
   Facts,
 } from '../common';
-import { CreateInExecutionButton } from '../createDrawer';
+import { ColumnsSlotProvider, DataTable, useColumnsSlot } from '../dataTable';
 import { useI18n, type TranslationKey } from '../i18n';
 import { useMeta } from '../meta';
+import { useInPanel, usePanelLabel } from '../panels';
 import { Actions, canCancel } from './actions';
 
 /** Карточка по адресу экрана. */
@@ -66,16 +68,23 @@ function CommunicationDetails({ communication }: { communication: CommunicationI
   const poller = system?.poller;
   const processing = latest(attempts.data, 'PROCESS');
   const { selected, rowSelection, onRow } = useAttemptSelection(attempts.data);
+  // Кнопка «Столбцы» таблицы попыток — в заголовке её карточки.
+  const [attemptsSlot, attemptsSlotNode] = useColumnsSlot();
+  const title = `${t(`direction.${communication.direction}`)} · ${system?.title ?? communication.externalSystem}`;
+  const inPanel = useInPanel();
+  usePanelLabel(title);
   return (
     <Flex vertical gap={16}>
       <Space align="baseline" wrap>
-        <Typography.Title level={3} style={{ margin: 0 }}>
-          {t(`direction.${communication.direction}`)} · {system?.title ?? communication.externalSystem}
-        </Typography.Title>
+        {/* В панели название уже в её шапке. */}
+        {!inPanel && (
+          <Typography.Title level={3} style={{ margin: 0 }}>
+            {title}
+          </Typography.Title>
+        )}
         <ProcessorId kind="system" id={communication.externalSystem} />
         <StatusTag status={status} description={communication.state.statusDescription} />
         <OrphanTag orphan={communication.state.orphan} />
-        <CreateInExecutionButton executionId={communication.execution.id} executionCreatedAt={createdAt} />
       </Space>
       <ProcessorDescription kind="system" id={communication.externalSystem} />
       <Actions
@@ -84,112 +93,141 @@ function CommunicationDetails({ communication }: { communication: CommunicationI
         cancellable={canCancel(status)}
         restartable={status === 'FAILED'}
       />
-      <Card size="small">
-        <Facts
-          items={[
-            {
-              key: 'id',
-              label: t('common.id'),
-              children: <Typography.Text copyable>{communication.id}</Typography.Text>,
-            },
-            {
-              key: 'execution',
-              label: t('common.execution'),
-              children: <IdLink to={executionPath(communication.execution.id, createdAt)} id={communication.execution.id} />,
-            },
-            {
-              key: 'origin',
-              label: t('common.origin'),
-              children: <OriginLink origin={communication.origin} executionCreatedAt={createdAt} />,
-            },
-            { key: 'reason', label: t('common.reason'), children: communication.state.statusDescription ?? '—' },
-            { key: 'phase', label: t('common.phase'), children: <PhaseLabel phase={communication.state.phase} /> },
-            { key: 'transport', label: t('communications.transport'), children: communication.state.contractShape ?? '—' },
-            {
-              key: 'requestId',
-              label: t('communications.requestId'),
-              children: <MessageId value={processing?.exchange?.request?.id} />,
-            },
-            {
-              key: 'responseId',
-              label: t('communications.responseId'),
-              children: <MessageId value={processing?.exchange?.response?.id} />,
-            },
-            { key: 'priority', label: t('common.priority'), children: communication.state.priority },
-            { key: 'poller', label: t('common.poller'), children: poller ?? '—' },
-            { key: 'created', label: t('common.created'), children: time(communication.state.createdAt) },
-            { key: 'updated', label: t('common.updated'), children: time(communication.state.updatedAt) },
-          ]}
-        />
-      </Card>
-      <Card size="small" title={t('common.payload')}>
-        <JsonBlock value={communication.requestPayload} />
-      </Card>
-      <Card size="small" title={t('communications.keys')}>
-        <Loadable loading={keys.isLoading} error={keys.error}>
-          {() => <Keys communication={communication} keys={keys.data} />}
-        </Loadable>
-      </Card>
-      <Card size="small" title={t('communications.exchange')}>
-        <Loadable loading={attempts.isLoading} error={attempts.error}>
-          {() => <Phases communication={communication} attempts={attempts.data ?? []} />}
-        </Loadable>
-      </Card>
-      <Card size="small" title={t('common.attempts')}>
-        <Loadable loading={attempts.isLoading} error={attempts.error}>
-          {() => (
-            <Table<CommunicationAttempt>
-              size="small"
-              scroll={{ x: 'max-content' }}
-              rowKey="id"
-              pagination={false}
-              dataSource={attempts.data}
-              rowSelection={rowSelection}
-              onRow={onRow}
-              columns={[
-                { title: t('common.phase'), sorter: by((row: CommunicationAttempt) => row.phase), dataIndex: 'phase', render: (phase: string) => <PhaseLabel phase={phase} /> },
-                {
-                  title: t('common.status'),
-                  sorter: by((row: CommunicationAttempt) => row.outcome.status),
-                  render: (_, attempt) => (
-                    <StatusTag status={attempt.outcome.status ?? 'RUNNING'} description={attempt.outcome.statusDescription} />
-                  ),
-                },
-                { title: t('common.reason'), sorter: by((row: CommunicationAttempt) => row.outcome.statusDescription), render: (_, attempt) => <Reason text={attempt.outcome.statusDescription} /> },
-                {
-                  title: t('communications.requestId'),
-                  sorter: by((row: CommunicationAttempt) => row.exchange?.request?.id),
-                  render: (_, attempt) => <MessageId value={attempt.exchange?.request?.id} />,
-                },
-                {
-                  title: t('communications.responseId'),
-                  sorter: by((row: CommunicationAttempt) => row.exchange?.response?.id),
-                  render: (_, attempt) => <MessageId value={attempt.exchange?.response?.id} />,
-                },
-                {
-                  title: t('communications.httpStatus'),
-                  sorter: by((row: CommunicationAttempt) => row.exchange?.response?.status),
-                  render: (_, attempt) => attempt.exchange?.response?.status ?? '—',
-                },
-                { title: t('common.started'), sorter: by((row: CommunicationAttempt) => row.times.startedAt), render: (_, attempt) => time(attempt.times.startedAt) },
-                { title: t('common.finished'), sorter: by((row: CommunicationAttempt) => row.times.finishedAt), render: (_, attempt) => time(attempt.times.finishedAt) },
-                { title: t('common.instance'), sorter: by((row: CommunicationAttempt) => row.lockedBy), dataIndex: 'lockedBy', render: (value?: string) => value ?? '—' },
-              ]}
-            />
-          )}
-        </Loadable>
-      </Card>
-      {selected && (
-        <Card
-          size="small"
-          title={t('communications.attemptExchange', { phase: code('phase', selected.phase), started: time(selected.times.startedAt) })}
-        >
-          <Flex vertical gap={12}>
-            <Outcome outcome={selected.outcome} />
-            <Exchange communication={communication} attempt={selected} />
-          </Flex>
-        </Card>
-      )}
+      {/* Попытки — на своей вкладке: на основной то, что сущность сейчас представляет собой. */}
+      <Tabs
+        items={[
+          {
+            key: 'main',
+            label: t('card.main'),
+            children: (
+              <Flex vertical gap={16}>
+            <Card size="small">
+              <Facts
+                items={[
+                  {
+                    key: 'id',
+                    label: t('common.id'),
+                    children: <Typography.Text copyable>{communication.id}</Typography.Text>,
+                  },
+                  {
+                    key: 'execution',
+                    label: t('common.execution'),
+                    children: <IdLink to={executionPath(communication.execution.id, createdAt)} id={communication.execution.id} />,
+                  },
+                  {
+                    key: 'origin',
+                    label: t('common.origin'),
+                    children: <OriginLink origin={communication.origin} executionCreatedAt={createdAt} />,
+                  },
+                  { key: 'reason', label: t('common.reason'), children: communication.state.statusDescription ?? '—' },
+                  { key: 'phase', label: t('common.phase'), children: <PhaseLabel phase={communication.state.phase} /> },
+                  { key: 'transport', label: t('communications.transport'), children: communication.state.contractShape ?? '—' },
+                  {
+                    key: 'requestId',
+                    label: t('communications.requestId'),
+                    children: <MessageId value={processing?.exchange?.request?.id} />,
+                  },
+                  {
+                    key: 'responseId',
+                    label: t('communications.responseId'),
+                    children: <MessageId value={processing?.exchange?.response?.id} />,
+                  },
+                  { key: 'priority', label: t('common.priority'), children: communication.state.priority },
+                  { key: 'poller', label: t('common.poller'), children: poller ?? '—' },
+                  { key: 'created', label: t('common.created'), children: time(communication.state.createdAt) },
+                  { key: 'updated', label: t('common.updated'), children: time(communication.state.updatedAt) },
+                ]}
+              />
+            </Card>
+            <Card size="small" title={t('common.payload')}>
+              <JsonBlock value={communication.requestPayload} title={`${title} · ${t('common.payload')}`} />
+            </Card>
+            <Card size="small" title={t('communications.keys')}>
+              <Loadable loading={keys.isLoading} error={keys.error}>
+                {() => <Keys communication={communication} keys={keys.data} />}
+              </Loadable>
+            </Card>
+            <Card size="small" title={t('communications.exchange')}>
+              <Loadable loading={attempts.isLoading} error={attempts.error}>
+                {() => <Phases communication={communication} attempts={attempts.data ?? []} />}
+              </Loadable>
+            </Card>
+              </Flex>
+            ),
+          },
+          {
+            key: 'attempts',
+            label: <CountLabel label={t('common.attempts')} count={attempts.data?.length} />,
+            children: (
+              <Flex vertical gap={16}>
+            <Card size="small" title={t('common.attempts')} extra={attemptsSlot}>
+              <Loadable loading={attempts.isLoading} error={attempts.error}>
+                {() => (
+                  <ColumnsSlotProvider node={attemptsSlotNode}>
+                  <DataTable<CommunicationAttempt>
+                    settings="communication-attempts"
+                    request={{ path: `${path}/attempts`, params: { executionCreatedAt: createdAt } }}
+                    size="small"
+                    scroll={{ x: 'max-content' }}
+                    rowKey="id"
+                    pagination={false}
+                    dataSource={attempts.data}
+                    rowSelection={rowSelection}
+                    onRow={onRow}
+                    columns={[
+                      { title: t('common.phase'), sorter: by((row: CommunicationAttempt) => row.phase), dataIndex: 'phase', render: (phase: string) => <PhaseLabel phase={phase} /> },
+                      {
+                        key: 'common.status',
+                        title: t('common.status'),
+                        sorter: by((row: CommunicationAttempt) => row.outcome.status),
+                        render: (_, attempt) => (
+                          <StatusTag status={attempt.outcome.status ?? 'RUNNING'} description={attempt.outcome.statusDescription} />
+                        ),
+                      },
+                      { key: 'common.reason', title: t('common.reason'), sorter: by((row: CommunicationAttempt) => row.outcome.statusDescription), render: (_, attempt) => <Reason text={attempt.outcome.statusDescription} /> },
+                      {
+                        key: 'communications.requestId',
+                        title: t('communications.requestId'),
+                        sorter: by((row: CommunicationAttempt) => row.exchange?.request?.id),
+                        render: (_, attempt) => <MessageId value={attempt.exchange?.request?.id} />,
+                      },
+                      {
+                        key: 'communications.responseId',
+                        title: t('communications.responseId'),
+                        sorter: by((row: CommunicationAttempt) => row.exchange?.response?.id),
+                        render: (_, attempt) => <MessageId value={attempt.exchange?.response?.id} />,
+                      },
+                      {
+                        key: 'communications.httpStatus',
+                        title: t('communications.httpStatus'),
+                        sorter: by((row: CommunicationAttempt) => row.exchange?.response?.status),
+                        render: (_, attempt) => attempt.exchange?.response?.status ?? '—',
+                      },
+                      { key: 'common.started', title: t('common.started'), sorter: by((row: CommunicationAttempt) => row.times.startedAt), render: (_, attempt) => time(attempt.times.startedAt) },
+                      { key: 'common.finished', title: t('common.finished'), sorter: by((row: CommunicationAttempt) => row.times.finishedAt), render: (_, attempt) => time(attempt.times.finishedAt) },
+                      { title: t('common.instance'), sorter: by((row: CommunicationAttempt) => row.lockedBy), dataIndex: 'lockedBy', render: (value?: string) => value ?? '—' },
+                    ]}
+                  />
+                  </ColumnsSlotProvider>
+                )}
+              </Loadable>
+            </Card>
+            {selected && (
+              <Card
+                size="small"
+                title={t('communications.attemptExchange', { phase: code('phase', selected.phase), started: time(selected.times.startedAt) })}
+              >
+                <Flex vertical gap={12}>
+                  <Outcome outcome={selected.outcome} />
+                  <Exchange communication={communication} attempt={selected} />
+                </Flex>
+              </Card>
+            )}
+              </Flex>
+            ),
+          },
+        ]}
+      />
     </Flex>
   );
 }
@@ -244,9 +282,12 @@ function Keys({ communication, keys }: { communication: CommunicationItem; keys?
               <Flex vertical gap={4}>
                 {correlation.map((item) => (
                   <Space key={`${item.externalSystem}#${item.correlationId}`} size={8} wrap>
-                    <Tag>
-                      <ProcessorTitle kind="system" id={item.externalSystem} />
-                    </Tag>
+                    {/* Система ключа — только если она не своя: своя и так в заголовке карточки. */}
+                    {item.externalSystem !== communication.externalSystem && (
+                      <Tag>
+                        <ProcessorTitle kind="system" id={item.externalSystem} />
+                      </Tag>
+                    )}
                     <Link to={correlationLink(item.externalSystem, item.correlationId)}>
                       <Typography.Text code>{item.correlationId}</Typography.Text>
                     </Link>
@@ -296,6 +337,11 @@ function sides(communication: CommunicationItem, attempt: CommunicationAttempt):
     : ['communications.received', 'communications.replied'];
 }
 
+/** Есть ли доменная форма: REST отдаёт отсутствующую как {@code null}. */
+function present(value: unknown): boolean {
+  return value !== undefined && value !== null;
+}
+
 /** Что ушло и что вернулось в попытке, как есть, и доменные формы ответа и колбэка. */
 function Exchange({ communication, attempt }: { communication: CommunicationItem; attempt: CommunicationAttempt }) {
   const { t } = useI18n();
@@ -311,14 +357,20 @@ function Exchange({ communication, attempt }: { communication: CommunicationItem
         <Message title={t(request)} message={exchange.request} />
         <Message title={t(response)} message={exchange.response} />
       </div>
-      {(exchange.responsePayload !== undefined || exchange.callbackPayload !== undefined) && (
+      {/* Результат — у попытки обработки, колбэк — у попытки асинхронного ответа: у каждой попытки
+          только свой блок, иначе второй всегда пустой. */}
+      {(present(exchange.responsePayload) || present(exchange.callbackPayload)) && (
         <div className="sides">
-          <Card size="small" title={t('common.result')}>
-            <JsonBlock value={exchange.responsePayload} />
-          </Card>
-          <Card size="small" title={t('communications.callback')}>
-            <JsonBlock value={exchange.callbackPayload} />
-          </Card>
+          {present(exchange.responsePayload) && (
+            <Card size="small" title={t('common.result')}>
+              <JsonBlock value={exchange.responsePayload} title={t('common.result')} />
+            </Card>
+          )}
+          {present(exchange.callbackPayload) && (
+            <Card size="small" title={t('communications.callback')}>
+              <JsonBlock value={exchange.callbackPayload} title={t('communications.callback')} />
+            </Card>
+          )}
         </div>
       )}
     </Flex>
@@ -356,7 +408,7 @@ function Message({ title, message }: { title: string; message?: ExchangeMessage 
         {headers.length === 0 ? (
           <Typography.Text type="secondary">{t('communications.noHeaders')}</Typography.Text>
         ) : (
-          <Table
+          <DataTable
             size="small"
             pagination={false}
             showHeader={false}
@@ -369,7 +421,7 @@ function Message({ title, message }: { title: string; message?: ExchangeMessage 
           />
         )}
         <Typography.Text type="secondary">{t('communications.body')}</Typography.Text>
-        <JsonBlock value={message.body} />
+        <JsonBlock value={message.body} title={`${title} · ${t('communications.body')}`} />
       </Flex>
     </Card>
   );

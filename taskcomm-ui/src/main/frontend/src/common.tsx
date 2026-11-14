@@ -1,9 +1,15 @@
-import { Alert, Button, Descriptions, Select, Space, Spin, Tag, Tooltip, Typography } from 'antd';
-import { useLayoutEffect, useRef, useState, type ComponentProps, type Key, type ReactNode } from 'react';
-import { Link, useSearchParams } from 'react-router';
-import { ApiError, type Origin, type Params, type Window } from './api';
+import { CheckOutlined, CopyOutlined, ExpandOutlined } from '@ant-design/icons';
+import { Alert, Button, Descriptions, Space, Spin, Tag, Tooltip, Typography } from 'antd';
+import { lazy, Suspense, useContext, useLayoutEffect, useRef, useState, type ComponentProps, type Key, type ReactNode } from 'react';
+import { Link } from 'react-router';
+import { ApiError, type Origin, type Window } from './api';
 import { useI18n } from './i18n';
-import { useMeta } from './meta';
+import { DarkContext, useMeta } from './meta';
+import { useOpenPanel } from './panels';
+import { present, type CodeLanguage } from './xmlFormat';
+
+/** Блок кода на CodeMirror — отдельным модулем: грузится вместе с карточкой, не со списками. */
+const CodeView = lazy(() => import('./codeView'));
 
 /**
  * Сравнение для сортировки по столбцу: числа — по значению, остальное — как строки (время ISO-8601
@@ -53,6 +59,20 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 /**
+ * Щелчок, которым закончили выделять текст внутри элемента, — не щелчок по нему: человек копирует
+ * значение, а не открывает карточку или выбирает строку.
+ */
+export function selectingText(element: HTMLElement): boolean {
+  const selection = window.getSelection();
+  return (
+    selection !== null &&
+    !selection.isCollapsed &&
+    selection.toString().trim() !== '' &&
+    element.contains(selection.anchorNode)
+  );
+}
+
+/**
  * Выбор одной попытки в таблице — щелчком по строке или переключателем. Пока ничего не трогали —
  * выбрана последняя.
  */
@@ -67,7 +87,11 @@ export function useAttemptSelection<TAttempt extends { id: string }>(attempts: T
       onChange: (next: Key[]) => setChosen(next.length ? String(next[0]) : undefined),
     },
     onRow: (attempt: TAttempt) => ({
-      onClick: () => setChosen(attempt.id),
+      onClick: (event: React.MouseEvent<HTMLElement>) => {
+        if (!selectingText(event.currentTarget)) {
+          setChosen(attempt.id);
+        }
+      },
       style: { cursor: 'pointer' },
     }),
   };
@@ -87,12 +111,10 @@ export function CountLabel({ label, count }: { label: string; count?: number }) 
 const TWO_COLUMNS = 560;
 const THREE_COLUMNS = 900;
 
-/** Уже этого подпись встаёт над значением: иначе идентификаторы рвутся посимвольно. */
-const LABEL_ABOVE = 420;
-
 /**
  * Описание «подпись — значение», разложенное по ширине своего блока, а не экрана: та же карточка
- * открывается и на странице, и в узкой боковой панели. До первого замера — одна колонка.
+ * открывается и на странице, и в узкой боковой панели. До первого замера — одна колонка. Значение
+ * стоит в строку с подписью, а не поместилось рядом — переносится под неё целиком (стили `.facts`).
  */
 export function Facts({ items, max = 3 }: { items: ComponentProps<typeof Descriptions>['items']; max?: number }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -113,7 +135,6 @@ export function Facts({ items, max = 3 }: { items: ComponentProps<typeof Descrip
       <Descriptions
         size="small"
         column={Math.min(fits, max)}
-        layout={width > 0 && width < LABEL_ABOVE ? 'vertical' : 'horizontal'}
         items={items}
       />
     </div>
@@ -271,26 +292,76 @@ export function OrphanTag({ orphan }: { orphan: boolean }) {
   );
 }
 
-/** JSON как есть, с отступами; строка, которая не JSON, — текстом. */
-export function JsonBlock({ value }: { value: unknown }) {
+/**
+ * Нагрузка, результат или тело: JSON и XML — с подсветкой, номерами строк и сворачиванием. Над
+ * блоком — «Копировать» и «Развернуть»: длинное тело удобнее читать в своей панели на всю высоту.
+ *
+ * @param title что это за блок — название панели при развороте
+ */
+export function JsonBlock({ value, title }: { value: unknown; title?: string }) {
   const { t } = useI18n();
+  const dark = useContext(DarkContext);
+  const openPanel = useOpenPanel();
   if (value === undefined || value === null) {
     return <Typography.Text type="secondary">{t('common.empty')}</Typography.Text>;
   }
-  const text = typeof value === 'string' ? pretty(value) : JSON.stringify(value, null, 2);
+  const { text, language } = present(value);
+  const expand = () =>
+    openPanel({
+      kind: 'code',
+      label: title ?? t('code.block'),
+      extra: <CopyButton text={text} />,
+      render: () => <CodeBody text={text} language={language} dark={dark} full />,
+    });
   return (
-    <pre className="json" data-testid="json">
-      {text}
-    </pre>
+    <div className="code-block">
+      <div className="code-block-tools">
+        <CopyButton text={text} />
+        <Tooltip title={t('code.expand')}>
+          <Button size="small" type="text" icon={<ExpandOutlined />} aria-label={t('code.expand')} onClick={expand} />
+        </Tooltip>
+      </div>
+      <CodeBody text={text} language={language} dark={dark} />
+    </div>
   );
 }
 
-function pretty(text: string): string {
-  try {
-    return JSON.stringify(JSON.parse(text), null, 2);
-  } catch {
-    return text;
-  }
+/** Редактор только для чтения; пока он догружается — тот же текст без подсветки, чтобы блок не прыгал. */
+export function CodeBody(props: { text: string; language: CodeLanguage; dark: boolean; full?: boolean; reserve?: number }) {
+  return (
+    <Suspense
+      fallback={
+        <pre className="json" data-testid="json">
+          {props.text}
+        </pre>
+      }
+    >
+      <CodeView {...props} />
+    </Suspense>
+  );
+}
+
+/** Копирует текст как он показан — без номеров строк; на пару секунд показывает галочку. */
+export function CopyButton({ text }: { text: string }) {
+  const { t } = useI18n();
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    void navigator.clipboard?.writeText(text).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <Tooltip title={copied ? t('code.copied') : t('code.copy')}>
+      <Button
+        size="small"
+        type="text"
+        icon={copied ? <CheckOutlined /> : <CopyOutlined />}
+        aria-label={t('code.copy')}
+        onClick={copy}
+      />
+    </Tooltip>
+  );
 }
 
 /** Загрузка, «нет прав» и ошибка — одинаково на всех экранах. */
@@ -318,92 +389,6 @@ export function Loadable({
     return <Spin description={t('common.loading')} />;
   }
   return <>{children()}</>;
-}
-
-export type WindowChoice = 'default' | 'P1D' | 'P7D' | 'P30D' | 'everywhere';
-
-const WINDOW_MILLIS: Record<'P1D' | 'P7D' | 'P30D', number> = {
-  P1D: 24 * 3600 * 1000,
-  P7D: 7 * 24 * 3600 * 1000,
-  P30D: 30 * 24 * 3600 * 1000,
-};
-
-/** Окно чтения истории из адреса экрана; параметры REST считаются в момент запроса. */
-export function useWindowChoice(): [WindowChoice, (choice: WindowChoice) => void] {
-  const [search, setSearch] = useSearchParams();
-  const value = search.get('window');
-  const choice: WindowChoice =
-    value === 'P1D' || value === 'P7D' || value === 'P30D' || value === 'everywhere' ? value : 'default';
-  const set = (next: WindowChoice) => {
-    const copy = new URLSearchParams(search);
-    if (next === 'default') {
-      copy.delete('window');
-    } else {
-      copy.set('window', next);
-    }
-    setSearch(copy, { replace: true });
-  };
-  return [choice, set];
-}
-
-export function windowParams(choice: WindowChoice): Params {
-  if (choice === 'everywhere') {
-    return { everywhere: true };
-  }
-  if (choice === 'default') {
-    return {};
-  }
-  return { from: new Date(Date.now() - WINDOW_MILLIS[choice]).toISOString() };
-}
-
-export function WindowSelect({ value, onChange, searchWindow }: {
-  value: WindowChoice;
-  onChange: (choice: WindowChoice) => void;
-  searchWindow?: string;
-}) {
-  const { t } = useI18n();
-  // Умолчание экземпляра — taskcomm.rest.search-window: совпало с готовым пунктом — выбран он,
-  // иначе пункт со своим значением. Выбор умолчания убирает окно из адреса экрана.
-  const preset = defaultPreset(searchWindow);
-  const presets: { value: WindowChoice; label: string }[] = [
-    { value: 'P1D', label: t('window.day') },
-    { value: 'P7D', label: t('window.week') },
-    { value: 'P30D', label: t('window.month') },
-  ];
-  const options = [
-    ...(preset ? [] : [{ value: 'default' as WindowChoice, label: duration(searchWindow) }]),
-    ...presets,
-    { value: 'everywhere' as WindowChoice, label: t('window.everywhere') },
-  ];
-  return (
-    <Tooltip title={`${t('window.label')}: ${t('window.hint')}`}>
-      <Select<WindowChoice>
-        aria-label={t('window.label')}
-        prefix={t('window.label')}
-        value={value === 'default' ? (preset ?? 'default') : value}
-        onChange={(next) => onChange(next === preset ? 'default' : next)}
-        style={{ minWidth: 200 }}
-        options={options}
-      />
-    </Tooltip>
-  );
-}
-
-/** Готовый пункт, совпадающий с окном по умолчанию, или пусто. */
-function defaultPreset(searchWindow?: string): WindowChoice | undefined {
-  const hours = /^PT(\d+)H$/.exec(searchWindow ?? '');
-  const byHours: Record<string, WindowChoice> = { '24': 'P1D', '168': 'P7D', '720': 'P30D' };
-  return hours ? byHours[hours[1]] : undefined;
-}
-
-/** ISO-8601 вида PT720H — в дни или часы. */
-export function duration(iso?: string): string {
-  const hours = /^PT(\d+)H$/.exec(iso ?? '');
-  if (hours) {
-    const value = Number(hours[1]);
-    return value % 24 === 0 ? `${value / 24}d` : `${value}h`;
-  }
-  return iso ?? '—';
 }
 
 export function WindowNote({ window }: { window?: Window }) {

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { Button, Card, Drawer, Flex, Progress, Space, Table, Tabs, Tree, Typography } from 'antd';
+import { Button, Card, Flex, Progress, Space, Tabs, Tree, Typography } from 'antd';
 import type { DataNode } from 'antd/es/tree';
-import { useMemo, useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import { getJson, type CorrelationKey, type ExecutionOutline } from '../api';
 import {
@@ -17,8 +17,10 @@ import {
   taskPath,
   useTime,
 } from '../common';
-import { CreateInExecutionButton } from '../createDrawer';
+import { CreateInExecutionButton } from '../createPanel';
+import { ColumnsSlotProvider, DataTable, useColumnsSlot } from '../dataTable';
 import { useI18n } from '../i18n';
+import { useOpenPanel } from '../panels';
 import { buildTree, total, type TreeNode } from './executionTree';
 import { TaskTable, useTaskPages } from './TaskTable';
 
@@ -41,10 +43,27 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
   const { t } = useI18n();
   const time = useTime();
   const roots = useMemo(() => buildTree(outline), [outline]);
-  const [units, setUnits] = useState<TreeNode | null>(null);
+  const openPanel = useOpenPanel();
+  const [tab, setTab] = useState('tree');
+  const [slot, slotNode] = useColumnsSlot();
+  // Подзадачи узла — в боковой панели стопки, как карточки (docs/adr/0161-side-panel-stack.md).
+  const showUnits = (node: TreeNode) =>
+    node.task &&
+    openPanel({
+      kind: 'entity',
+      label: `${t('tasks.units')} · ${shortId(node.task.id)}`,
+      render: () => (
+        <UnitsOf
+          parentId={node.task!.id}
+          taskType={node.task!.taskType}
+          executionId={outline.execution.id}
+          executionCreatedAt={createdAt}
+        />
+      ),
+    });
   const toData = (node: TreeNode): DataNode => ({
     key: node.key,
-    title: <NodeTitle node={node} onUnits={() => setUnits(node)} />,
+    title: <NodeTitle node={node} onUnits={() => showUnits(node)} />,
     children: node.children.map(toData),
   });
   const timeline = [
@@ -93,6 +112,10 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
         <CreateInExecutionButton executionId={outline.execution.id} executionCreatedAt={createdAt} />
       </Space>
       <Tabs
+        activeKey={tab}
+        onChange={setTab}
+        // Кнопка «Столбцы» ленты — справа от вкладок, пока открыта лента.
+        tabBarExtraContent={tab === 'timeline' ? slot : null}
         items={[
           {
             key: 'tree',
@@ -108,7 +131,10 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
             key: 'timeline',
             label: <CountLabel label={t('execution.timeline')} count={timeline.length} />,
             children: (
-              <Table
+              <ColumnsSlotProvider node={slotNode}>
+              <DataTable
+                settings="execution"
+                request={{ path: `/executions/${outline.execution.id}/outline`, params: { createdAt } }}
                 size="small"
                 scroll={{ x: 'max-content' }}
                 pagination={false}
@@ -117,6 +143,7 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
                   { title: t('common.created'), sorter: by((row: { createdAt: string; kind: string; id: string; name: string; status: string }) => row.createdAt), dataIndex: 'createdAt', render: (value: string) => time(value) },
                   { title: t('common.type'), sorter: by((row: { createdAt: string; kind: string; id: string; name: string; status: string }) => row.kind), dataIndex: 'kind', render: (kind: 'TASK') => t(`level.${kind}`) },
                   {
+                    key: 'common.id',
                     title: t('common.id'),
                     sorter: by((row: { createdAt: string; kind: string; id: string; name: string; status: string }) => row.id),
                     render: (_, row) => (
@@ -130,21 +157,23 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
                       />
                     ),
                   },
-                  { title: '', sorter: by((row: { createdAt: string; kind: string; id: string; name: string; status: string }) => row.name), dataIndex: 'label' },
+                  { title: t('common.name'), sorter: by((row: { createdAt: string; kind: string; id: string; name: string; status: string }) => row.name), dataIndex: 'label' },
                   {
+                    key: 'common.status',
                     title: t('common.status'),
                     sorter: by((row: { createdAt: string; kind: string; id: string; name: string; status: string }) => row.status),
                     render: (_, row) => <StatusTag status={row.status} description={row.description} />,
                   },
                 ]}
               />
+              </ColumnsSlotProvider>
             ),
           },
           {
             key: 'correlation',
             label: <CountLabel label={t('execution.correlation')} count={outline.correlationKeys.length} />,
             children: (
-              <Table<CorrelationKey>
+              <DataTable<CorrelationKey>
                 size="small"
                 scroll={{ x: 'max-content' }}
                 pagination={false}
@@ -165,17 +194,6 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
           },
         ]}
       />
-      <Drawer
-        open={units !== null}
-        onClose={() => setUnits(null)}
-        size="large"
-        title={units ? `${t('tasks.units')} · ${shortId(units.task?.id ?? '')}` : ''}
-        destroyOnHidden
-      >
-        {units?.task && (
-          <UnitsOf parentId={units.task.id} taskType={units.task.taskType} executionId={outline.execution.id} executionCreatedAt={createdAt} />
-        )}
-      </Drawer>
     </Flex>
   );
 }

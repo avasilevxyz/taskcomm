@@ -17,7 +17,7 @@ import java.util.List;
  * при старте. <b>Процессор не удаляется никогда</b>, пока в базе есть задачи его типа: он и есть
  * их исполнитель. Имя типа, контракт и поля нагрузки — формат уже записанных данных: у живого типа
  * их не меняют, а заводят новый тип, часть таких правок теряет данные молча
- * (<a href="https://github.com/avasilevxyz/taskcomm/blob/v2.1.1/docs/guide/evolution/compatibility.md">Совместимость</a>).
+ * (<a href="https://github.com/avasilevxyz/taskcomm/blob/v2.2.0/docs/guide/evolution/compatibility.md">Совместимость</a>).
  *
  * <p><b>Гарантия — at-least-once, не exactly-once.</b> Аренда может истечь у живого, но медленного
  * воркера, и ту же работу подберёт другой. Каждый метод процессора обязан быть идемпотентным.
@@ -51,6 +51,19 @@ public sealed interface TaskProcessor<TTaskPayload> permits FlatTaskProcessor, U
      * @return описание или {@code null}; по умолчанию — {@code null}
      */
     default String description() {
+        return null;
+    }
+
+    /**
+     * Шаблон названия одной задачи этого типа — для карточки в интерфейсе
+     * (docs/adr/0162-task-title-template.md), например {@code "Выгрузка каталога {catalog}"}.
+     * Подстановка {@code {имя}} — поле из {@link #searchableTaskFields()}: интерфейс берёт значение
+     * по его пути из нагрузки задачи. Подстановка не из полей поиска — падение при старте.
+     * Оформление, как {@link #title()}: правится на месте и в базу не пишется.
+     *
+     * @return шаблон или {@code null}; по умолчанию — {@code null}, и задача называется {@link #title()}
+     */
+    default String taskTitle() {
         return null;
     }
 

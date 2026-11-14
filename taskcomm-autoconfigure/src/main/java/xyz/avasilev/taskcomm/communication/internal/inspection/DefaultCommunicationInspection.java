@@ -14,6 +14,8 @@ import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.util.function.SingletonSupplier;
+import xyz.avasilev.taskcomm.PayloadShape;
+import xyz.avasilev.taskcomm.SqlQuery;
 import xyz.avasilev.taskcomm.communication.api.CommunicationStatus;
 import xyz.avasilev.taskcomm.communication.api.inspection.CircuitBreakerSnapshot;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationAttemptSnapshot;
@@ -157,6 +159,14 @@ public class DefaultCommunicationInspection implements CommunicationInspection {
     }
 
     @Override
+    public Optional<PayloadShape> requestShape(final String system) {
+        return this.registry
+                .get()
+                .find(system)
+                .map(processor -> this.codec.shape(processor.types().request()));
+    }
+
+    @Override
     public List<CorrelationKeySnapshot> correlationKeys(final CommunicationSnapshot communication) {
         return this.jdbc
                 .sql(COMMUNICATION_CORRELATION)
@@ -190,6 +200,33 @@ public class DefaultCommunicationInspection implements CommunicationInspection {
     @Override
     public Page<CommunicationSnapshot> list(
             final CommunicationQuery query, final HistoryWindow window, final PageRequest page) {
+        // Строкой больше страницы: по ней список узнаёт, есть ли следующая.
+        final SqlQuery statement = listStatement(query, window, page, page.size() + 1);
+        final Set<String> known = this.registry.get().systems();
+        final List<CommunicationSnapshot> rows = this.jdbc
+                .sql(statement.sql())
+                .params(statement.parameters())
+                .query((rs, rowNum) ->
+                        CommunicationSnapshots.communication(rs, !known.contains(rs.getString("system"))))
+                .list();
+        if (rows.size() <= page.size()) {
+            return Page.of(rows, null, window);
+        }
+        final CommunicationSnapshot last = rows.get(page.size() - 1);
+        return Page.of(
+                rows.subList(0, page.size()),
+                new CommunicationCursor(last.executionRef().createdAt(), last.createdAt(), last.id()).encode(),
+                window);
+    }
+
+    @Override
+    public SqlQuery listSql(final CommunicationQuery query, final HistoryWindow window, final PageRequest page) {
+        return listStatement(query, window, page, page.size());
+    }
+
+    /** Запрос страницы — один у чтения и у его SQL для разбора. */
+    private static SqlQuery listStatement(
+            final CommunicationQuery query, final HistoryWindow window, final PageRequest page, final int limit) {
         final List<String> where = new ArrayList<>();
         final Map<String, Object> params = new LinkedHashMap<>();
         query.execution()
@@ -207,23 +244,11 @@ public class DefaultCommunicationInspection implements CommunicationInspection {
             params.put("cursorCreated", CommunicationSql.parameter(cursor.createdAt()));
             params.put("cursorId", cursor.id());
         });
-        params.put("limit", page.size() + 1);
-        final Set<String> known = this.registry.get().systems();
-        final List<CommunicationSnapshot> rows = this.jdbc
-                .sql(SELECT + where(where)
-                        + " ORDER BY c.execution_created_at DESC, c.created_at DESC, c.id DESC LIMIT :limit")
-                .params(params)
-                .query((rs, rowNum) ->
-                        CommunicationSnapshots.communication(rs, !known.contains(rs.getString("system"))))
-                .list();
-        if (rows.size() <= page.size()) {
-            return Page.of(rows, null, window);
-        }
-        final CommunicationSnapshot last = rows.get(page.size() - 1);
-        return Page.of(
-                rows.subList(0, page.size()),
-                new CommunicationCursor(last.executionRef().createdAt(), last.createdAt(), last.id()).encode(),
-                window);
+        params.put("limit", limit);
+        return new SqlQuery(
+                SELECT + where(where)
+                        + "\n ORDER BY c.execution_created_at DESC, c.created_at DESC, c.id DESC\n LIMIT :limit",
+                params);
     }
 
     @Override
@@ -241,23 +266,39 @@ public class DefaultCommunicationInspection implements CommunicationInspection {
     }
 
     @Override
+    public SqlQuery attemptsSql(final CommunicationSnapshot communication) {
+        final Map<String, Object> params = new LinkedHashMap<>();
+        params.put(
+                "executionCreatedAt",
+                CommunicationSql.parameter(communication.executionRef().createdAt()));
+        params.put("id", communication.id());
+        return new SqlQuery(ATTEMPTS, params);
+    }
+
+    @Override
     public List<CommunicationAttemptSnapshot> attempts(final CommunicationSnapshot communication) {
+        final SqlQuery statement = this.attemptsSql(communication);
         return this.jdbc
-                .sql(ATTEMPTS)
-                .param(
-                        "executionCreatedAt",
-                        CommunicationSql.parameter(communication.executionRef().createdAt()))
-                .param("id", communication.id())
+                .sql(statement.sql())
+                .params(statement.parameters())
                 .query((rs, rowNum) -> CommunicationSnapshots.attempt(rs, this.codec))
                 .list();
     }
 
     @Override
+    public SqlQuery correlationKeysSql(final ExecutionRef execution) {
+        final Map<String, Object> params = new LinkedHashMap<>();
+        params.put("executionCreatedAt", CommunicationSql.parameter(execution.createdAt()));
+        params.put("executionId", execution.id());
+        return new SqlQuery(CORRELATION, params);
+    }
+
+    @Override
     public List<CorrelationKeySnapshot> correlationKeys(final ExecutionRef execution) {
+        final SqlQuery statement = this.correlationKeysSql(execution);
         return this.jdbc
-                .sql(CORRELATION)
-                .param("executionCreatedAt", CommunicationSql.parameter(execution.createdAt()))
-                .param("executionId", execution.id())
+                .sql(statement.sql())
+                .params(statement.parameters())
                 .query((rs, rowNum) -> new CorrelationKeySnapshot(
                         rs.getString("external_system"),
                         rs.getString("correlation_id"),
@@ -329,8 +370,9 @@ public class DefaultCommunicationInspection implements CommunicationInspection {
         });
     }
 
+    /** Условия построчно: запрос читается и в панели интерфейса. */
     private static String where(final List<String> where) {
-        return where.isEmpty() ? "" : " WHERE " + String.join(" AND ", where);
+        return where.isEmpty() ? "" : " WHERE " + String.join("\n   AND ", where);
     }
 
     private static void window(final HistoryWindow window, final List<String> where, final Map<String, Object> params) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SearchField } from '../api';
-import { cellText, fieldColumns, fieldGroups, fieldValue, valueAt } from './searchFields';
+import { cellText, fieldColumns, fieldGroups, fieldValue, fillTitle, valueAt } from './searchFields';
 
 function field(taskType: string, name: string, title?: string, description?: string, level: SearchField['level'] = 'TASK'): SearchField {
   return { level, taskType, name, type: 'STRING', jsonPath: `$.${name}`, title, description, lastDeclaredAt: '' };
@@ -63,5 +63,14 @@ describe('колонки полей поиска', () => {
     expect(cellText(undefined)).toBe('—');
     expect(cellText(0)).toBe('0');
     expect(cellText({ a: 1 })).toBe('{"a":1}');
+  });
+});
+
+describe('название по шаблону', () => {
+  it('подставляет значения полей, нет значения или поля — прочерк', () => {
+    const columns = fieldColumns(FIELDS, 'TASK', 'orders');
+    expect(fillTitle('Заказ {orderId} на {amount}', { orderId: 'A-1', amount: 1500 }, columns)).toBe('Заказ A-1 на 1500');
+    expect(fillTitle('Заказ {orderId}', {}, columns)).toBe('Заказ —');
+    expect(fillTitle('Заказ {unknown}', { unknown: 1 }, columns)).toBe('Заказ —');
   });
 });

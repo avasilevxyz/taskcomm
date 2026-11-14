@@ -1,39 +1,30 @@
-import { Button, Drawer, Spin } from 'antd';
-import { createContext, lazy, Suspense, useCallback, useContext, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
+import { Button } from 'antd';
+import { lazy, useCallback, useMemo, type MouseEvent, type ReactNode } from 'react';
 import { Link, useHref } from 'react-router';
-import { useDrawerSize } from './drawerSize';
 import { useI18n } from './i18n';
+import { useOpenPanel } from './panels';
 import type { CreatePrefill } from './pages/Create';
 
-// Форма создания в боковой панели поверх текущего экрана (docs/adr/0153-ui-creation-refinements.md).
-// Обычный щелчок открывает панель; ссылка, открытая в новой вкладке или окне, ведёт на страницу /create.
+// Форма создания в боковой панели стопки (docs/adr/0153-ui-creation-refinements.md): рядом с карточкой,
+// из которой её открыли, а не под ней. Обычный щелчок открывает панель; ссылка, открытая в новой вкладке
+// или окне, ведёт на страницу /create.
 
 const CreatePanel = lazy(() => import('./pages/Create').then((module) => ({ default: module.CreatePanel })));
 
 type Open = (prefill?: CreatePrefill) => void;
 
-const CreateDrawerContext = createContext<Open>(() => undefined);
-
-export function CreateDrawerProvider({ children }: { children: ReactNode }) {
+export function useCreatePanel(): Open {
   const { t } = useI18n();
-  const [state, setState] = useState<{ open: boolean; prefill: CreatePrefill }>({ open: false, prefill: {} });
-  const open = useCallback<Open>((prefill = {}) => setState({ open: true, prefill }), []);
-  const close = useCallback(() => setState((current) => ({ ...current, open: false })), []);
-  const size = useDrawerSize('create');
-  return (
-    <CreateDrawerContext.Provider value={open}>
-      {children}
-      <Drawer open={state.open} onClose={close} title={t('create.title')} {...size}>
-        <Suspense fallback={<Spin />}>
-          <CreatePanel prefill={state.prefill} onDone={close} />
-        </Suspense>
-      </Drawer>
-    </CreateDrawerContext.Provider>
+  const openPanel = useOpenPanel();
+  return useCallback<Open>(
+    (prefill = {}) =>
+      openPanel({
+        kind: 'create',
+        label: t('create.title'),
+        render: (close) => <CreatePanel prefill={prefill} onDone={close} />,
+      }),
+    [openPanel, t],
   );
-}
-
-export function useCreateDrawer(): Open {
-  return useContext(CreateDrawerContext);
 }
 
 /** Обычный щелчок — в своей вкладке, без модификаторов: его перехватывает панель. */
@@ -55,7 +46,7 @@ function createPath(prefill: CreatePrefill): string {
 
 /** Ссылка «Создать» для меню. */
 export function CreateLink({ children }: { children: ReactNode }) {
-  const open = useCreateDrawer();
+  const open = useCreatePanel();
   return (
     <Link
       to="/create"
@@ -74,7 +65,7 @@ export function CreateLink({ children }: { children: ReactNode }) {
 /** Кнопка «Создать в этом деле» — с уже известным делом. */
 export function CreateInExecutionButton({ executionId, executionCreatedAt }: Required<CreatePrefill>) {
   const { t } = useI18n();
-  const open = useCreateDrawer();
+  const open = useCreatePanel();
   const prefill = useMemo(() => ({ executionId, executionCreatedAt }), [executionId, executionCreatedAt]);
   const href = useHref(createPath(prefill));
   return (

@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { ApiError, STATUSES, type Level } from '../api';
 import { useMeta } from '../meta';
-import { NO_AUTOFILL, processorOption, useProcessorNames, useStatusOptions, useWindowChoice, windowParams, WindowSelect } from '../common';
+import { NO_AUTOFILL, processorOption, useProcessorNames, useStatusOptions } from '../common';
+import { useWindowChoice, windowParams } from '../windowChoice';
 import { useI18n } from '../i18n';
 import { fieldGroups, useSearchFields, type FieldOption } from './searchFields';
 import { TaskTable, useTaskPages } from './TaskTable';
@@ -16,7 +17,7 @@ export function Tasks() {
   const statusOptions = useStatusOptions();
   const names = useProcessorNames();
   const [search, setSearch] = useSearchParams();
-  const [choice, setChoice] = useWindowChoice();
+  const [choice] = useWindowChoice();
   const levelParam = search.get('level');
   const level: Level = levelParam === 'BATCH' || levelParam === 'UNIT' ? levelParam : 'TASK';
   const type = search.get('type') ?? undefined;
@@ -111,7 +112,6 @@ export function Tasks() {
             options={statusOptions(STATUSES[level])}
           />
         </Tooltip>
-        <WindowSelect value={choice} onChange={setChoice} searchWindow={meta.data?.searchWindow} />
       </div>
       <div className="toolbar">
         <Space.Compact style={{ maxWidth: '100%' }}>

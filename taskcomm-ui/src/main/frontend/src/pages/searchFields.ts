@@ -136,3 +136,14 @@ export function fieldGroups(fields: SearchField[], level: Level, type?: string):
   }
   return shared.length > 0 ? [{ options: shared.sort(byLabel) }, ...groups] : groups;
 }
+
+/**
+ * Название задачи по шаблону процессора (docs/adr/0162-task-title-template.md): {имя} — поле поиска
+ * уровня задачи, значение — из нагрузки по путям реестра. Значения нет — прочерк.
+ */
+export function fillTitle(template: string, payload: unknown, columns: FieldColumn[]): string {
+  return template.replace(/\{([^{}]+)\}/g, (_, name: string) => {
+    const column = columns.find((item) => item.name === name);
+    return column ? cellText(fieldValue(payload, column)) : '—';
+  });
+}

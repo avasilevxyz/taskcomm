@@ -3,9 +3,11 @@ package xyz.avasilev.taskcomm.rest;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonRawValue;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import xyz.avasilev.taskcomm.PayloadShape;
 import xyz.avasilev.taskcomm.communication.api.CommunicationStatus;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSnapshot;
 import xyz.avasilev.taskcomm.communication.api.inspection.CorrelationKeySnapshot;
@@ -297,12 +299,32 @@ public final class RestDtos {
      * @param type имя типа
      * @param title название типа для человека; без своего — имя типа
      * @param description описание типа или {@code null}
+     * @param titleTemplates шаблоны названия одной задачи, группы и подзадачи
+     *     (docs/adr/0162-task-title-template.md)
      * @param contract форма контракта: {@code FLAT}, {@code UNIT} или {@code BATCH}
      * @param defaultPriority приоритет по умолчанию — итог лестницы настроек
      * @param poller поллер, который захватывает работу типа на ответившем экземпляре
      */
     public record TaskTypeDto(
-            String type, String title, String description, String contract, Integer defaultPriority, String poller) {}
+            String type,
+            String title,
+            String description,
+            TitleTemplatesDto titleTemplates,
+            String contract,
+            Integer defaultPriority,
+            String poller) {}
+
+    /**
+     * Шаблоны названия одной сущности по уровням: подстановка {@code {имя}} — поле поиска своего
+     * уровня (docs/adr/0162-task-title-template.md). Уровня нет у контракта или шаблон не задан —
+     * поля нет в ответе.
+     *
+     * @param task шаблон названия задачи
+     * @param batch шаблон названия группы
+     * @param unit шаблон названия подзадачи
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record TitleTemplatesDto(String task, String batch, String unit) {}
 
     /**
      * Внешние системы, у которых есть процессор.
@@ -336,6 +358,13 @@ public final class RestDtos {
      * @param count число сущностей
      */
     public record CountDto(long count) {}
+
+    /**
+     * Запрос чтения для разбора — с подставленными значениями (docs/adr/0165-read-sql.md).
+     *
+     * @param sql текст для psql: один запрос или несколько, каждый со своим заголовком
+     */
+    public record SqlDto(String sql) {}
 
     /**
      * Ключи коммуникации.
@@ -380,4 +409,31 @@ public final class RestDtos {
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record ErrorDto(String error, List<String> knownFields) {}
+
+    /**
+     * Структура JSON нагрузки для формы создания (docs/adr/0160-payload-shape.md). Пустые части
+     * в ответ не попадают.
+     *
+     * @param kind вид значения
+     * @param properties ключи объекта в порядке сериализации
+     * @param items элемент массива или значение отображения
+     * @param values допустимые значения перечисления
+     */
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public record PayloadShapeDto(
+            String kind, Map<String, PayloadShapeDto> properties, PayloadShapeDto items, List<String> values) {
+
+        /**
+         * Из структуры API.
+         *
+         * @param shape структура
+         * @return то же для ответа
+         */
+        public static PayloadShapeDto of(final PayloadShape shape) {
+            final Map<String, PayloadShapeDto> properties = new LinkedHashMap<>();
+            shape.properties().forEach((name, value) -> properties.put(name, of(value)));
+            return new PayloadShapeDto(
+                    shape.kind().name(), properties, shape.items() == null ? null : of(shape.items()), shape.values());
+        }
+    }
 }

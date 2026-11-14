@@ -14,6 +14,8 @@ import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.util.function.SingletonSupplier;
+import xyz.avasilev.taskcomm.PayloadShape;
+import xyz.avasilev.taskcomm.SqlQuery;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.api.HistoryWindow;
 import xyz.avasilev.taskcomm.execution.api.Page;
@@ -27,6 +29,7 @@ import xyz.avasilev.taskcomm.task.api.inspection.TaskTypeSummary;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskUnitCount;
 import xyz.avasilev.taskcomm.task.api.processor.FieldType;
 import xyz.avasilev.taskcomm.task.internal.TaskLevel;
+import xyz.avasilev.taskcomm.task.internal.TaskPayloadCodec;
 import xyz.avasilev.taskcomm.task.internal.TaskSql;
 import xyz.avasilev.taskcomm.task.internal.processor.TaskProcessorRegistry;
 import xyz.avasilev.taskcomm.task.internal.settings.TaskSettings;
@@ -92,39 +95,35 @@ public class DefaultTaskInspection implements TaskInspection {
 
     private final Supplier<TaskSettings> settings;
 
+    private final TaskPayloadCodec codec;
+
     /**
      * Собирает чтение.
      *
      * @param dataSource {@code DataSource} стартера
      * @param registry реестр процессоров — лениво; по нему — признак осиротевшего типа
      * @param settings итоговые настройки — лениво; по ним — приоритет по умолчанию
+     * @param codec кодек нагрузок — его маппером описывается структура нагрузки
      */
     public DefaultTaskInspection(
             final DataSource dataSource,
             final Supplier<TaskProcessorRegistry> registry,
-            final Supplier<TaskSettings> settings) {
+            final Supplier<TaskSettings> settings,
+            final TaskPayloadCodec codec) {
         this.jdbc = JdbcClient.create(dataSource);
         this.registry = SingletonSupplier.of(registry);
         this.settings = SingletonSupplier.of(settings);
+        this.codec = codec;
     }
 
     @Override
     public Page<TaskSnapshot> list(final TaskQuery query, final HistoryWindow window, final PageRequest page) {
-        final List<String> where = new ArrayList<>();
-        final Map<String, Object> params = new LinkedHashMap<>();
-        this.conditions(query, window, where, params);
-        page.cursor().map(TaskCursor::decode).ifPresent(cursor -> {
-            where.add("(e.execution_created_at, e.created_at, e.id) < (:cursorExecution, :cursorCreated, :cursorId)");
-            params.put("cursorExecution", TaskSql.parameter(cursor.executionCreatedAt()));
-            params.put("cursorCreated", TaskSql.parameter(cursor.createdAt()));
-            params.put("cursorId", cursor.id());
-        });
-        params.put("limit", page.size() + 1);
+        // Строкой больше страницы: по ней список узнаёт, есть ли следующая.
+        final SqlQuery statement = this.listStatement(query, window, page, page.size() + 1);
         final Set<String> known = this.registry.get().types();
         final List<TaskSnapshot> rows = this.jdbc
-                .sql(select(query.level()) + (where.isEmpty() ? "" : " WHERE " + String.join(" AND ", where))
-                        + " ORDER BY e.execution_created_at DESC, e.created_at DESC, e.id DESC LIMIT :limit")
-                .params(params)
+                .sql(statement.sql())
+                .params(statement.parameters())
                 .query((rs, rowNum) ->
                         TaskSnapshots.entity(rs, query.level(), !known.contains(rs.getString("task_type"))))
                 .list();
@@ -136,6 +135,30 @@ public class DefaultTaskInspection implements TaskInspection {
                 rows.subList(0, page.size()),
                 new TaskCursor(last.executionRef().createdAt(), last.createdAt(), last.id()).encode(),
                 window);
+    }
+
+    @Override
+    public SqlQuery listSql(final TaskQuery query, final HistoryWindow window, final PageRequest page) {
+        return this.listStatement(query, window, page, page.size());
+    }
+
+    /** Запрос страницы — один у чтения и у его SQL для разбора. */
+    private SqlQuery listStatement(
+            final TaskQuery query, final HistoryWindow window, final PageRequest page, final int limit) {
+        final List<String> where = new ArrayList<>();
+        final Map<String, Object> params = new LinkedHashMap<>();
+        this.conditions(query, window, where, params);
+        page.cursor().map(TaskCursor::decode).ifPresent(cursor -> {
+            where.add("(e.execution_created_at, e.created_at, e.id) < (:cursorExecution, :cursorCreated, :cursorId)");
+            params.put("cursorExecution", TaskSql.parameter(cursor.executionCreatedAt()));
+            params.put("cursorCreated", TaskSql.parameter(cursor.createdAt()));
+            params.put("cursorId", cursor.id());
+        });
+        params.put("limit", limit);
+        return new SqlQuery(
+                select(query.level()) + where(where)
+                        + "\n ORDER BY e.execution_created_at DESC, e.created_at DESC, e.id DESC\n LIMIT :limit",
+                params);
     }
 
     @Override
@@ -223,15 +246,21 @@ public class DefaultTaskInspection implements TaskInspection {
 
     @Override
     public List<TaskAttemptSnapshot> attempts(final TaskSnapshot entity) {
+        final SqlQuery statement = this.attemptsSql(entity);
         return this.jdbc
-                .sql(ATTEMPTS)
-                .param(
-                        "executionCreatedAt",
-                        TaskSql.parameter(entity.executionRef().createdAt()))
-                .param("level", entity.level().name())
-                .param("id", entity.id())
+                .sql(statement.sql())
+                .params(statement.parameters())
                 .query((rs, rowNum) -> TaskSnapshots.attempt(rs))
                 .list();
+    }
+
+    @Override
+    public SqlQuery attemptsSql(final TaskSnapshot entity) {
+        final Map<String, Object> params = new LinkedHashMap<>();
+        params.put("executionCreatedAt", TaskSql.parameter(entity.executionRef().createdAt()));
+        params.put("level", entity.level().name());
+        params.put("id", entity.id());
+        return new SqlQuery(ATTEMPTS, params);
     }
 
     @Override
@@ -275,11 +304,19 @@ public class DefaultTaskInspection implements TaskInspection {
     }
 
     @Override
+    public SqlQuery unitCountsSql(final ExecutionRef execution) {
+        final Map<String, Object> params = new LinkedHashMap<>();
+        params.put("executionCreatedAt", TaskSql.parameter(execution.createdAt()));
+        params.put("executionId", execution.id());
+        return new SqlQuery(UNIT_COUNTS, params);
+    }
+
+    @Override
     public List<TaskUnitCount> unitCounts(final ExecutionRef execution) {
+        final SqlQuery statement = this.unitCountsSql(execution);
         return this.jdbc
-                .sql(UNIT_COUNTS)
-                .param("executionCreatedAt", TaskSql.parameter(execution.createdAt()))
-                .param("executionId", execution.id())
+                .sql(statement.sql())
+                .params(statement.parameters())
                 .query((rs, rowNum) -> new TaskUnitCount(
                         rs.getObject("task_id", UUID.class),
                         rs.getObject("batch_id", UUID.class),
@@ -306,12 +343,25 @@ public class DefaultTaskInspection implements TaskInspection {
         return Collections.unmodifiableMap(pollers);
     }
 
+    @Override
+    public Optional<PayloadShape> payloadShape(final String taskType) {
+        return this.registry
+                .get()
+                .find(taskType)
+                .map(processor -> this.codec.shape(processor.types().task()));
+    }
+
     private static String select(final TaskSnapshot.Level level) {
         return switch (level) {
             case TASK -> TASKS;
             case BATCH -> BATCHES;
             case UNIT -> UNITS;
         };
+    }
+
+    /** Условия построчно: запрос читается и в панели интерфейса. */
+    private static String where(final List<String> where) {
+        return where.isEmpty() ? "" : " WHERE " + String.join("\n   AND ", where);
     }
 
     private static void window(final HistoryWindow window, final List<String> where, final Map<String, Object> params) {

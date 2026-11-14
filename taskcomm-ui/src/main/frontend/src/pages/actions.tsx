@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Alert, Button, Popconfirm, Space } from 'antd';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { ApiError, postJson, type ActionResult, type Params } from '../api';
 import { useI18n } from '../i18n';
 
@@ -8,11 +8,13 @@ import { useI18n } from '../i18n';
  * Отмена и перезапуск: отказ (409) — исход с причиной, а не ошибка; после действия затронутые
  * экраны перечитываются сразу, не дожидаясь опроса.
  */
-export function Actions({ path, params, cancellable, restartable }: {
+export function Actions({ path, params, cancellable, restartable, extra }: {
   path: string;
   params: Params;
   cancellable: boolean;
   restartable: boolean;
+  /** Прочие действия карточки — в той же строке. */
+  extra?: ReactNode;
 }) {
   const { t } = useI18n();
   const client = useQueryClient();
@@ -36,7 +38,7 @@ export function Actions({ path, params, cancellable, restartable }: {
   });
   return (
     <Space orientation="vertical">
-      <Space>
+      <Space wrap>
         <Popconfirm title={t('common.confirm')} onConfirm={() => action.mutate('cancel')} disabled={!cancellable}>
           <Button danger disabled={!cancellable} loading={action.isPending && action.variables === 'cancel'}>
             {t('common.cancel')}
@@ -47,6 +49,7 @@ export function Actions({ path, params, cancellable, restartable }: {
             {t('common.restart')}
           </Button>
         </Popconfirm>
+        {extra}
       </Space>
       {outcome && <Alert type={outcome.ok ? 'success' : 'warning'} showIcon closable title={outcome.text} />}
     </Space>

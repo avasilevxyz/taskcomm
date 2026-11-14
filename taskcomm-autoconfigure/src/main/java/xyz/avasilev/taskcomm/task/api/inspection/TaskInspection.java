@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import xyz.avasilev.taskcomm.PayloadShape;
+import xyz.avasilev.taskcomm.SqlQuery;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.api.HistoryWindow;
 import xyz.avasilev.taskcomm.execution.api.Page;
@@ -87,6 +89,44 @@ public interface TaskInspection {
     List<TaskUnitCount> unitCounts(ExecutionRef execution);
 
     /**
+     * Запрос, которым {@link #list} читает страницу, — для разбора (docs/adr/0165-read-sql.md). Текст тот
+     * же, что выполняется; предел — размер страницы, без строки, по которой список узнаёт о следующей.
+     * Поиск по нагрузке разворачивается по реестру полей, как при чтении.
+     *
+     * @param query условия
+     * @param window окно чтения истории
+     * @param page страница
+     * @return текст и параметры
+     * @throws UnknownSearchFieldException как у {@link #list}
+     * @throws UnsupportedOperationException если реализация SQL не отдаёт
+     */
+    default SqlQuery listSql(final TaskQuery query, final HistoryWindow window, final PageRequest page) {
+        throw new UnsupportedOperationException("SQL чтения эта реализация не отдаёт");
+    }
+
+    /**
+     * Запрос, которым {@link #attempts} читает журнал попыток, — для разбора.
+     *
+     * @param entity сущность
+     * @return текст и параметры
+     * @throws UnsupportedOperationException если реализация SQL не отдаёт
+     */
+    default SqlQuery attemptsSql(final TaskSnapshot entity) {
+        throw new UnsupportedOperationException("SQL чтения эта реализация не отдаёт");
+    }
+
+    /**
+     * Запрос, которым {@link #unitCounts} считает подзадачи дела, — для разбора.
+     *
+     * @param execution дело
+     * @return текст и параметры
+     * @throws UnsupportedOperationException если реализация SQL не отдаёт
+     */
+    default SqlQuery unitCountsSql(final ExecutionRef execution) {
+        throw new UnsupportedOperationException("SQL чтения эта реализация не отдаёт");
+    }
+
+    /**
      * Приоритет по умолчанию у типов задач с процессором — итог лестницы настроек
      * (docs/adr/0153-ui-creation-refinements.md): его получит задача, поставленная без своего приоритета.
      *
@@ -102,4 +142,14 @@ public interface TaskInspection {
      * @return тип задачи с процессором → имя поллера, по имени типа
      */
     Map<String, String> pollers();
+
+    /**
+     * Структура JSON параметров задачи этого типа — ключи и виды значений, которые ждёт разбор
+     * (docs/adr/0160-payload-shape.md). Строится обходом класса {@code TTaskPayload} маппером
+     * нагрузок; это подсказка для формы создания, последнее слово — за разбором в {@code submitJson}.
+     *
+     * @param taskType тип задачи
+     * @return структура; пусто, если у типа нет процессора на этом экземпляре
+     */
+    Optional<PayloadShape> payloadShape(String taskType);
 }

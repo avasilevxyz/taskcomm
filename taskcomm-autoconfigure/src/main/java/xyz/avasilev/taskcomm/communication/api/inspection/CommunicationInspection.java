@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import xyz.avasilev.taskcomm.PayloadShape;
+import xyz.avasilev.taskcomm.SqlQuery;
 import xyz.avasilev.taskcomm.communication.api.CommunicationService;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.api.HistoryWindow;
@@ -55,6 +57,42 @@ public interface CommunicationInspection {
     List<CorrelationKeySnapshot> correlationKeys(ExecutionRef execution);
 
     /**
+     * Запрос, которым {@link #list} читает страницу, — для разбора (docs/adr/0165-read-sql.md). Текст тот
+     * же, что выполняется; предел — размер страницы, без строки, по которой список узнаёт о следующей.
+     *
+     * @param query условия
+     * @param window окно чтения истории
+     * @param page страница
+     * @return текст и параметры
+     * @throws UnsupportedOperationException если реализация SQL не отдаёт
+     */
+    default SqlQuery listSql(final CommunicationQuery query, final HistoryWindow window, final PageRequest page) {
+        throw new UnsupportedOperationException("SQL чтения эта реализация не отдаёт");
+    }
+
+    /**
+     * Запрос, которым {@link #attempts} читает историю попыток, — для разбора.
+     *
+     * @param communication коммуникация
+     * @return текст и параметры
+     * @throws UnsupportedOperationException если реализация SQL не отдаёт
+     */
+    default SqlQuery attemptsSql(final CommunicationSnapshot communication) {
+        throw new UnsupportedOperationException("SQL чтения эта реализация не отдаёт");
+    }
+
+    /**
+     * Запрос, которым {@link #correlationKeys(ExecutionRef)} читает реестр корреляции дела, — для разбора.
+     *
+     * @param execution дело
+     * @return текст и параметры
+     * @throws UnsupportedOperationException если реализация SQL не отдаёт
+     */
+    default SqlQuery correlationKeysSql(final ExecutionRef execution) {
+        throw new UnsupportedOperationException("SQL чтения эта реализация не отдаёт");
+    }
+
+    /**
      * Ключи корреляции, для которых коммуникация — якорь
      * (docs/adr/0156-communication-keys-and-pollers-in-reading.md).
      *
@@ -103,4 +141,15 @@ public interface CommunicationInspection {
      * @return внешняя система с процессором → имя поллера, по имени системы
      */
     Map<String, String> pollers();
+
+    /**
+     * Структура JSON запроса к внешней системе — ключи и виды значений {@code TRequest}, которые
+     * ждёт разбор (docs/adr/0160-payload-shape.md). Строится обходом класса маппером нагрузок;
+     * это подсказка для формы создания, последнее слово — за разбором в {@code sendJson}.
+     * Для тела входящей не в JSON — SOAP, XML — структура не говорит ничего.
+     *
+     * @param system внешняя система
+     * @return структура; пусто, если у системы нет процессора на этом экземпляре
+     */
+    Optional<PayloadShape> requestShape(String system);
 }

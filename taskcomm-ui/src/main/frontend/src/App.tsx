@@ -3,13 +3,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Button, ConfigProvider, Layout, Menu, Segmented, Space, Spin, theme, Tooltip, Typography } from 'antd';
 import enUS from 'antd/locale/en_US';
 import ruRU from 'antd/locale/ru_RU';
-import { lazy, Suspense, useCallback, useContext, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router';
 import { ApiError, appTitle, routerBase } from './api';
-import { CreateDrawerProvider, CreateLink } from './createDrawer';
-import { EntityDrawerProvider } from './entityDrawer';
+import { CreateLink } from './createPanel';
 import { RefreshControl, refreshInterval } from './refresh';
+import { WindowControl } from './windowPicker';
 import { I18nProvider, useI18n, type Language } from './i18n';
+import { PanelStackProvider } from './panels';
 import { DarkContext, ThemeContext, useMeta, type Scheme } from './meta';
 import { CommunicationCard } from './pages/CommunicationCard';
 import { Communications } from './pages/Communications';
@@ -63,11 +64,9 @@ export function App({ client = createQueryClient(), language }: { client?: Query
       <QueryClientProvider client={client}>
         <Themed>
           <BrowserRouter basename={routerBase()}>
-            <CreateDrawerProvider>
-              <EntityDrawerProvider>
-                <Shell />
-              </EntityDrawerProvider>
-            </CreateDrawerProvider>
+            <PanelStackProvider>
+              <Shell />
+            </PanelStackProvider>
           </BrowserRouter>
         </Themed>
       </QueryClientProvider>
@@ -79,6 +78,11 @@ function Themed({ children }: { children: ReactNode }) {
   const { language } = useI18n();
   const [scheme, setScheme] = useStoredScheme();
   const dark = scheme === 'dark';
+  // Класс темы — и на body: боковые панели рендерятся порталом туда, вне корня приложения.
+  useEffect(() => {
+    document.body.classList.toggle('scheme-dark', dark);
+    document.body.classList.toggle('scheme-light', !dark);
+  }, [dark]);
   return (
     <ConfigProvider
       locale={language === 'ru' ? ruRU : enUS}
@@ -117,7 +121,10 @@ function Shell() {
             { key: 'create', label: <CreateLink>{t('nav.create')}</CreateLink> },
           ]}
         />
-        <RefreshControl />
+        <Space size={8} className="header-controls">
+          <WindowControl />
+          <RefreshControl />
+        </Space>
       </Layout.Header>
       <Layout.Content className="content">
         <Suspense fallback={<Spin />}>

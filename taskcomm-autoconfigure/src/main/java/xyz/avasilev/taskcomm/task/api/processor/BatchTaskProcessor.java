@@ -142,4 +142,32 @@ public non-sealed interface BatchTaskProcessor<
     default List<SearchableField> searchableUnitFields() {
         return List.of();
     }
+
+    /**
+     * Шаблон названия одной группы — для карточки в интерфейсе
+     * (docs/adr/0162-task-title-template.md), например {@code "Поставщик {supplier}"}. Подстановка
+     * {@code {имя}} — поле из {@link #searchableBatchFields()}; не из них — падение при старте.
+     *
+     * <p>Это уточнение, а не полное название: интерфейс пишет его после {@link #title()} —
+     * «Выгрузка каталога · Поставщик 1».
+     *
+     * @return шаблон или {@code null}; по умолчанию — {@code null}, и группа называется {@link #title()}
+     */
+    default String batchTitle() {
+        return null;
+    }
+
+    /**
+     * Шаблон названия одной подзадачи — для карточки в интерфейсе
+     * (docs/adr/0162-task-title-template.md), например {@code "Позиция {sku}"}. Подстановка
+     * {@code {имя}} — поле из {@link #searchableUnitFields()}; не из них — падение при старте.
+     *
+     * <p>Это уточнение, а не полное название: интерфейс пишет его после {@link #title()} —
+     * «Выгрузка каталога · Позиция SKU-1», чтобы было видно, частью чего подзадача является.
+     *
+     * @return шаблон или {@code null}; по умолчанию — {@code null}, и подзадача называется {@link #title()}
+     */
+    default String unitTitle() {
+        return null;
+    }
 }

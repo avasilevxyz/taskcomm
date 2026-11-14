@@ -29,8 +29,9 @@ body {
 }
 
 .content {
-  padding: 16px;
-  max-width: 1400px;
+  /* Без предела ширины: на большом экране таблицам нужно всё место — столбцов много. Поля по бокам
+     растут с экраном: на телефоне 16 px, на широком мониторе — до 160 px. */
+  padding: 16px clamp(16px, 6vw, 160px);
   width: 100%;
   margin: 0 auto;
   box-sizing: border-box;
@@ -47,6 +48,7 @@ body {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
 
 .scheme-light .json {
   background: #f5f5f5;
@@ -80,7 +82,8 @@ body {
   font-size: 12px;
 }
 
-.refresh {
+.refresh,
+.header-controls {
   flex: none;
 }
 
@@ -96,7 +99,234 @@ body {
 }
 
 /* Значения описания переносятся по словам, длинные идентификаторы — где придётся. */
+.facts .ant-descriptions-item-container {
+  flex-wrap: wrap;
+  column-gap: 8px;
+}
+/* Значение шириной по содержимому: не помещается рядом с подписью — уходит на следующую строку,
+   а длиннее строки — переносится внутри. */
 .facts .ant-descriptions-item-content {
+  flex: 1 0 auto;
   min-width: 0;
+  max-width: 100%;
   overflow-wrap: anywhere;
+}
+
+/* Номер столбца в порядке сортировки — когда сортируют несколько. */
+.sort-priority {
+  margin-left: 4px;
+  font-size: 10px;
+  opacity: 0.65;
+}
+
+/* Строка настройки столбца: ручка, флажок, стрелки. */
+.column-setting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: grab;
+}
+.column-setting:hover {
+  background: rgba(128, 128, 128, 0.12);
+}
+.column-setting-dragged {
+  opacity: 0.4;
+}
+.column-setting-handle {
+  opacity: 0.5;
+}
+.column-setting-arrows {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* Строка, на которую сейчас упадёт столбец. */
+.column-setting-over {
+  box-shadow: inset 0 2px 0 #1677ff;
+}
+
+/* Зоны начала и конца списка при перетаскивании. */
+.column-drop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  border: 1px dashed rgba(128, 128, 128, 0.5);
+  border-radius: 6px;
+  font-size: 12px;
+  opacity: 0.7;
+}
+.column-drop-over {
+  border-color: #1677ff;
+  background: rgba(22, 119, 255, 0.12);
+  opacity: 1;
+}
+
+/* Стопка боковых панелей: страница под ней размыта. */
+.panels-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(4px);
+}
+.panels {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  display: flex;
+  max-width: 100vw;
+  pointer-events: none;
+}
+.panel,
+.panel-strip {
+  pointer-events: auto;
+  box-shadow: -6px 0 16px rgba(0, 0, 0, 0.25);
+}
+.panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  animation: panel-in 0.18s ease-out;
+}
+@keyframes panel-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 8px 8px 20px;
+}
+.panel-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.panel-actions:empty {
+  display: none;
+}
+.panel-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.panel-body {
+  flex: 1;
+  overflow: auto;
+  padding: 20px 24px;
+}
+.panel-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 8px;
+  cursor: ew-resize;
+  z-index: 1;
+}
+.panel-resize:hover {
+  background: rgba(22, 119, 255, 0.35);
+}
+.panel-strip {
+  width: 40px;
+  height: 100%;
+  border: none;
+  padding: 12px 0;
+  cursor: pointer;
+  font: inherit;
+}
+.panel-strip span {
+  display: inline-block;
+  writing-mode: vertical-rl;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-height: 100%;
+}
+.panel-strip:hover {
+  filter: brightness(1.15);
+}
+
+/* Свёрнутая панель: смонтирована, но за краем экрана и вне раскладки — со всей прокруткой и выбором. */
+.panel-stowed {
+  position: fixed;
+  top: 0;
+  left: -200vw;
+  visibility: hidden;
+  animation: none;
+}
+
+/* Блок кода только для чтения: рамка как у редактора формы. */
+.code-view .cm-editor {
+  border-radius: 6px;
+}
+.scheme-light .code-view .cm-editor {
+  background: #f5f5f5;
+}
+.code-view .cm-editor.cm-focused {
+  outline: none;
+}
+
+/* Кнопки над блоком кода — в его правом верхнем углу, поверх первой строки, левее полосы прокрутки
+   редактора: иначе она закрывает крайнюю кнопку. */
+.code-block {
+  position: relative;
+}
+.code-block-tools {
+  position: absolute;
+  top: 4px;
+  right: 22px;
+  z-index: 2;
+  display: flex;
+  gap: 2px;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+.code-block:hover .code-block-tools,
+.code-block-tools:focus-within {
+  opacity: 1;
+}
+
+/* Встроенные элементы браузера — полосы прокрутки, поля — в цвет темы: иначе в тёмной теме они светлые. */
+.scheme-dark {
+  color-scheme: dark;
+}
+.scheme-light {
+  color-scheme: light;
+}
+
+/* Место для кнопки «Столбцы» в строке над таблицей: не растягивает строку. */
+.columns-slot {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
+/* Выбор окна в шапке: быстрые диапазоны — в две колонки, подпись не растягивает шапку. */
+.window-quick {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 8px;
+}
+.window-quick .ant-btn {
+  justify-content: flex-start;
+}
+.window-label {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

@@ -97,6 +97,26 @@ public class TaskController extends RestErrors {
     }
 
     /**
+     * Запрос, которым читается страница списка, — с подставленными значениями
+     * (docs/adr/0165-read-sql.md). Параметры те же, что у списка.
+     *
+     * @param level уровень
+     * @param params все параметры списка
+     * @param status статусы
+     * @return текст для psql
+     */
+    @GetMapping("/sql")
+    public RestDtos.SqlDto listSql(
+            @RequestParam(name = "level", defaultValue = "TASK") final TaskSnapshot.Level level,
+            @RequestParam final Map<String, String> params,
+            @RequestParam(name = "status", required = false) final List<String> status) {
+        final RestParams p = new RestParams(params);
+        final HistoryWindow window = this.windows.resolve(p.instant("from"), p.instant("to"), p.everywhere());
+        return new RestDtos.SqlDto(SqlLiterals.statement(
+                this.inspection.listSql(TaskRequests.query(level, params, status), window, p.page())));
+    }
+
+    /**
      * Одна сущность.
      *
      * @param level уровень
@@ -130,6 +150,27 @@ public class TaskController extends RestErrors {
             return ResponseEntity.ok(
                     attempts.stream().map(this.mapper::taskAttempt).toList());
         });
+    }
+
+    /**
+     * Запрос, которым читаются попытки сущности, — с подставленными значениями.
+     *
+     * @param level уровень
+     * @param id идентификатор
+     * @param params окно или {@code executionCreatedAt}
+     * @return текст для psql или {@code 404}
+     */
+    @GetMapping("/{level}/{id}/attempts/sql")
+    public ResponseEntity<RestDtos.SqlDto> attemptsSql(
+            @PathVariable("level") final TaskSnapshot.Level level,
+            @PathVariable("id") final UUID id,
+            @RequestParam final Map<String, String> params) {
+        return this.withEntity(
+                level,
+                id,
+                params,
+                found -> ResponseEntity.ok(
+                        new RestDtos.SqlDto(SqlLiterals.statement(this.inspection.attemptsSql(found)))));
     }
 
     /**
@@ -205,6 +246,21 @@ public class TaskController extends RestErrors {
     @GetMapping("/search-fields")
     public List<SearchableFieldSnapshot> searchFields() {
         return this.inspection.searchableFields();
+    }
+
+    /**
+     * Структура JSON параметров задачи типа — для шаблона и проверки в форме создания
+     * (docs/adr/0160-payload-shape.md).
+     *
+     * @param type тип задачи
+     * @return структура или {@code 404}, если у типа нет процессора
+     */
+    @GetMapping("/payload-shape")
+    public ResponseEntity<RestDtos.PayloadShapeDto> payloadShape(@RequestParam(name = "type") final String type) {
+        return this.inspection
+                .payloadShape(type)
+                .map(shape -> ResponseEntity.ok(RestDtos.PayloadShapeDto.of(shape)))
+                .orElseGet(() -> notFound("тип задачи " + type));
     }
 
     /**

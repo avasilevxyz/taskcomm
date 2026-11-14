@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import xyz.avasilev.taskcomm.SqlQuery;
 import xyz.avasilev.taskcomm.communication.api.CommunicationHeaders;
 import xyz.avasilev.taskcomm.communication.api.CommunicationStatus;
 import xyz.avasilev.taskcomm.communication.api.CorrelationKey;
@@ -32,6 +33,7 @@ import xyz.avasilev.taskcomm.communication.internal.processor.CommunicationProce
 import xyz.avasilev.taskcomm.execution.api.HistoryWindow;
 import xyz.avasilev.taskcomm.execution.api.Page;
 import xyz.avasilev.taskcomm.execution.api.PageRequest;
+import xyz.avasilev.taskcomm.rest.SqlLiterals;
 
 /**
  * Чтение коммуникаций (docs/adr/0138-inspection-api.md): страницы по ключу, фильтры, окно и дело,
@@ -200,6 +202,62 @@ class DefaultCommunicationInspectionIT {
                                 CommunicationStatus.PENDING,
                                 2,
                                 false));
+    }
+
+    /**
+     * SQL для разбора (docs/adr/0165-read-sql.md) с подставленными значениями, выполненный как есть, даёт
+     * те же строки, что чтение: фильтры, ключи с пустым предметом, дело, курсор, попытки, корреляция.
+     */
+    @Test
+    void readSqlWithLiteralsReturnsTheSameRows() {
+        final CreatedCommunication owner = this.outbound(
+                "stock",
+                new NewCommunication.Keys(
+                        List.of(new DedupKey.WholeHistory("k-1")), List.of(CorrelationKey.of("corr-1"))));
+        this.outbound("stock", NewCommunication.Keys.NONE);
+        final CreatedCommunication inbound = this.inbound("req-7");
+        final List<CommunicationQuery> queries = List.of(
+                CommunicationQuery.all()
+                        .withDirection(CommunicationSnapshot.Direction.OUTBOUND)
+                        .withSystem("stock")
+                        .withStatuses(Set.of(CommunicationStatus.PENDING, CommunicationStatus.FAILED)),
+                CommunicationQuery.all().withDedupKey("k-1"),
+                CommunicationQuery.all().withCorrelationKey("stock", "corr-1"),
+                CommunicationQuery.all().withRequestId("req-7"),
+                CommunicationQuery.all().inExecution(owner.execution()));
+        for (final CommunicationQuery query : queries) {
+            assertThat(this.ids(this.inspection.listSql(query, this.window(), PageRequest.first(10))))
+                    .isNotEmpty()
+                    .containsExactlyElementsOf(this.items(query).stream()
+                            .map(CommunicationSnapshot::id)
+                            .toList());
+        }
+        final Page<CommunicationSnapshot> first =
+                this.inspection.list(CommunicationQuery.all(), this.window(), PageRequest.first(1));
+        final PageRequest second = PageRequest.after(first.next().orElseThrow(), 1);
+        assertThat(this.ids(this.inspection.listSql(CommunicationQuery.all(), this.window(), second)))
+                .containsExactlyElementsOf(
+                        this.inspection.list(CommunicationQuery.all(), this.window(), second).items().stream()
+                                .map(CommunicationSnapshot::id)
+                                .toList());
+
+        final CommunicationSnapshot received =
+                this.inspection.find(inbound.id(), this.window()).orElseThrow();
+        assertThat(this.ids(this.inspection.attemptsSql(received))).hasSize(1);
+        assertThat(this.db
+                        .jdbc
+                        .sql(SqlLiterals.statement(this.inspection.correlationKeysSql(owner.execution())))
+                        .query((rs, rowNum) -> rs.getString("correlation_id"))
+                        .list())
+                .containsExactly("corr-1");
+    }
+
+    private List<UUID> ids(final SqlQuery query) {
+        return this.db
+                .jdbc
+                .sql(SqlLiterals.statement(query))
+                .query((rs, rowNum) -> rs.getObject("id", UUID.class))
+                .list();
     }
 
     private List<CommunicationSnapshot> items(final CommunicationQuery query) {

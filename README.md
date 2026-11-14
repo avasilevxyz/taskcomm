@@ -72,7 +72,7 @@ Spring Boot стартер для надёжной фоновой работы �
 ## Пример за минуту
 
 ```groovy
-implementation platform('xyz.avasilev:taskcomm-bom:2.1.1')
+implementation platform('xyz.avasilev:taskcomm-bom:2.2.0')
 implementation 'xyz.avasilev:taskcomm-spring-boot-starter'
 runtimeOnly 'org.postgresql:postgresql'
 ```
@@ -124,7 +124,7 @@ public void close(YearMonth month) {
 
 ## Статус и версии
 
-Текущая версия — `2.1.1`, опубликована в Maven Central: отдельный репозиторий объявлять
+Текущая версия — `2.2.0`, опубликована в Maven Central: отдельный репозиторий объявлять
 не нужно. Что дальше — [roadmap](docs/roadmap.md).
 
 Версии — по semver: мажорная поднимается только при потере обратной совместимости. Свойства

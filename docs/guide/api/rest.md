@@ -50,10 +50,13 @@ SecurityFilterChain security(HttpSecurity http,
 | `GET /tasks`                        | Список уровня `level` (по умолчанию `TASK`) с фильтрами и поиском                              |
 | `GET /tasks/{level}/{id}`           | Одна сущность                                                                                  |
 | `GET /tasks/{level}/{id}/attempts`  | Её попытки: фаза, исход, время, экземпляр, результат                                           |
+| `GET /tasks/sql`                    | Запрос к базе, которым читается страница списка, — с теми же параметрами, что у списка          |
+| `GET /tasks/{level}/{id}/attempts/sql` | Запрос, которым читаются её попытки                                                         |
 | `POST /tasks/{level}/{id}/cancel`   | Отмена                                                                                         |
 | `POST /tasks/{level}/{id}/restart`  | Перезапуск                                                                                     |
 | `POST /tasks?type={taskType}`       | Постановка; тело — нагрузка в JSON                                                             |
 | `GET /tasks/search-fields`          | Поля, доступные для поиска, с подписями и описаниями                                           |
+| `GET /tasks/payload-shape?type=`    | Структура JSON параметров задачи типа: ключи, виды значений, перечисления; `404` без процессора |
 | `GET /tasks/count`                  | Число по тем же фильтрам, что у списка                                                         |
 | `GET /tasks/summary`                | Сводка: уровень, тип, статус, количество, признак осиротевшего типа                            |
 | `POST /tasks/discard-child-results` | Удалить результаты детей у собранных родителей; `olderThan` — только старше, например `PT168H` |
@@ -80,10 +83,13 @@ GET /tc/api/tasks?level=UNIT&field.order_id=A-1024&status=FAILED
 | `GET /communications`                         | Список с фильтрами                                               |
 | `GET /communications/{id}`                    | Одна коммуникация                                                |
 | `GET /communications/{id}/attempts`           | Попытки с полным обменом: запрос, ответ, заголовки, тела, статус |
+| `GET /communications/sql`                     | Запрос к базе, которым читается страница списка                  |
+| `GET /communications/{id}/attempts/sql`       | Запрос, которым читаются её попытки                              |
 | `GET /communications/{id}/keys`               | Ключи дедупликации и ключи корреляции, для которых она якорь     |
 | `POST /communications/{id}/cancel`            | Отмена                                                           |
 | `POST /communications/{id}/restart`           | Перезапуск                                                       |
 | `POST /communications/outbound/{destination}` | Отправка; тело — запрос в JSON                                   |
+| `GET /communications/request-shape?system=`   | Структура JSON запроса к системе; `404` без процессора           |
 | `GET /communications/summary`                 | Сводка: направление, система, статус, количество                 |
 | `GET /communications/circuit-breakers`        | Состояние размыкателей **ответившего экземпляра**, с его именем  |
 
@@ -123,6 +129,16 @@ GET /tc/api/tasks?level=UNIT&field.order_id=A-1024&status=FAILED
 `TaskInspection.unitCounts(executionRef)`. Счёт идёт по всем подзадачам дела, и на миллионе это
 секунды: не опрашивайте его чаще, чем раз в несколько секунд.
 
+### Запрос к базе для разбора
+
+У списков, попыток и дела без подзадач есть парный путь `…/sql` с теми же параметрами:
+`/tasks/sql`, `/tasks/{level}/{id}/attempts/sql`, `/communications/sql`,
+`/communications/{id}/attempts/sql`, `/executions/{id}/outline/sql`. Ответ — `{"sql": "..."}`:
+запрос, которым сервер читает эти строки, с подставленными значениями — его можно вставить в psql
+и выполнить. У списка — одна страница, первая или та, чей курсор передан; у дела — несколько
+запросов подряд, каждый с заголовком. Окно по умолчанию подставляется датами на момент запроса.
+Схема таблиц внутренняя и меняется вместе со стартером: запрос — для разбора, не для отчётов.
+
 ## Описание экземпляра
 
 `GET {base-path}/meta` — что умеет этот экземпляр: `version` — версия стартера (нет при запуске
@@ -130,7 +146,8 @@ GET /tc/api/tasks?level=UNIT&field.order_id=A-1024&status=FAILED
 и формой контракта (`FLAT`, `UNIT`, `BATCH`), `communications.systems` — внешние системы с процессором
 и транспортом (`REST`, `SOAP`, `KAFKA`, `RAW`); у типа и системы — `defaultPriority`, итог настроек,
 и `poller` — поллер, который их захватывает на этом экземпляре, `title` и `description` — название
-и описание из процессора (без своего названия — ключ, без описания — `null`);
+и описание из процессора (без своего названия — ключ, без описания — `null`), у типа задачи —
+`titleTemplates` — шаблоны названия одной задачи, группы и подзадачи (`task`, `batch`, `unit`);
 `communications.manualInbound` — включён ли ручной приём; `instance` — имя ответившего экземпляра,
 то же, что в `lockedBy` попыток. Выключенной подсистемы в ответе нет.
 Из Java те же приоритеты и поллеры — `defaultPriorities()` и `pollers()` у `TaskInspection`

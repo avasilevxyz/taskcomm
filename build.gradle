@@ -14,7 +14,7 @@ plugins {
 
 allprojects {
     group = 'xyz.avasilev'
-    version = '2.1.1'
+    version = '2.2.0'
 
     // Публикация — из GitHub Actions по тегу v<версия> в два места: GitHub Packages
     // (docs/adr/0146-publishing-to-github-packages.md) и Maven Central

@@ -85,6 +85,33 @@ public class CommunicationController extends RestErrors {
             @RequestParam final Map<String, String> params,
             @RequestParam(name = "status", required = false) final List<CommunicationStatus> status) {
         final RestParams p = new RestParams(params);
+        final HistoryWindow window = this.windows.resolve(p.instant("from"), p.instant("to"), p.everywhere());
+        final Page<CommunicationSnapshot> page = this.inspection.list(query(p, status), window, p.page());
+        return new RestDtos.PageDto<>(
+                page.items().stream().map(this.mapper::communication).toList(),
+                page.next().orElse(null),
+                this.mapper.window(window));
+    }
+
+    /**
+     * Запрос, которым читается страница списка, — с подставленными значениями
+     * (docs/adr/0165-read-sql.md). Параметры те же, что у списка.
+     *
+     * @param params фильтры, дело, окно, страница
+     * @param status статусы
+     * @return текст для psql
+     */
+    @GetMapping("/sql")
+    public RestDtos.SqlDto listSql(
+            @RequestParam final Map<String, String> params,
+            @RequestParam(name = "status", required = false) final List<CommunicationStatus> status) {
+        final RestParams p = new RestParams(params);
+        final HistoryWindow window = this.windows.resolve(p.instant("from"), p.instant("to"), p.everywhere());
+        return new RestDtos.SqlDto(SqlLiterals.statement(this.inspection.listSql(query(p, status), window, p.page())));
+    }
+
+    /** Условия списка из параметров запроса. */
+    private static CommunicationQuery query(final RestParams p, final List<CommunicationStatus> status) {
         CommunicationQuery query = CommunicationQuery.all();
         if (p.text("direction") != null) {
             query = query.withDirection(CommunicationSnapshot.Direction.valueOf(p.text("direction")));
@@ -103,12 +130,7 @@ public class CommunicationController extends RestErrors {
         if (execution != null) {
             query = query.inExecution(execution);
         }
-        final HistoryWindow window = this.windows.resolve(p.instant("from"), p.instant("to"), p.everywhere());
-        final Page<CommunicationSnapshot> page = this.inspection.list(query, window, p.page());
-        return new RestDtos.PageDto<>(
-                page.items().stream().map(this.mapper::communication).toList(),
-                page.next().orElse(null),
-                this.mapper.window(window));
+        return query;
     }
 
     /**
@@ -140,6 +162,23 @@ public class CommunicationController extends RestErrors {
                 found -> ResponseEntity.ok(this.inspection.attempts(found).stream()
                         .map(this.mapper::communicationAttempt)
                         .toList()));
+    }
+
+    /**
+     * Запрос, которым читается история попыток, — с подставленными значениями.
+     *
+     * @param id идентификатор
+     * @param params окно или {@code executionCreatedAt}
+     * @return текст для psql или {@code 404}
+     */
+    @GetMapping("/{id}/attempts/sql")
+    public ResponseEntity<RestDtos.SqlDto> attemptsSql(
+            @PathVariable("id") final UUID id, @RequestParam final Map<String, String> params) {
+        return this.withCommunication(
+                id,
+                params,
+                found -> ResponseEntity.ok(
+                        new RestDtos.SqlDto(SqlLiterals.statement(this.inspection.attemptsSql(found)))));
     }
 
     /**
@@ -213,6 +252,21 @@ public class CommunicationController extends RestErrors {
                         sent.communication().status().name(),
                         sent instanceof SendResult.Duplicate<?> duplicate ? duplicate.duplicateOf() : null,
                         null));
+    }
+
+    /**
+     * Структура JSON запроса к внешней системе — для шаблона и проверки в форме создания
+     * (docs/adr/0160-payload-shape.md).
+     *
+     * @param system внешняя система
+     * @return структура или {@code 404}, если у системы нет процессора
+     */
+    @GetMapping("/request-shape")
+    public ResponseEntity<RestDtos.PayloadShapeDto> requestShape(@RequestParam(name = "system") final String system) {
+        return this.inspection
+                .requestShape(system)
+                .map(shape -> ResponseEntity.ok(RestDtos.PayloadShapeDto.of(shape)))
+                .orElseGet(() -> notFound("внешняя система " + system));
     }
 
     /**

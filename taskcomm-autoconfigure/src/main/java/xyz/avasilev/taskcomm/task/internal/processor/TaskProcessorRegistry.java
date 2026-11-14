@@ -38,13 +38,15 @@ public final class TaskProcessorRegistry {
      *
      * @param processors все процессоры задач приложения
      * @throws TaskcommConfigurationException если тип назван двумя процессорами, параметр типа
-     *     процессора не выводится из класса или поле поиска объявлено неверной формы
+     *     процессора не выводится из класса, поле поиска объявлено неверной формы или шаблон
+     *     названия ссылается не на поле поиска
      */
     public TaskProcessorRegistry(final Collection<? extends TaskProcessor<?>> processors) {
         final Map<String, RegisteredProcessor> types = new LinkedHashMap<>();
         final Map<Class<?>, RegisteredProcessor> classes = new LinkedHashMap<>();
         for (final TaskProcessor<?> processor : processors) {
             final RegisteredProcessor registered = register(processor);
+            TaskTitleTemplate.check(processor);
             final RegisteredProcessor previous = types.putIfAbsent(registered.taskType(), registered);
             if (previous != null) {
                 throw new TaskcommConfigurationException("Тип задачи '" + registered.taskType() + "' объявлен двумя "

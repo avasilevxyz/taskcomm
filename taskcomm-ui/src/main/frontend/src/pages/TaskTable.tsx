@@ -1,11 +1,12 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { Flex, Space, Table, Tooltip } from 'antd';
+import { Flex, Space, Tooltip } from 'antd';
 import { getJson, type Level, type Page, type Params, type TaskItem } from '../api';
 import {
   IdLink,
   Loadable,
   MoreButton,
   OrphanTag,
+  Reason,
   PhaseLabel,
   ProcessorTitle,
   StatusTag,
@@ -14,7 +15,8 @@ import {
   useTime,
   WindowNote,
 } from '../common';
-import { rowOpens, useEntityDrawer } from '../entityDrawer';
+import { rowOpens, useEntityPanel } from '../entityPanel';
+import { ColumnsSlotProvider, DataTable, useColumnsSlot } from '../dataTable';
 import { useI18n } from '../i18n';
 import { cellText, fieldColumns, fieldValue, useSearchFields } from './searchFields';
 
@@ -30,7 +32,7 @@ function sortable(value: unknown): string | number | undefined {
 
 /** Список задач страницами по ключу: дочитывается кнопкой, обновляется опросом. */
 export function useTaskPages(key: unknown[], params: () => Params, enabled = true) {
-  return useInfiniteQuery({
+  const pages = useInfiniteQuery({
     queryKey: ['tasks', 'list', ...key],
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) =>
@@ -38,6 +40,8 @@ export function useTaskPages(key: unknown[], params: () => Params, enabled = tru
     getNextPageParam: (last) => last.next,
     enabled,
   });
+  // Запрос первой страницы — для команды curl над таблицей.
+  return { ...pages, request: { path: '/tasks', params: { ...params(), size: PAGE_SIZE } } };
 }
 
 /**
@@ -55,13 +59,22 @@ export function TaskTable({ pages, showWindow = true, level, taskType }: {
   const fields = useSearchFields();
   const extra = level && taskType ? fieldColumns(fields.data ?? [], level, taskType) : [];
   const items = pages.data?.pages.flatMap((page) => page.items) ?? [];
-  const open = useEntityDrawer();
+  const open = useEntityPanel();
+  const [slot, slotNode] = useColumnsSlot();
   return (
     <Loadable loading={pages.isLoading} error={pages.error}>
       {() => (
         <Flex vertical gap={8}>
-          {showWindow && <WindowNote window={pages.data?.pages[0]?.window} />}
-          <Table<TaskItem>
+          {showWindow && (
+            <Flex justify="space-between" align="center" gap={8}>
+              <WindowNote window={pages.data?.pages[0]?.window} />
+              {slot}
+            </Flex>
+          )}
+          <ColumnsSlotProvider node={slotNode} enabled={showWindow}>
+          <DataTable<TaskItem>
+            settings="tasks"
+            request={pages.request}
             size="small"
             scroll={{ x: 'max-content' }}
             rowKey="id"
@@ -90,15 +103,16 @@ export function TaskTable({ pages, showWindow = true, level, taskType }: {
                 ),
               },
               {
+                key: 'common.status',
                 title: t('common.status'),
                 sorter: by((row: TaskItem) => row.state.status),
                 render: (_, row) => <StatusTag status={row.state.status} description={row.state.statusDescription} />,
               },
-              { title: t('common.reason'), sorter: by((row: TaskItem) => row.state.statusDescription), ellipsis: true, render: (_, row) => row.state.statusDescription ?? '—' },
-              { title: t('common.phase'), sorter: by((row: TaskItem) => row.state.phase), render: (_, row) => <PhaseLabel phase={row.state.phase} /> },
-              { title: t('common.priority'), sorter: by((row: TaskItem) => row.state.priority), render: (_, row) => row.state.priority },
-              { title: t('common.created'), sorter: by((row: TaskItem) => row.state.createdAt), render: (_, row) => time(row.state.createdAt) },
-              { title: t('common.updated'), sorter: by((row: TaskItem) => row.state.updatedAt), render: (_, row) => time(row.state.updatedAt) },
+              { key: 'common.reason', title: t('common.reason'), sorter: by((row: TaskItem) => row.state.statusDescription), render: (_, row) => <Reason text={row.state.statusDescription} /> },
+              { key: 'common.phase', title: t('common.phase'), sorter: by((row: TaskItem) => row.state.phase), render: (_, row) => <PhaseLabel phase={row.state.phase} /> },
+              { key: 'common.priority', title: t('common.priority'), sorter: by((row: TaskItem) => row.state.priority), render: (_, row) => row.state.priority },
+              { key: 'common.created', title: t('common.created'), sorter: by((row: TaskItem) => row.state.createdAt), render: (_, row) => time(row.state.createdAt) },
+              { key: 'common.updated', title: t('common.updated'), sorter: by((row: TaskItem) => row.state.updatedAt), render: (_, row) => time(row.state.updatedAt) },
               ...extra.map((column) => ({
                 key: `field.${column.name}`,
                 title: column.description ? <Tooltip title={column.description}>{column.title}</Tooltip> : column.title,
@@ -107,6 +121,7 @@ export function TaskTable({ pages, showWindow = true, level, taskType }: {
               })),
             ]}
           />
+          </ColumnsSlotProvider>
           <MoreButton
             visible={pages.hasNextPage}
             loading={pages.isFetchingNextPage}

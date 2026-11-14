@@ -13,10 +13,14 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
+import xyz.avasilev.taskcomm.PayloadShape;
+import xyz.avasilev.taskcomm.SqlQuery;
 import xyz.avasilev.taskcomm.TaskcommException;
 import xyz.avasilev.taskcomm.execution.api.HistoryWindow;
 import xyz.avasilev.taskcomm.execution.api.Page;
 import xyz.avasilev.taskcomm.execution.api.PageRequest;
+import xyz.avasilev.taskcomm.rest.SqlLiterals;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskAttemptSnapshot;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskQuery;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskSnapshot;
@@ -24,6 +28,7 @@ import xyz.avasilev.taskcomm.task.api.inspection.TaskTypeSummary;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskUnitCount;
 import xyz.avasilev.taskcomm.task.api.inspection.UnknownSearchFieldException;
 import xyz.avasilev.taskcomm.task.internal.ContractShape;
+import xyz.avasilev.taskcomm.task.internal.TaskPayloadCodec;
 import xyz.avasilev.taskcomm.task.internal.TaskSql;
 import xyz.avasilev.taskcomm.task.internal.TaskTestDatabase;
 import xyz.avasilev.taskcomm.task.internal.TaskTestSettings;
@@ -53,7 +58,19 @@ class DefaultTaskInspectionIT {
         final TaskProcessorRegistry registry = new TaskProcessorRegistry(List.of(report));
         new TaskStartup(this.db.dataSource, this.db.transactionManager, this.db.ids, registry, false)
                 .afterPropertiesSet();
-        this.inspection = new DefaultTaskInspection(this.db.dataSource, () -> registry, () -> null);
+        this.inspection = new DefaultTaskInspection(
+                this.db.dataSource,
+                () -> registry,
+                () -> null,
+                new TaskPayloadCodec(JsonMapper.builder().build()));
+    }
+
+    @Test
+    void payloadShapeComesFromTheProcessorOfTheType() {
+        assertThat(this.inspection.payloadShape(TaskTestDatabase.FLAT_TYPE))
+                .map(PayloadShape::kind)
+                .contains(PayloadShape.Kind.STRING);
+        assertThat(this.inspection.payloadShape("no-such-type")).isEmpty();
     }
 
     @Test
@@ -247,6 +264,83 @@ class DefaultTaskInspectionIT {
         assertThat(this.inspection.count(
                         TaskQuery.of(TaskSnapshot.Level.UNIT).withParentAttempt(batchAttempt), this.window()))
                 .isEqualTo(2);
+    }
+
+    /**
+     * SQL для разбора (docs/adr/0165-read-sql.md) с подставленными значениями, выполненный как есть, даёт
+     * те же строки, что чтение: поиск по нагрузке, статусы, окно, курсор, подзапрос детей попытки.
+     */
+    @Test
+    void readSqlWithLiteralsReturnsTheSameRows() {
+        final CreatedTask wanted = this.submit("A-7");
+        this.submit("A-8");
+        this.submit("O'Brien");
+        final TaskQuery search =
+                TaskQuery.of(TASK).withField("orderId", "A-7").withStatuses(Set.of("PENDING", "FAILED"));
+        assertThat(this.ids(this.inspection.listSql(search, this.window(), PageRequest.first(10))))
+                .containsExactly(wanted.id());
+        final TaskQuery quoted = TaskQuery.of(TASK).withField("orderId", "O'Brien");
+        assertThat(this.ids(this.inspection.listSql(quoted, this.window(), PageRequest.first(10))))
+                .containsExactlyElementsOf(this.listed(quoted, PageRequest.first(10)));
+        final Page<TaskSnapshot> first = this.inspection.list(TaskQuery.of(TASK), this.window(), PageRequest.first(1));
+        final PageRequest second = PageRequest.after(first.next().orElseThrow(), 1);
+        assertThat(this.ids(this.inspection.listSql(TaskQuery.of(TASK), this.window(), second)))
+                .containsExactlyElementsOf(this.listed(TaskQuery.of(TASK), second));
+
+        final UUID taskAttempt = this.db.ids.next();
+        final UUID batch = this.batch(wanted, taskAttempt);
+        this.unit(wanted, batch, "PENDING", this.db.ids.next());
+        this.unit(wanted, null, "SUCCEEDED", taskAttempt);
+        final TaskQuery units = TaskQuery.of(TaskSnapshot.Level.UNIT)
+                .inExecution(wanted.execution())
+                .withParent(wanted.id())
+                .withParentAttempt(taskAttempt);
+        assertThat(this.ids(this.inspection.listSql(units, this.window(), PageRequest.first(10))))
+                .hasSize(2)
+                .containsExactlyElementsOf(this.listed(units, PageRequest.first(10)));
+        assertThat(this.db
+                        .jdbc
+                        .sql(SqlLiterals.statement(this.inspection.unitCountsSql(wanted.execution())))
+                        .query((rs, rowNum) -> new TaskUnitCount(
+                                rs.getObject("task_id", UUID.class),
+                                rs.getObject("batch_id", UUID.class),
+                                rs.getString("status"),
+                                rs.getLong("n")))
+                        .list())
+                .containsExactlyElementsOf(this.inspection.unitCounts(wanted.execution()));
+    }
+
+    @Test
+    void attemptsSqlWithLiteralsReturnsTheSameRows() {
+        final CreatedTask task = this.submit("A-1");
+        this.db
+                .claimer("worker-a", TaskTestSettings.settings(3, Duration.ZERO, Duration.ofMinutes(1)), () -> 0.5)
+                .claim(
+                        TaskTestSettings.mainPoller(ClaimForm.DEADLINE),
+                        Map.of(TaskTestDatabase.FLAT_TYPE, ContractShape.FLAT),
+                        1);
+        final TaskSnapshot snapshot =
+                this.inspection.find(TASK, task.id(), this.window()).orElseThrow();
+
+        assertThat(this.ids(this.inspection.attemptsSql(snapshot)))
+                .hasSize(1)
+                .containsExactlyElementsOf(this.inspection.attempts(snapshot).stream()
+                        .map(TaskAttemptSnapshot::id)
+                        .toList());
+    }
+
+    private List<UUID> ids(final SqlQuery query) {
+        return this.db
+                .jdbc
+                .sql(SqlLiterals.statement(query))
+                .query((rs, rowNum) -> rs.getObject("id", UUID.class))
+                .list();
+    }
+
+    private List<UUID> listed(final TaskQuery query, final PageRequest page) {
+        return this.inspection.list(query, this.window(), page).items().stream()
+                .map(TaskSnapshot::id)
+                .toList();
     }
 
     @Test

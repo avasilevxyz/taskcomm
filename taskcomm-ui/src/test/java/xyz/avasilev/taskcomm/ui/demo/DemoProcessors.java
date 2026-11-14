@@ -17,8 +17,10 @@ import xyz.avasilev.taskcomm.communication.api.CommunicationHeaders;
 import xyz.avasilev.taskcomm.communication.api.CommunicationSendOptions;
 import xyz.avasilev.taskcomm.communication.api.CommunicationService;
 import xyz.avasilev.taskcomm.communication.api.ExchangeMessage;
+import xyz.avasilev.taskcomm.communication.api.InboundRequest;
 import xyz.avasilev.taskcomm.communication.api.processor.CommunicationContext;
 import xyz.avasilev.taskcomm.communication.api.processor.RestCommunicationProcessor;
+import xyz.avasilev.taskcomm.communication.api.processor.SoapCommunicationProcessor;
 import xyz.avasilev.taskcomm.task.api.Task;
 import xyz.avasilev.taskcomm.task.api.TaskBatch;
 import xyz.avasilev.taskcomm.task.api.TaskService;
@@ -61,7 +63,12 @@ class DemoProcessors {
     }
 
     @Bean
-    ApplicationRunner demoWork(final TaskService tasks) {
+    WarehouseProcessor demoWarehouse() {
+        return new WarehouseProcessor();
+    }
+
+    @Bean
+    ApplicationRunner demoWork(final TaskService tasks, final CommunicationService communications) {
         return args -> {
             final Customer romashka = new Customer("ООО Ромашка", "7701234567");
             tasks.submit("demo-orders", new Order("A-1", romashka, 1500, false));
@@ -69,6 +76,15 @@ class DemoProcessors {
             tasks.submit("demo-orders", new Order("A-4", romashka, 87000, false));
             tasks.submit("demo-reconciliation", new Reconciliation("A-3", "40702810900000000001", 24, 7));
             tasks.submit("demo-export", new Export("весна-2026", 3, 5));
+            // Склад: исходящая резервация и входящее обновление остатка — оба тела в SOAP.
+            communications.send("demo-warehouse", new Reservation("SKU-1-101", 3));
+            communications.receive(
+                    "demo-warehouse",
+                    InboundRequest.of(WarehouseProcessor.soap(
+                                    "<StockUpdate><sku>SKU-2-103</sku><quantity>40</quantity></StockUpdate>"))
+                            .withRequestId("wh-in-" + UUID.randomUUID())
+                            .withRequestAt(Instant.now())
+                            .withHeaders(WarehouseProcessor.xml()));
         };
     }
 
@@ -146,6 +162,14 @@ class DemoProcessors {
     record Item(int supplier, int item, String sku) {}
 
     /**
+     * Резервирование на складе — и исходящая, и входящая: одна доменная форма запроса системы.
+     *
+     * @param sku артикул
+     * @param quantity количество
+     */
+    record Reservation(String sku, int quantity) {}
+
+    /**
      * Платёж.
      *
      * @param id идентификатор
@@ -177,6 +201,11 @@ class DemoProcessors {
         @Override
         public String title() {
             return "Оплата заказов";
+        }
+
+        @Override
+        public String taskTitle() {
+            return "Оплата заказа {orderId}";
         }
 
         @Override
@@ -220,6 +249,16 @@ class DemoProcessors {
         @Override
         public String title() {
             return "Сверка выписки";
+        }
+
+        @Override
+        public String taskTitle() {
+            return "Сверка выписки по счёту {account}";
+        }
+
+        @Override
+        public String unitTitle() {
+            return "Строка {line}, {document}";
         }
 
         @Override
@@ -284,6 +323,21 @@ class DemoProcessors {
         @Override
         public String title() {
             return "Выгрузка каталога";
+        }
+
+        @Override
+        public String taskTitle() {
+            return "Выгрузка каталога {catalog}";
+        }
+
+        @Override
+        public String batchTitle() {
+            return "Поставщик {supplier}, {region}";
+        }
+
+        @Override
+        public String unitTitle() {
+            return "Позиция {sku}";
         }
 
         @Override
@@ -433,6 +487,68 @@ class DemoProcessors {
         @Override
         public void close() {
             this.callbacks.shutdownNow();
+        }
+    }
+
+    /**
+     * Склад: SOAP, ответ сразу, без колбэка. Исходящая резервирует позицию, входящая — обновление
+     * остатка от склада. Тела запроса и ответа пишутся в обмен как есть — SOAP-конвертами.
+     */
+    static final class WarehouseProcessor implements SoapCommunicationProcessor<Reservation, String, Void> {
+
+        @Override
+        public String externalSystem() {
+            return "demo-warehouse";
+        }
+
+        @Override
+        public String title() {
+            return "Склад";
+        }
+
+        @Override
+        public String description() {
+            return "SOAP: резервирует позицию и отвечает сразу, без колбэка";
+        }
+
+        @Override
+        public String process(final Communication<Reservation> communication, final CommunicationContext context) {
+            final Reservation reservation = communication.requestPayload();
+            if (communication instanceof Communication.Inbound<Reservation>) {
+                // Входящая: запрос уже записан приёмом, процессор пишет ответ складу.
+                context.recordResponse(ExchangeMessage.of(soap("<StockUpdateAck><sku>" + reservation.sku()
+                                + "</sku><status>accepted</status></StockUpdateAck>"))
+                        .withId("wh-ack-" + UUID.randomUUID())
+                        .withAt(Instant.now())
+                        .withStatus(200)
+                        .withHeaders(xml()));
+                return "остаток " + reservation.sku() + " принят: " + reservation.quantity();
+            }
+            final String requestId = "wh-req-" + reservation.sku() + "-" + context.attemptNumber();
+            context.recordRequest(ExchangeMessage.of(soap("<Reserve><sku>" + reservation.sku() + "</sku><quantity>"
+                            + reservation.quantity() + "</quantity></Reserve>"))
+                    .withId(requestId)
+                    .withAt(Instant.now())
+                    .withHeaders(xml().with("SOAPAction", "urn:warehouse:Reserve")));
+            final String number = "RS-" + Math.abs(reservation.sku().hashCode() % 10_000);
+            context.recordResponse(ExchangeMessage.of(soap("<ReserveResponse><reservation>" + number
+                            + "</reservation><status>reserved</status></ReserveResponse>"))
+                    .withId("wh-" + UUID.randomUUID())
+                    .withAt(Instant.now())
+                    .withStatus(200)
+                    .withHeaders(xml()));
+            return "зарезервировано: " + number;
+        }
+
+        /** SOAP 1.1-конверт вокруг содержимого {@code Body}. */
+        static String soap(final String body) {
+            return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+                    + "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Body>" + body
+                    + "</soap:Body></soap:Envelope>";
+        }
+
+        static CommunicationHeaders xml() {
+            return CommunicationHeaders.empty().with("Content-Type", "text/xml; charset=utf-8");
         }
     }
 }

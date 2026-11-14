@@ -1,9 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Card, Flex, Space, Table, Tag, Typography } from 'antd';
+import { Alert, Card, Flex, Space, Tag, Typography } from 'antd';
 import { Link } from 'react-router';
 import { getJson, type CircuitBreaker, type CommunicationSummary, type TaskTypeSummary } from '../api';
 import { useMeta } from '../meta';
-import { by, Loadable, OrphanTag, ProcessorTitle, StatusTag, useTime, useWindowChoice, windowParams, WindowSelect } from '../common';
+import { by, Loadable, OrphanTag, ProcessorTitle, StatusTag, useTime } from '../common';
+import { useWindowChoice, windowParams } from '../windowChoice';
+import { DataTable } from '../dataTable';
 import { useI18n } from '../i18n';
 
 /** Строка сводки: тип на уровне — и сколько в каждом статусе. */
@@ -59,7 +61,7 @@ function Counts({ counts, link }: { counts: Record<string, number>; link: (statu
 export function Overview() {
   const { t } = useI18n();
   const meta = useMeta();
-  const [choice, setChoice] = useWindowChoice();
+  const [choice] = useWindowChoice();
   const params = () => windowParams(choice);
   const tasks = useQuery({
     queryKey: ['tasks', 'summary', choice],
@@ -71,22 +73,18 @@ export function Overview() {
     queryFn: () => getJson<CommunicationSummary[]>('/communications/summary', params()),
     enabled: meta.data?.communications !== undefined,
   });
-  const windowQuery = choice === 'default' ? '' : `&window=${choice}`;
 
   return (
     <Loadable loading={meta.isLoading} error={meta.error}>
       {() => (
         <Flex vertical gap={16}>
-          <div className="toolbar">
-            <WindowSelect value={choice} onChange={setChoice} searchWindow={meta.data?.searchWindow} />
-          </div>
           <Card title={t('overview.tasks')} size="small">
             {meta.data?.tasks === undefined ? (
               <Typography.Text type="secondary">{t('overview.disabled')}</Typography.Text>
             ) : (
               <Loadable loading={tasks.isLoading} error={tasks.error}>
                 {() => (
-                  <Table
+                  <DataTable
                     size="small"
                     scroll={{ x: 'max-content' }}
                     pagination={false}
@@ -100,7 +98,7 @@ export function Overview() {
                         sorter: by((row: { group: string; name: string; counts: Record<string, number> }) => row.name),
                         render: (_, row) => (
                           <Space>
-                            <Link to={`/tasks?level=${row.group}&type=${encodeURIComponent(row.name)}${windowQuery}`}>
+                            <Link to={`/tasks?level=${row.group}&type=${encodeURIComponent(row.name)}`}>
                               <ProcessorTitle kind="task" id={row.name} />
                             </Link>
                             <OrphanTag orphan={row.orphan} />
@@ -114,7 +112,7 @@ export function Overview() {
                           <Counts
                             counts={row.counts}
                             link={(status) =>
-                              `/tasks?level=${row.group}&type=${encodeURIComponent(row.name)}&status=${status}${windowQuery}`
+                              `/tasks?level=${row.group}&type=${encodeURIComponent(row.name)}&status=${status}`
                             }
                           />
                         ),
@@ -131,7 +129,7 @@ export function Overview() {
             ) : (
               <Loadable loading={communications.isLoading} error={communications.error}>
                 {() => (
-                  <Table
+                  <DataTable
                     size="small"
                     scroll={{ x: 'max-content' }}
                     pagination={false}
@@ -155,7 +153,7 @@ export function Overview() {
                         render: (_, row) => (
                           <Space>
                             <Link
-                              to={`/communications?direction=${row.group}&system=${encodeURIComponent(row.name)}${windowQuery}`}
+                              to={`/communications?direction=${row.group}&system=${encodeURIComponent(row.name)}`}
                             >
                               <ProcessorTitle kind="system" id={row.name} />
                             </Link>
@@ -170,7 +168,7 @@ export function Overview() {
                           <Counts
                             counts={row.counts}
                             link={(status) =>
-                              `/communications?direction=${row.group}&system=${encodeURIComponent(row.name)}&status=${status}${windowQuery}`
+                              `/communications?direction=${row.group}&system=${encodeURIComponent(row.name)}&status=${status}`
                             }
                           />
                         ),
@@ -203,7 +201,7 @@ function Breakers() {
           (breakers.data ?? []).length === 0 ? (
             <Alert type="info" title={t('overview.breakersEmpty')} />
           ) : (
-            <Table
+            <DataTable
               size="small"
               scroll={{ x: 'max-content' }}
               pagination={false}

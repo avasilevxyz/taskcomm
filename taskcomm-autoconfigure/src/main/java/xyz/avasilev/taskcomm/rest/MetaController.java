@@ -67,6 +67,10 @@ public class MetaController {
                                         processor.taskType(),
                                         titleOr(processor.title(), processor.taskType()),
                                         blankToNull(processor.description()),
+                                        new RestDtos.TitleTemplatesDto(
+                                                blankToNull(processor.taskTitle()),
+                                                blankToNull(batchTitle(processor)),
+                                                blankToNull(unitTitle(processor))),
                                         contract(processor),
                                         taskPriorities.get(processor.taskType()),
                                         taskPollers.get(processor.taskType())))
@@ -104,6 +108,20 @@ public class MetaController {
             case FlatTaskProcessor<?, ?> _ -> "FLAT";
             case UnitTaskProcessor<?, ?, ?, ?> _ -> "UNIT";
             case BatchTaskProcessor<?, ?, ?, ?, ?, ?> _ -> "BATCH";
+        };
+    }
+
+    /** Шаблон названия группы — только у контракта с группами. */
+    private static String batchTitle(final TaskProcessor<?> processor) {
+        return processor instanceof BatchTaskProcessor<?, ?, ?, ?, ?, ?> batch ? batch.batchTitle() : null;
+    }
+
+    /** Шаблон названия подзадачи — у контрактов с подзадачами. */
+    private static String unitTitle(final TaskProcessor<?> processor) {
+        return switch (processor) {
+            case FlatTaskProcessor<?, ?> _ -> null;
+            case UnitTaskProcessor<?, ?, ?, ?> unit -> unit.unitTitle();
+            case BatchTaskProcessor<?, ?, ?, ?, ?, ?> batch -> batch.unitTitle();
         };
     }
 

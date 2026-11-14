@@ -1,41 +1,27 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { Flex, Input, Select, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { Flex, Input, Select, Space, Tag, Tooltip, Typography } from 'antd';
 import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { getJson, STATUSES, type CommunicationItem, type Direction, type Page, type Params } from '../api';
 import { useMeta } from '../meta';
-import {
-  communicationPath,
-  IdLink,
-  Loadable,
-  MoreButton,
-  NO_AUTOFILL,
-  OrphanTag,
-  PhaseLabel,
-  processorOption,
-  ProcessorTitle,
-  StatusTag,
-  by,
-  useStatusOptions,
-  useTime,
-  useWindowChoice,
-  WindowNote,
-  windowParams,
-  WindowSelect,
-} from '../common';
-import { rowOpens, useEntityDrawer } from '../entityDrawer';
+import { communicationPath, IdLink, Loadable, MoreButton, NO_AUTOFILL, OrphanTag, Reason, PhaseLabel, processorOption, ProcessorTitle, StatusTag, by, useStatusOptions, useTime, WindowNote } from '../common';
+import { useWindowChoice, windowParams } from '../windowChoice';
+import { rowOpens, useEntityPanel } from '../entityPanel';
+import { ColumnsSlotProvider, DataTable, useColumnsSlot } from '../dataTable';
 import { useI18n } from '../i18n';
 
 const PAGE_SIZE = 50;
 
 export function useCommunicationPages(key: unknown[], params: () => Params) {
-  return useInfiniteQuery({
+  const pages = useInfiniteQuery({
     queryKey: ['communications', 'list', ...key],
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) =>
       getJson<Page<CommunicationItem>>('/communications', { ...params(), size: PAGE_SIZE, cursor: pageParam }),
     getNextPageParam: (last) => last.next,
   });
+  // Запрос первой страницы — для команды curl над таблицей.
+  return { ...pages, request: { path: '/communications', params: { ...params(), size: PAGE_SIZE } } };
 }
 
 export function CommunicationTable({ pages, showWindow = true }: {
@@ -45,13 +31,22 @@ export function CommunicationTable({ pages, showWindow = true }: {
   const { t } = useI18n();
   const time = useTime();
   const items = pages.data?.pages.flatMap((page) => page.items) ?? [];
-  const open = useEntityDrawer();
+  const open = useEntityPanel();
+  const [slot, slotNode] = useColumnsSlot();
   return (
     <Loadable loading={pages.isLoading} error={pages.error}>
       {() => (
         <Flex vertical gap={8}>
-          {showWindow && <WindowNote window={pages.data?.pages[0]?.window} />}
-          <Table<CommunicationItem>
+          {showWindow && (
+            <Flex justify="space-between" align="center" gap={8}>
+              <WindowNote window={pages.data?.pages[0]?.window} />
+              {slot}
+            </Flex>
+          )}
+          <ColumnsSlotProvider node={slotNode} enabled={showWindow}>
+          <DataTable<CommunicationItem>
+            settings="communications"
+            request={pages.request}
             size="small"
             scroll={{ x: 'max-content' }}
             rowKey="id"
@@ -85,16 +80,18 @@ export function CommunicationTable({ pages, showWindow = true }: {
                 ),
               },
               {
+                key: 'common.status',
                 title: t('common.status'),
                 sorter: by((row: CommunicationItem) => row.state.status),
                 render: (_, row) => <StatusTag status={row.state.status} description={row.state.statusDescription} />,
               },
-              { title: t('common.reason'), sorter: by((row: CommunicationItem) => row.state.statusDescription), ellipsis: true, render: (_, row) => row.state.statusDescription ?? '—' },
-              { title: t('common.phase'), sorter: by((row: CommunicationItem) => row.state.phase), render: (_, row) => <PhaseLabel phase={row.state.phase} /> },
-              { title: t('common.created'), sorter: by((row: CommunicationItem) => row.state.createdAt), render: (_, row) => time(row.state.createdAt) },
-              { title: t('common.updated'), sorter: by((row: CommunicationItem) => row.state.updatedAt), render: (_, row) => time(row.state.updatedAt) },
+              { key: 'common.reason', title: t('common.reason'), sorter: by((row: CommunicationItem) => row.state.statusDescription), render: (_, row) => <Reason text={row.state.statusDescription} /> },
+              { key: 'common.phase', title: t('common.phase'), sorter: by((row: CommunicationItem) => row.state.phase), render: (_, row) => <PhaseLabel phase={row.state.phase} /> },
+              { key: 'common.created', title: t('common.created'), sorter: by((row: CommunicationItem) => row.state.createdAt), render: (_, row) => time(row.state.createdAt) },
+              { key: 'common.updated', title: t('common.updated'), sorter: by((row: CommunicationItem) => row.state.updatedAt), render: (_, row) => time(row.state.updatedAt) },
             ]}
           />
+          </ColumnsSlotProvider>
           <MoreButton
             visible={pages.hasNextPage}
             loading={pages.isFetchingNextPage}
@@ -111,7 +108,7 @@ export function Communications() {
   const meta = useMeta();
   const statusOptions = useStatusOptions();
   const [search, setSearch] = useSearchParams();
-  const [choice, setChoice] = useWindowChoice();
+  const [choice] = useWindowChoice();
   const directionParam = search.get('direction');
   const direction = directionParam === 'INBOUND' || directionParam === 'OUTBOUND' ? directionParam : undefined;
   const system = search.get('system') ?? undefined;
@@ -191,7 +188,6 @@ export function Communications() {
             options={statusOptions(STATUSES.COMMUNICATION)}
           />
         </Tooltip>
-        <WindowSelect value={choice} onChange={setChoice} searchWindow={meta.data?.searchWindow} />
         <Input.Search
           allowClear
           autoComplete={NO_AUTOFILL}

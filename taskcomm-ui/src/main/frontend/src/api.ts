@@ -309,13 +309,36 @@ export interface ErrorBody {
 }
 
 /** Описание экземпляра — выдача GET /meta (docs/adr/0150-execution-outline-and-meta.md). */
+/** Вид значения в структуре нагрузки (docs/adr/0160-payload-shape.md). */
+export type ShapeKind = 'STRING' | 'INTEGER' | 'NUMBER' | 'BOOLEAN' | 'OBJECT' | 'MAP' | 'ARRAY' | 'ANY';
+
+/** Структура JSON нагрузки: ключи объекта, элемент массива или значения отображения, перечисление. */
+export interface PayloadShape {
+  kind: ShapeKind;
+  properties?: Record<string, PayloadShape>;
+  items?: PayloadShape;
+  values?: string[];
+}
+
 export interface Meta {
   version?: string;
   /** Имя ответившего экземпляра — то же, что в locked_by попыток. */
   instance?: string;
   searchWindow: string;
   tasks?: {
-    types: { type: string; title: string; description?: string | null; contract: string; defaultPriority?: number; poller?: string }[];
+    types: {
+      type: string;
+      title: string;
+      description?: string | null;
+      /**
+       * Шаблоны названия одной задачи, группы и подзадачи: {поле} — поле поиска своего уровня
+       * (docs/adr/0162-task-title-template.md).
+       */
+      titleTemplates?: { task?: string; batch?: string; unit?: string };
+      contract: string;
+      defaultPriority?: number;
+      poller?: string;
+    }[];
   };
   communications?: {
     systems: {

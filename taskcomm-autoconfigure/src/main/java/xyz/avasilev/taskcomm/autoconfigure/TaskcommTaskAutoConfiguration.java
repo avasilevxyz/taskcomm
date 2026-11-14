@@ -193,6 +193,7 @@ public class TaskcommTaskAutoConfiguration {
      * Чтение задач для экранов и сопровождения (docs/adr/0138-inspection-api.md).
      *
      * @param registry реестр — лениво
+     * @param codec кодек нагрузок — для структуры нагрузки
      * @param qualified {@code DataSource} под {@link TaskcommDataSource}
      * @param dataSources все бины {@code DataSource}
      * @param beanFactory фабрика бинов
@@ -202,13 +203,15 @@ public class TaskcommTaskAutoConfiguration {
     public TaskInspection taskcommTaskInspection(
             final ObjectProvider<TaskProcessorRegistry> registry,
             final ObjectProvider<TaskSettings> settings,
+            final TaskPayloadCodec codec,
             @TaskcommDataSource final ObjectProvider<DataSource> qualified,
             final ObjectProvider<DataSource> dataSources,
             final ListableBeanFactory beanFactory) {
         return new DefaultTaskInspection(
                 TaskcommBeanSelection.dataSource(qualified, dataSources, beanFactory),
                 registry::getObject,
-                settings::getObject);
+                settings::getObject,
+                codec);
     }
 
     /**

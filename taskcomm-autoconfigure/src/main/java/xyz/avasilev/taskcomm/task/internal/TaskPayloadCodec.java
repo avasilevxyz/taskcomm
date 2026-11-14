@@ -3,6 +3,7 @@ package xyz.avasilev.taskcomm.task.internal;
 import org.springframework.core.ResolvableType;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
+import xyz.avasilev.taskcomm.PayloadShape;
 import xyz.avasilev.taskcomm.TaskcommException;
 
 /**
@@ -70,5 +71,17 @@ public final class TaskPayloadCodec {
         } catch (final JacksonException failure) {
             throw new TaskcommException("Не удалось разобрать JSON в " + type + ": " + failure.getMessage(), failure);
         }
+    }
+
+    /**
+     * Структура JSON значения этого типа — обходом того же маппера, которым значение разбирается
+     * (docs/adr/0160-payload-shape.md).
+     *
+     * @param type тип из дженерика процессора
+     * @return структура; что маппер описать не может — {@code ANY}
+     */
+    public PayloadShape shape(final ResolvableType type) {
+        return new PayloadShapeWalker(this.mapper)
+                .shape(this.mapper.getTypeFactory().constructType(type.getType()));
     }
 }

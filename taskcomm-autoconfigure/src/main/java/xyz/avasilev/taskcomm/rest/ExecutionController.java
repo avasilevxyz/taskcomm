@@ -2,7 +2,9 @@ package xyz.avasilev.taskcomm.rest;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import xyz.avasilev.taskcomm.SqlQuery;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationInspection;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationQuery;
 import xyz.avasilev.taskcomm.communication.api.inspection.CorrelationKeySnapshot;
@@ -104,6 +107,53 @@ public class ExecutionController extends RestErrors {
                         this.communications(found),
                         this.correlationKeys(found))))
                 .orElseGet(() -> notFound("дело " + id));
+    }
+
+    /**
+     * Запросы, которыми читается дело без подзадач, — с подставленными значениями
+     * (docs/adr/0165-read-sql.md): задачи, группы, счётчики подзадач, коммуникации, ключи корреляции.
+     * Задачи, группы и коммуникации выдача дочитывает страницами; здесь — первая из них.
+     *
+     * @param id идентификатор дела
+     * @param createdAt время создания дела; не задано — ищется по идентификатору
+     * @return текст для psql или {@code 404}
+     */
+    @GetMapping("/{id}/outline/sql")
+    public ResponseEntity<RestDtos.SqlDto> outlineSql(
+            @PathVariable("id") final UUID id,
+            @RequestParam(name = "createdAt", required = false) final Instant createdAt) {
+        return this.ref(id, createdAt)
+                .map(found -> ResponseEntity.ok(new RestDtos.SqlDto(SqlLiterals.script(this.outlineSql(found)))))
+                .orElseGet(() -> notFound("дело " + id));
+    }
+
+    /** Запросы выдачи дела в её порядке; выключенной подсистемы — нет. */
+    private Map<String, SqlQuery> outlineSql(final ExecutionRef execution) {
+        final Map<String, SqlQuery> statements = new LinkedHashMap<>();
+        final PageRequest first = PageRequest.first(CHUNK);
+        if (this.tasks != null) {
+            statements.put(
+                    "Задачи дела",
+                    this.tasks.listSql(
+                            TaskQuery.of(TaskSnapshot.Level.TASK).inExecution(execution),
+                            HistoryWindow.everywhere(),
+                            first));
+            statements.put(
+                    "Группы дела",
+                    this.tasks.listSql(
+                            TaskQuery.of(TaskSnapshot.Level.BATCH).inExecution(execution),
+                            HistoryWindow.everywhere(),
+                            first));
+            statements.put("Подзадачи дела по родителю и статусу", this.tasks.unitCountsSql(execution));
+        }
+        if (this.communications != null) {
+            statements.put(
+                    "Коммуникации дела",
+                    this.communications.listSql(
+                            CommunicationQuery.all().inExecution(execution), HistoryWindow.everywhere(), first));
+            statements.put("Ключи корреляции дела", this.communications.correlationKeysSql(execution));
+        }
+        return statements;
     }
 
     private Optional<ExecutionRef> ref(final UUID id, final Instant createdAt) {

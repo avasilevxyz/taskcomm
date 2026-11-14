@@ -2,6 +2,7 @@ package xyz.avasilev.taskcomm.autoconfigure;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.contains;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.Matchers.nullValue;
@@ -214,6 +215,23 @@ class TaskcommRestAutoConfigurationIT {
                 .andExpect(jsonPath("$.unitCounts", hasSize(0)))
                 .andExpect(jsonPath("$.units").doesNotExist());
         mvc.perform(get(BASE + "/executions/" + UUID.randomUUID() + "/outline")).andExpect(status().isNotFound());
+        // SQL для разбора (docs/adr/0165-read-sql.md) — с подставленными значениями
+        mvc.perform(get(BASE + "/tasks/sql").param("field.orderId", "A-1").param("size", "20"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sql", containsString("FROM tc_task e")))
+                .andExpect(jsonPath("$.sql", containsString("= 'A-1'")))
+                .andExpect(jsonPath("$.sql", containsString("LIMIT 20;")));
+        mvc.perform(get(BASE + "/tasks/TASK/" + id + "/attempts/sql"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sql", containsString("'" + id + "'::uuid")));
+        mvc.perform(get(BASE + "/tasks/TASK/" + UUID.randomUUID() + "/attempts/sql"))
+                .andExpect(status().isNotFound());
+        mvc.perform(get(BASE + "/executions/" + executionId + "/outline/sql"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sql", containsString("-- Задачи дела")))
+                .andExpect(jsonPath("$.sql", containsString("-- Ключи корреляции дела")));
+        mvc.perform(get(BASE + "/executions/" + UUID.randomUUID() + "/outline/sql"))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -228,6 +246,7 @@ class TaskcommRestAutoConfigurationIT {
                     .andExpect(jsonPath("$.tasks.types[0].type").value("orders"))
                     .andExpect(jsonPath("$.tasks.types[0].title").value("Заказы"))
                     .andExpect(jsonPath("$.tasks.types[0].description").value("Оплата заказа"))
+                    .andExpect(jsonPath("$.tasks.types[0].titleTemplates.task").value("Заказ {orderId}"))
                     .andExpect(jsonPath("$.tasks.types[0].contract").value("FLAT"))
                     .andExpect(jsonPath("$.tasks.types[0].defaultPriority").value(100))
                     .andExpect(jsonPath("$.tasks.types[0].poller").value("main"))
@@ -250,6 +269,25 @@ class TaskcommRestAutoConfigurationIT {
                         .perform(get(BASE + "/meta"))
                         .andExpect(jsonPath("$.tasks").doesNotExist())
                         .andExpect(jsonPath("$.communications.systems").isArray()));
+    }
+
+    @Test
+    void payloadShapesOfProcessors() {
+        this.contextRunner.withPropertyValues("taskcomm.rest.enabled=true").run(context -> {
+            final MockMvc mvc = MockMvcBuilders.webAppContextSetup(context).build();
+            mvc.perform(get(BASE + "/tasks/payload-shape").param("type", "orders"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.kind").value("OBJECT"))
+                    .andExpect(jsonPath("$.properties.orderId.kind").value("STRING"))
+                    .andExpect(jsonPath("$.properties.orderId.properties").doesNotExist());
+            mvc.perform(get(BASE + "/tasks/payload-shape").param("type", "missing"))
+                    .andExpect(status().isNotFound());
+            mvc.perform(get(BASE + "/communications/request-shape").param("system", "bank"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.kind").value("OBJECT"));
+            mvc.perform(get(BASE + "/communications/request-shape").param("system", "missing"))
+                    .andExpect(status().isNotFound());
+        });
     }
 
     private static void actions(final MockMvc mvc, final String id) throws Exception {
@@ -284,6 +322,7 @@ class TaskcommRestAutoConfigurationIT {
             mvc.perform(get(BASE + "/communications/" + id + "/attempts"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$", hasSize(1)));
+            communicationSql(mvc, id);
             mvc.perform(get(BASE + "/communications/circuit-breakers"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$", hasSize(0)));
@@ -292,6 +331,16 @@ class TaskcommRestAutoConfigurationIT {
             mvc.perform(get(BASE + "/communications/" + id))
                     .andExpect(jsonPath("$.state.status").value("CANCELLED"));
         });
+    }
+
+    /** SQL для разбора (docs/adr/0165-read-sql.md): списка и попыток коммуникации. */
+    private static void communicationSql(final MockMvc mvc, final String id) throws Exception {
+        mvc.perform(get(BASE + "/communications/sql").param("system", "bank"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sql", containsString("= 'bank'")));
+        mvc.perform(get(BASE + "/communications/" + id + "/attempts/sql"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sql", containsString("FROM tc_communication_attempt")));
     }
 
     @Test
@@ -369,6 +418,11 @@ class TaskcommRestAutoConfigurationIT {
         @Override
         public String description() {
             return "Оплата заказа";
+        }
+
+        @Override
+        public String taskTitle() {
+            return "Заказ {orderId}";
         }
 
         @Override

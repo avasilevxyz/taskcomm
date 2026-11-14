@@ -29,6 +29,8 @@ dependencies {
     testImplementation libs.spring.boot.starter.test
     testImplementation libs.spring.boot.starter.jdbc
     testImplementation libs.spring.boot.starter.jackson
+    // Демо-склад — SOAP: тело разбирается XML-маппером, его потребитель подключает сам.
+    testImplementation libs.jackson.dataformat.xml
     testImplementation libs.spring.boot.starter.webmvc
     testImplementation libs.spring.security.web
     testImplementation libs.archunit.junit5
