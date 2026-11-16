@@ -4,7 +4,6 @@ import java.util.List;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationInspection;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSnapshot;
 import xyz.avasilev.taskcomm.communication.api.processor.CommunicationProcessor;
-import xyz.avasilev.taskcomm.communication.api.processor.CommunicationProcessorSettings;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 
 /**
@@ -128,22 +127,22 @@ public interface CommunicationService {
             Class<? extends CommunicationProcessor<TRequest, ?, ?>> processor, InboundRequest request);
 
     /**
-     * Синхронный приём входящей: обработка здесь же, в потоке вызывающего, <b>одной попыткой</b>
-     * (docs/adr/0133-synchronous-inbound-reception.md). Коммуникация создаётся своей короткой
-     * транзакцией сразу с попыткой под арендой этого экземпляра, процессор вызывается под heartbeat,
-     * его ответ пишется в {@code response_*} и возвращается — отдайте его отправителю как есть.
-     * Неуспех — коммуникация {@code FAILED} без повтора.
+     * Синхронный приём входящей: обработка здесь же, в потоке вызывающего
+     * (docs/adr/0133-synchronous-inbound-reception.md, docs/adr/0167-communication-run-mode.md).
+     * Коммуникация создаётся своей короткой транзакцией сразу с попыткой под арендой этого экземпляра
+     * и режимом запуска {@link RunMode#SYNC}, процессор вызывается под heartbeat, его ответ пишется
+     * в {@code response_*} и возвращается — отдайте его отправителю как есть. Неуспех повторяется
+     * <b>здесь же, в потоке</b>, по настройкам повторов системы: число попыток и паузы задаёте вы,
+     * {@code max-attempts: 1} — без повторов. Исчерпано — {@code FAILED}.
      *
      * <p><b>Вызывайте вне своей транзакции.</b> Внутри активной транзакции — исключение, наследник
      * {@code TaskcommException}, до записи чего-либо: атомарности с бизнес-данными у синхронного
      * приёма нет и быть не может.
      *
-     * <p><b>Задайте системе предел в одну попытку</b> — {@code maxAttempts = 1} в
-     * {@link CommunicationProcessorSettings} или {@code max-attempts: 1} в {@code yaml}. Если поток
-     * вызывающего умрёт или зависнет дольше предела обработки, переподхват закроет попытку, и дальше
-     * коммуникация пойдёт по общим правилам повторов — в фоне, хотя отвечать уже некому. Стартер это
-     * не проверяет. Ключ дедупликации берите по последней успешной: ключ по всей истории совпадёт
-     * с упавшей доставкой, и повторная доставка не обработается.
+     * <p>Фоном синхронную коммуникацию не повторяют: если поток вызывающего умрёт или зависнет дольше
+     * предела обработки, переподхват закроет попытку, а коммуникацию — {@code FAILED}. Ключ дедупликации
+     * берите по последней успешной: ключ по всей истории совпадёт с упавшей доставкой, и повторная
+     * доставка не обработается.
      *
      * @param source внешняя система-отправитель
      * @param request что прислали
@@ -168,6 +167,64 @@ public interface CommunicationService {
      */
     <TRequest, TSyncResponse> ReceiveAndProcessResult<TRequest, TSyncResponse> receiveAndProcess(
             Class<? extends CommunicationProcessor<TRequest, TSyncResponse, ?>> processor, InboundRequest request);
+
+    /**
+     * Синхронная отправка исходящей с параметрами по умолчанию — см.
+     * {@link #sendAndProcess(String, Object, SyncSendOptions)}.
+     *
+     * @param destination внешняя система-получатель
+     * @param payload доменная форма запроса
+     * @param <TRequest> доменная форма запроса
+     * @return итог отправки
+     * @throws xyz.avasilev.taskcomm.TaskcommException если внешняя система не объявлена ни одним процессором
+     * @throws xyz.avasilev.taskcomm.TaskcommException если вызван внутри активной транзакции
+     * @throws UnsupportedOperationException если реализация синхронную отправку не поддерживает
+     */
+    default <TRequest> SendAndProcessResult<TRequest, ?, ?> sendAndProcess(
+            final String destination, final TRequest payload) {
+        return this.sendAndProcess(destination, payload, SyncSendOptions.defaults());
+    }
+
+    /**
+     * Синхронная отправка исходящей: создание и обработка здесь же, в потоке вызывающего
+     * (docs/adr/0167-communication-run-mode.md). Для случая «ответ внешней системы нужен прямо сейчас» —
+     * например, в {@code expand}, чтобы раскрыть задачу по нему. Коммуникация создаётся своей короткой
+     * транзакцией, сразу с попыткой под арендой этого экземпляра и режимом {@link RunMode#SYNC}: движок
+     * её не захватывает. Процессор вызывается под heartbeat, привязка к делу — как у любой коммуникации,
+     * созданной в этом потоке.
+     *
+     * <ul>
+     *   <li>Неуспех повторяется <b>здесь же, в потоке</b>, по настройкам повторов системы; паузы между
+     *       попытками поток ждёт. Исчерпано или повтор запрещён — {@link SendAndProcessResult.Failed}.
+     *   <li>Размыкатель разомкнут или нет слота ограничителя скорости — поток ждёт не дольше
+     *       {@link SyncSendOptions#syncWait(java.time.Duration)} или {@code sync-wait} системы; истекло —
+     *       {@link SendAndProcessResult.Unavailable}, коммуникация не создаётся.
+     *   <li>Процессор ждёт колбэк — по умолчанию вызов возвращается с синхронным ответом, колбэк обработает
+     *       движок. С {@link SyncSendOptions#awaitResponse(java.time.Duration)} поток ждёт его опросом:
+     *       пришёл — {@link SendAndProcessResult.Responded}, нет — {@link SendAndProcessResult.Awaiting}.
+     * </ul>
+     *
+     * <p>Фоном синхронную не повторяют и вручную не перезапускают: ответ ждал вызывающий. Если его поток
+     * умрёт посреди попытки или в паузе между ними, коммуникация станет {@code FAILED}. Время вызова
+     * уходит из бюджета вызывающего — у раскрытия это предел обработки фазы.
+     *
+     * <p><b>Вызывайте вне своей транзакции</b> — как и синхронный приём; внутри активной транзакции —
+     * исключение до записи чего-либо. Процессор задачи работает вне транзакции.
+     *
+     * @param destination внешняя система-получатель
+     * @param payload доменная форма запроса
+     * @param options параметры: создание, ожидание колбэка, предел ожидания защиты
+     * @param <TRequest> доменная форма запроса
+     * @return итог отправки
+     * @throws xyz.avasilev.taskcomm.TaskcommException если внешняя система не объявлена ни одним процессором
+     * @throws xyz.avasilev.taskcomm.TaskcommException если вызван внутри активной транзакции
+     * @throws IllegalArgumentException если в параметрах создания задано «не раньше»
+     * @throws UnsupportedOperationException если реализация синхронную отправку не поддерживает
+     */
+    default <TRequest> SendAndProcessResult<TRequest, ?, ?> sendAndProcess(
+            final String destination, final TRequest payload, final SyncSendOptions options) {
+        throw new UnsupportedOperationException("синхронную отправку эта реализация не поддерживает");
+    }
 
     /**
      * Приём колбэка — асинхронного ответа на исходящую (docs/adr/0086-async-response-in-outbound.md).

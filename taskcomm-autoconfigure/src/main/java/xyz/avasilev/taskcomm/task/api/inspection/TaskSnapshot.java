@@ -67,6 +67,16 @@ public interface TaskSnapshot {
     Optional<UUID> batchId();
 
     /**
+     * Попытка раскрытия родителя, которая создала группу или подзадачу
+     * (docs/adr/0166-execution-outline-units-and-attempts.md).
+     *
+     * @return попытка или пусто у задачи; по умолчанию — пусто
+     */
+    default Optional<UUID> parentAttemptId() {
+        return Optional.empty();
+    }
+
+    /**
      * Статус — значение {@link TaskStatus}, {@link TaskBatchStatus} или {@link TaskUnitStatus}
      * по уровню.
      *

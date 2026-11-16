@@ -5,6 +5,7 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 import xyz.avasilev.taskcomm.PayloadShape;
 import xyz.avasilev.taskcomm.TaskcommException;
+import xyz.avasilev.taskcomm.UnreadablePayloadException;
 
 /**
  * Перевод доменных форм коммуникаций в JSON и обратно (docs/adr/0012-payload-storage.md): запрос
@@ -63,6 +64,24 @@ public final class CommunicationCodec {
             return this.mapper.readValue(json, this.mapper.getTypeFactory().constructType(type.getType()));
         } catch (final JacksonException failure) {
             throw new TaskcommException("Не удалось разобрать JSON в " + type + ": " + failure.getMessage(), failure);
+        }
+    }
+
+    /**
+     * Запрос из JSON — для отправки по JSON: неразбираемый запрос — ошибка вызывающего, а не стартера.
+     *
+     * @param json JSON запроса
+     * @param type доменная форма запроса процессора
+     * @param destination внешняя система — для сообщения
+     * @return запрос в доменной форме
+     * @throws UnreadablePayloadException если JSON не разбирается в доменную форму
+     */
+    public Object readRequest(final String json, final ResolvableType type, final String destination) {
+        try {
+            return this.read(json, type);
+        } catch (final TaskcommException unreadable) {
+            throw new UnreadablePayloadException(
+                    "Запрос в систему '" + destination + "' не разбирается: " + unreadable.getMessage(), unreadable);
         }
     }
 

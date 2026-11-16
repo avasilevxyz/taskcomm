@@ -25,7 +25,9 @@ import xyz.avasilev.taskcomm.execution.internal.CurrentExecution;
 
 /**
  * Выполнение одной захваченной попытки коммуникации: вызов процессора и закрытие попытки исходом.
- * Работает и в потоке пула поллера, и в потоке вызывающего синхронного приёма.
+ * Работает и в потоке пула поллера, и в потоке вызывающего синхронного запуска
+ * (docs/adr/0167-communication-run-mode.md): закрытие одно, следующую попытку синхронной забирает
+ * сам вызывающий.
  *
  * <p>Перехватывает всё, что бросил процессор потребителя. Исход: исключение — неуспех, перебивающий
  * пропуск; {@code skip(reason)} и нормальный возврат — пропуск; иначе успех. <b>У исходящей успех —
@@ -98,10 +100,11 @@ public class CommunicationWorker {
     }
 
     /**
-     * Выполняет попытку синхронного приёма в потоке вызывающего, одной попыткой: неуспех — коммуникация
-     * {@code FAILED} без повтора (docs/adr/0133-synchronous-inbound-reception.md).
+     * Выполняет попытку синхронного запуска в потоке вызывающего (docs/adr/0167-communication-run-mode.md).
+     * Неуспех закрывается как у любой попытки — следующую, если она есть, вызывающий забирает сам;
+     * слот ограничителя скорости вызывающий берёт до попытки, воркер его не ждёт.
      *
-     * @param attempt попытка, открытая под арендой при создании
+     * @param attempt попытка под арендой этого экземпляра
      * @return чем кончилась обработка
      */
     public SyncOutcome executeSync(final ClaimedCommunication attempt) {
@@ -134,7 +137,7 @@ public class CommunicationWorker {
                             "Захвачена коммуникация системы без процессора '" + attempt.system() + "'"));
             final CommunicationProcessingContext context = new CommunicationProcessingContext(
                     attempt, this.exchange, this.keys, () -> this.heartbeat.shouldStop(attempt));
-            return this.close(attempt, processor, context, this.invoke(attempt, processor, context), sync);
+            return this.close(attempt, processor, context, this.invoke(attempt, processor, context, sync));
         } catch (final RuntimeException failure) {
             log.warn(
                     "Попытку {} коммуникации {} с '{}' не удалось закрыть; её закроет переподхват истёкшей аренды.",
@@ -150,7 +153,8 @@ public class CommunicationWorker {
     private Invocation invoke(
             final ClaimedCommunication attempt,
             final RegisteredProcessor processor,
-            final CommunicationProcessingContext context) {
+            final CommunicationProcessingContext context,
+            final boolean rateAcquired) {
         final Origin creator = new Origin(
                 OriginType.COMMUNICATION, attempt.target().id(), attempt.lease().attemptId(), OriginRelation.SPAWNED);
         try (CurrentExecution.Scope _ =
@@ -170,7 +174,7 @@ public class CommunicationWorker {
                             attempt.snapshot().payload(), processor.types().request()));
             final CommunicationProcessor<Object, Object, Object> typed =
                     (CommunicationProcessor<Object, Object, Object>) processor.processor();
-            return new Invocation(this.dispatch(typed, communication, processor, attempt, context), null);
+            return new Invocation(this.dispatch(typed, communication, processor, attempt, context, rateAcquired), null);
         } catch (final Throwable failure) {
             log.warn(
                     "Процессор системы '{}' завершил попытку {} коммуникации {} исключением",
@@ -191,7 +195,8 @@ public class CommunicationWorker {
             final Communication<Object> communication,
             final RegisteredProcessor registered,
             final ClaimedCommunication attempt,
-            final CommunicationProcessingContext context) {
+            final CommunicationProcessingContext context,
+            final boolean rateAcquired) {
         if (attempt.phase() == CommunicationPhase.HANDLE_RESPONSE) {
             processor.handleResponse(
                     (Communication.Outbound<Object>) communication,
@@ -204,7 +209,7 @@ public class CommunicationWorker {
         if (context.skipReason() != null) {
             return null;
         }
-        if (attempt.direction() == Direction.OUTBOUND) {
+        if (attempt.direction() == Direction.OUTBOUND && !rateAcquired) {
             this.awaitRate(attempt, context);
         }
         return processor.process(communication, context);
@@ -227,15 +232,12 @@ public class CommunicationWorker {
             final ClaimedCommunication attempt,
             final RegisteredProcessor processor,
             final CommunicationProcessingContext context,
-            final Invocation invocation,
-            final boolean sync) {
+            final Invocation invocation) {
         final String failure = this.failure(attempt, processor, context, invocation);
         final boolean closed;
         if (failure != null) {
-            closed = sync
-                    ? this.closer.failWithoutRetry(attempt, failure)
-                    : this.closer.fail(
-                            attempt, failure, invocation.failure() == null ? null : context.doNotRetryReason());
+            closed = this.closer.fail(
+                    attempt, failure, invocation.failure() == null ? null : context.doNotRetryReason());
             this.recordBreaker(attempt, closed, context, invocation, true);
             return closed
                     ? SyncOutcome.failed(failure, "failed")

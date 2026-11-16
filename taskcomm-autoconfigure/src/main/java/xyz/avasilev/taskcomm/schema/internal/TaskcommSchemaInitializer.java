@@ -20,7 +20,8 @@ import org.springframework.boot.sql.init.DatabaseInitializationSettings;
 public class TaskcommSchemaInitializer extends DataSourceScriptDatabaseInitializer {
 
     /** Файлы схемы по порядку версий. Новая версия схемы добавляет файл в конец. */
-    static final List<String> SCHEMA_LOCATIONS = List.of("classpath:db/changelog/taskcomm/taskcomm-2.0.0.sql");
+    static final List<String> SCHEMA_LOCATIONS = List.of(
+            "classpath:db/changelog/taskcomm/taskcomm-2.0.0.sql", "classpath:db/changelog/taskcomm/taskcomm-2.3.0.sql");
 
     /**
      * Создаёт инициализатор.

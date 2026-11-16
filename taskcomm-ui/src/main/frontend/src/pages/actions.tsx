@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Alert, Button, Popconfirm, Space } from 'antd';
+import { Alert, Button, Popconfirm, Space, Tooltip } from 'antd';
 import { useState, type ReactNode } from 'react';
 import { ApiError, postJson, type ActionResult, type Params } from '../api';
 import { useI18n } from '../i18n';
@@ -8,11 +8,13 @@ import { useI18n } from '../i18n';
  * Отмена и перезапуск: отказ (409) — исход с причиной, а не ошибка; после действия затронутые
  * экраны перечитываются сразу, не дожидаясь опроса.
  */
-export function Actions({ path, params, cancellable, restartable, extra }: {
+export function Actions({ path, params, cancellable, restartable, restartHint, extra }: {
   path: string;
   params: Params;
   cancellable: boolean;
   restartable: boolean;
+  /** Почему перезапуск недоступен, если причина не в статусе, — подсказкой у кнопки. */
+  restartHint?: string;
   /** Прочие действия карточки — в той же строке. */
   extra?: ReactNode;
 }) {
@@ -44,11 +46,13 @@ export function Actions({ path, params, cancellable, restartable, extra }: {
             {t('common.cancel')}
           </Button>
         </Popconfirm>
-        <Popconfirm title={t('common.confirm')} onConfirm={() => action.mutate('restart')} disabled={!restartable}>
-          <Button disabled={!restartable} loading={action.isPending && action.variables === 'restart'}>
-            {t('common.restart')}
-          </Button>
-        </Popconfirm>
+        <Tooltip title={restartHint}>
+          <Popconfirm title={t('common.confirm')} onConfirm={() => action.mutate('restart')} disabled={!restartable}>
+            <Button disabled={!restartable} loading={action.isPending && action.variables === 'restart'}>
+              {t('common.restart')}
+            </Button>
+          </Popconfirm>
+        </Tooltip>
         {extra}
       </Space>
       {outcome && <Alert type={outcome.ok ? 'success' : 'warning'} showIcon closable title={outcome.text} />}

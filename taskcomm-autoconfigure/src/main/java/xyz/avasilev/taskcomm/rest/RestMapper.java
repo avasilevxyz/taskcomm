@@ -43,6 +43,7 @@ public interface RestMapper {
      */
     @Mapping(target = "taskId", expression = "java(s.taskId().orElse(null))")
     @Mapping(target = "batchId", expression = "java(s.batchId().orElse(null))")
+    @Mapping(target = "attemptId", expression = "java(s.parentAttemptId().orElse(null))")
     RestDtos.ParentsDto parents(TaskSnapshot s);
 
     /**
@@ -90,6 +91,7 @@ public interface RestMapper {
     @Mapping(target = "state", expression = "java(communicationState(s))")
     @Mapping(target = "origin", expression = "java(s.origin().orElse(null))")
     @Mapping(target = "requestPayload", expression = "java(s.requestPayload().orElse(null))")
+    @Mapping(target = "runMode", expression = "java(s.runMode())")
     RestDtos.CommunicationDto communication(CommunicationSnapshot s);
 
     /**

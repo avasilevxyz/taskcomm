@@ -161,21 +161,25 @@ class CommunicationLifecycleIT {
         });
     }
 
+    /** Синхронный приём повторяется в потоке по настройкам системы (docs/adr/0167-communication-run-mode.md). */
     @Test
-    void syncReceptionFailureIsNotRetried() {
+    void syncReceptionRetriesInTheCallerThread() {
         this.contextRunner.run(context -> {
             final ReceiveAndProcessResult<?, ?> result = context.getBean(CommunicationService.class)
                     .receiveAndProcess("orders", InboundRequest.of("{\"number\":\"retry\"}"));
 
-            assertThat(result).isInstanceOf(ReceiveAndProcessResult.Failed.class);
-            assertThat(result.communication().status()).isEqualTo(CommunicationStatus.FAILED);
-            assertThat(result.communication().statusDescription())
-                    .hasValueSatisfying(reason -> assertThat(reason).startsWith("синхронный приём не повторяется: "));
+            assertThat(result).isInstanceOf(ReceiveAndProcessResult.Processed.class);
+            assertThat(result.communication().status()).isEqualTo(CommunicationStatus.SUCCEEDED);
             assertThat(attemptColumn(
                             context.getBean(DataSource.class),
                             result.communication().id(),
                             "status"))
-                    .containsExactly("FAILED");
+                    .containsExactly("FAILED", "SUCCEEDED");
+            assertThat(column(
+                            context.getBean(DataSource.class),
+                            result.communication().id(),
+                            "run_mode"))
+                    .isEqualTo("SYNC");
         });
     }
 
@@ -281,7 +285,7 @@ class CommunicationLifecycleIT {
 
     /**
      * Система заказов по REST в обоих направлениях. Номер {@code 503} — отказной ответ; {@code retry} —
-     * первая попытка падает исключением.
+     * первая попытка падает исключением; {@code fail} — падает всегда.
      */
     static class OrderProcessor implements RestCommunicationProcessor<Order, Ack, Void> {
 
@@ -297,6 +301,9 @@ class CommunicationLifecycleIT {
             final String number = communication.requestPayload().number();
             if ("retry".equals(number) && this.retries.getAndIncrement() == 0) {
                 throw new IllegalStateException("временный сбой");
+            }
+            if ("fail".equals(number)) {
+                throw new IllegalStateException("постоянный сбой");
             }
             return switch (communication) {
                 case Communication.Inbound<Order> _ -> new Ack("принят " + number);

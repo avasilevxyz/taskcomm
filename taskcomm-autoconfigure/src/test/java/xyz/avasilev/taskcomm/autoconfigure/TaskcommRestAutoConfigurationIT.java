@@ -213,7 +213,8 @@ class TaskcommRestAutoConfigurationIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tasks[0].id").value(id))
                 .andExpect(jsonPath("$.unitCounts", hasSize(0)))
-                .andExpect(jsonPath("$.units").doesNotExist());
+                .andExpect(jsonPath("$.units", hasSize(0)))
+                .andExpect(jsonPath("$.attempts").isArray());
         mvc.perform(get(BASE + "/executions/" + UUID.randomUUID() + "/outline")).andExpect(status().isNotFound());
         // SQL для разбора (docs/adr/0165-read-sql.md) — с подставленными значениями
         mvc.perform(get(BASE + "/tasks/sql").param("field.orderId", "A-1").param("size", "20"))

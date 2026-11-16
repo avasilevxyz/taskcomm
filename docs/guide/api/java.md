@@ -68,7 +68,7 @@ page.next().ifPresent(cursor -> loadMore(PageRequest.after(cursor, 100)));
 и на каком экземпляре.
 
 `CommunicationSnapshot` — то же для коммуникации, плюс направление, внешняя система и форма
-транспорта. Её `attempts(snapshot)` несёт **весь обмен** каждой попытки: запрос и ответ
+транспорта и режим запуска `runMode()` — `SYNC` у созданной синхронным методом. Её `attempts(snapshot)` несёт **весь обмен** каждой попытки: запрос и ответ
 с заголовками, телами, идентификаторами, временем и статусом, доменную форму ответа и колбэка.
 
 ## Поиск по нагрузке
@@ -103,6 +103,10 @@ taskInspection.list(
 - `communicationInspection.circuitBreakers()` — состояние размыкателей **этого** экземпляра,
   с его именем: число вызовов в окне, доля отказов, время следующей пробы.
 - `communicationInspection.correlationKeys(execution)` — ключи корреляции дела.
+- `taskInspection.units(execution, perParent)` — подзадачи дела, не больше `perParent` у родителя;
+  `taskInspection.attemptEntries(execution, unitsPerParent)` и
+  `communicationInspection.attemptEntries(execution)` — попытки дела без результатов и обмена. На них
+  стоит экран дела; какая попытка создала группу или подзадачу — `TaskSnapshot.parentAttemptId()`.
 
 ## Запрос чтения для разбора
 

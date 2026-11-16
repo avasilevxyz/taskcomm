@@ -516,6 +516,12 @@ public class TaskcommProperties {
         /** Срок ожидания асинхронного ответа; истёк — повторная отправка. */
         private Duration responseTimeout = Duration.ofHours(1);
 
+        /**
+         * Предел ожидания разомкнутого размыкателя и слота ограничителя скорости при синхронной отправке;
+         * истёк — отправка недоступна, коммуникация не создаётся.
+         */
+        private Duration syncWait = Duration.ofSeconds(30);
+
         /** Подстраховочный поллер: такт проверки истёкших ожиданий ответа. */
         private CommunicationSafety safety = new CommunicationSafety();
 
@@ -687,6 +693,9 @@ public class TaskcommProperties {
         /** Срок ожидания асинхронного ответа от системы. */
         private Duration responseTimeout;
 
+        /** Предел ожидания защиты отправки синхронной исходящей в систему. */
+        private Duration syncWait;
+
         /** Отправок исходящих в секунду на экземпляр; не задано — без ограничения. */
         private Double rateLimitPerInstance;
 
@@ -710,6 +719,9 @@ public class TaskcommProperties {
 
         /** На фазе запрещён: свойство системы — падение при старте. */
         private Duration responseTimeout;
+
+        /** На фазе запрещён: свойство системы — падение при старте. */
+        private Duration syncWait;
 
         /** На фазе запрещён: свойство системы — падение при старте. */
         private Double rateLimitPerInstance;

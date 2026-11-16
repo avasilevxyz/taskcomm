@@ -47,13 +47,14 @@ public class CommunicationCreator {
             INSERT INTO tc_communication (
                 id, created_at, updated_at, execution_id, execution_created_at, direction, source, destination,
                 request_payload, contract_shape, phase, status, status_description, priority, next_attempt_at,
-                claim_order_at, retry_cycle_started_at, origin_type, origin_id, origin_attempt_id, origin_relation)
+                claim_order_at, retry_cycle_started_at, origin_type, origin_id, origin_attempt_id, origin_relation,
+                run_mode)
             SELECT :id, now(), now(), :executionId, :executionCreatedAt, :direction, CAST(:source AS text),
                    CAST(:destination AS text), CAST(:payload AS jsonb), CAST(:shape AS text), 'PROCESS', :status,
                    CAST(:reason AS text), :priority, ready.at,
                    ready.at + make_interval(secs => :priority * :deadlineStep), now(),
                    CAST(:originType AS text), CAST(:originId AS uuid), CAST(:originAttemptId AS uuid),
-                   CAST(:originRelation AS text)
+                   CAST(:originRelation AS text), :runMode
               FROM ready
             RETURNING created_at
             """;
@@ -129,7 +130,7 @@ public class CommunicationCreator {
      * @throws TaskcommException если транзакция потребителя активна на другом {@code DataSource}
      */
     public CreatedCommunication create(final NewCommunication communication) {
-        final boolean sync = communication.start().lease() != null;
+        final boolean sync = communication.start().sync();
         if (!sync) {
             this.requireBoundToConsumerTransaction();
         }
@@ -193,6 +194,7 @@ public class CommunicationCreator {
                 .param("originId", origin.map(Origin::id).orElse(null))
                 .param("originAttemptId", origin.map(Origin::attemptId).orElse(null))
                 .param("originRelation", origin.map(o -> o.relation().name()).orElse(null))
+                .param("runMode", communication.start().sync() ? "SYNC" : "ASYNC")
                 .query(OffsetDateTime.class)
                 .single();
         final UUID attemptId = Optional.ofNullable(outcome.lease())

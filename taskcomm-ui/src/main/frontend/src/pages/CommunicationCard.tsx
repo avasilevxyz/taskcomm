@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Card, Empty, Flex, Space, Tabs, Tag, Typography } from 'antd';
+import { Card, Empty, Flex, Space, Tabs, Tag, Tooltip, Typography } from 'antd';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { getJson, type CommunicationAttempt, type CommunicationItem, type CommunicationKeys, type ExchangeMessage } from '../api';
 import {
@@ -59,6 +59,10 @@ function CommunicationDetails({ communication }: { communication: CommunicationI
     queryFn: () => getJson<CommunicationAttempt[]>(`${path}/attempts`, { executionCreatedAt: createdAt }),
   });
   const status = communication.state.status;
+  // Синхронную исходящую ждал вызывающий здесь и сейчас: перезапускать её некому
+  // (docs/adr/0167-communication-run-mode.md). Синхронную входящую перезапуск ставит в фоновую обработку.
+  const sync = communication.runMode === 'SYNC';
+  const syncOutbound = sync && communication.direction === 'OUTBOUND';
   const keys = useQuery({
     queryKey: ['communications', 'keys', communication.id],
     queryFn: () => getJson<CommunicationKeys>(`${path}/keys`, { executionCreatedAt: createdAt }),
@@ -85,13 +89,19 @@ function CommunicationDetails({ communication }: { communication: CommunicationI
         <ProcessorId kind="system" id={communication.externalSystem} />
         <StatusTag status={status} description={communication.state.statusDescription} />
         <OrphanTag orphan={communication.state.orphan} />
+        {sync && (
+          <Tooltip title={t('communications.syncHint')}>
+            <Tag color="purple">{t('communications.sync')}</Tag>
+          </Tooltip>
+        )}
       </Space>
       <ProcessorDescription kind="system" id={communication.externalSystem} />
       <Actions
         path={path}
         params={{ executionCreatedAt: createdAt }}
         cancellable={canCancel(status)}
-        restartable={status === 'FAILED'}
+        restartable={status === 'FAILED' && !syncOutbound}
+        restartHint={syncOutbound && status === 'FAILED' ? t('communications.syncNoRestart') : undefined}
       />
       {/* Попытки — на своей вкладке: на основной то, что сущность сейчас представляет собой. */}
       <Tabs

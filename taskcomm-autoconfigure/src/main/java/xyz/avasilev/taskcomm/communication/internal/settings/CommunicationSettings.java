@@ -33,6 +33,8 @@ public final class CommunicationSettings {
 
     private final Map<String, BreakerPolicy> breakers;
 
+    private final Map<String, Duration> syncWaits;
+
     private final Duration heartbeatTick;
 
     private final PollerLayout pollers;
@@ -55,6 +57,7 @@ public final class CommunicationSettings {
         this.timing = timing;
         this.rateLimits = Map.copyOf(guards.rateLimits());
         this.breakers = Map.copyOf(guards.breakers());
+        this.syncWaits = Map.copyOf(guards.syncWaits());
         this.heartbeatTick = heartbeatTick;
         this.pollers = pollers;
     }
@@ -131,6 +134,17 @@ public final class CommunicationSettings {
     }
 
     /**
+     * Предел ожидания разомкнутого размыкателя и слота ограничителя скорости синхронной отправкой
+     * (docs/adr/0167-communication-run-mode.md).
+     *
+     * @param system внешняя система
+     * @return предел
+     */
+    public Duration syncWait(final String system) {
+        return this.syncWaits.getOrDefault(system, this.timing.syncWait());
+    }
+
+    /**
      * Такт подстраховочного поллера.
      *
      * @return такт
@@ -198,10 +212,12 @@ public final class CommunicationSettings {
     record Key(String system, CommunicationPhase phase) {}
 
     /**
-     * Лимиты скорости и размыкатели по системам.
+     * Лимиты скорости, размыкатели и предел их ожидания синхронной отправкой по системам.
      *
      * @param rateLimits лимит отправок в секунду; системы без лимита нет в отображении
      * @param breakers размыкатели
+     * @param syncWaits предел ожидания защиты синхронной отправкой; системы без своего нет в отображении
      */
-    record Guards(Map<String, Double> rateLimits, Map<String, BreakerPolicy> breakers) {}
+    record Guards(
+            Map<String, Double> rateLimits, Map<String, BreakerPolicy> breakers, Map<String, Duration> syncWaits) {}
 }

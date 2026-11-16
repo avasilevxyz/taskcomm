@@ -10,11 +10,13 @@ import xyz.avasilev.taskcomm.TaskcommConfigurationException;
  *
  * @param responseTimeout срок ожидания ответа по умолчанию
  * @param safetyInterval такт подстраховочного поллера
+ * @param syncWait предел ожидания защиты отправки синхронной исходящей по умолчанию
+ *     (docs/adr/0167-communication-run-mode.md)
  */
-public record Timing(Duration responseTimeout, Duration safetyInterval) {
+public record Timing(Duration responseTimeout, Duration safetyInterval, Duration syncWait) {
 
-    /** Умолчания: ответ — час, такт подстраховки — минута. */
-    public static final Timing DEFAULT = new Timing(Duration.ofHours(1), Duration.ofMinutes(1));
+    /** Умолчания: ответ — час, такт подстраховки — минута, ожидание защиты синхронной — 30 секунд. */
+    public static final Timing DEFAULT = new Timing(Duration.ofHours(1), Duration.ofMinutes(1), Duration.ofSeconds(30));
 
     /**
      * Проверяет, что оба срока положительны.
@@ -24,6 +26,20 @@ public record Timing(Duration responseTimeout, Duration safetyInterval) {
     public Timing {
         positive("response-timeout", responseTimeout);
         positive("safety.interval", safetyInterval);
+        notNegative("sync-wait", syncWait);
+    }
+
+    /**
+     * Проверяет срок, которому ноль позволен.
+     *
+     * @param name имя свойства для сообщения
+     * @param value срок
+     * @throws TaskcommConfigurationException если срока нет или он отрицательный
+     */
+    static void notNegative(final String name, final Duration value) {
+        if (value == null || value.isNegative()) {
+            throw new TaskcommConfigurationException(name + " = " + value + ", а должен быть не меньше нуля.");
+        }
     }
 
     /**

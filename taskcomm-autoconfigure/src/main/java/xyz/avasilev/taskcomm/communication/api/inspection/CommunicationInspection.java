@@ -93,6 +93,29 @@ public interface CommunicationInspection {
     }
 
     /**
+     * Попытки всех коммуникаций дела без обмена, в порядке создания
+     * (docs/adr/0166-execution-outline-units-and-attempts.md). Чтение идёт в партиции дела.
+     *
+     * @param execution дело
+     * @return строки попыток
+     * @throws UnsupportedOperationException если реализация это чтение не поддерживает
+     */
+    default List<CommunicationAttemptEntry> attemptEntries(final ExecutionRef execution) {
+        throw new UnsupportedOperationException("это чтение реализация не поддерживает");
+    }
+
+    /**
+     * Запрос, которым {@link #attemptEntries} читает попытки, — для разбора.
+     *
+     * @param execution дело
+     * @return текст и параметры
+     * @throws UnsupportedOperationException если реализация SQL не отдаёт
+     */
+    default SqlQuery attemptEntriesSql(final ExecutionRef execution) {
+        throw new UnsupportedOperationException("SQL чтения эта реализация не отдаёт");
+    }
+
+    /**
      * Ключи корреляции, для которых коммуникация — якорь
      * (docs/adr/0156-communication-keys-and-pollers-in-reading.md).
      *

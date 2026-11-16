@@ -76,7 +76,8 @@ final class CommunicationPropertiesMapping {
                                     phaseSettings.getFailureStatuses(),
                                     phaseSettings.getResponseTimeout(),
                                     phaseSettings.getRateLimitPerInstance(),
-                                    breaker(phaseSettings.getCircuitBreaker()))));
+                                    breaker(phaseSettings.getCircuitBreaker()),
+                                    phaseSettings.getSyncWait())));
             result.put(
                     system,
                     new SystemOverrides(
@@ -87,7 +88,8 @@ final class CommunicationPropertiesMapping {
                                     settings.getFailureStatuses(),
                                     settings.getResponseTimeout(),
                                     settings.getRateLimitPerInstance(),
-                                    breaker(settings.getCircuitBreaker())),
+                                    breaker(settings.getCircuitBreaker()),
+                                    settings.getSyncWait()),
                             phases));
         });
         return result;
@@ -129,7 +131,8 @@ final class CommunicationPropertiesMapping {
                 PREFIX.substring(0, PREFIX.length() - 1),
                 () -> new Timing(
                         communication.getResponseTimeout(),
-                        communication.getSafety().getInterval()));
+                        communication.getSafety().getInterval(),
+                        communication.getSyncWait()));
     }
 
     /**

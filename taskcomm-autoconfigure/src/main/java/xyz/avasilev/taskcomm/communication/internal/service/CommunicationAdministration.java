@@ -33,14 +33,21 @@ import xyz.avasilev.taskcomm.execution.internal.UuidV7;
  *       всегда с отправки или обработки входящей: фаза {@code PROCESS}, новый цикл попыток, новая
  *       открытая попытка — у входящей с копией запроса последней попытки обработки. Ключи дедупликации
  *       снова «не завершены». Колбэки прежних циклов история: новый цикл их не видит.
+ *       Синхронную исходящую не перезапускают — ответ ждал вызывающий здесь и сейчас; синхронную
+ *       входящую перезапуск ставит в фоновую обработку: режим запуска становится {@code ASYNC}
+ *       (docs/adr/0167-communication-run-mode.md).
  * </ul>
  */
 @Slf4j
 class CommunicationAdministration {
 
+    /** Причина отказа в перезапуске синхронной исходящей (docs/adr/0167-communication-run-mode.md). */
+    static final String SYNC_OUTBOUND = "синхронная отправка: ответ ждал вызывающий здесь и сейчас, "
+            + "перезапускать её некому — отправьте заново";
+
     private static final String LOCK = """
             SELECT status, cancel_requested_at IS NOT NULL AS cancelled, direction,
-                   coalesce(source, destination) AS system, request_payload IS NULL AS unparsed
+                   coalesce(source, destination) AS system, request_payload IS NULL AS unparsed, run_mode
               FROM tc_communication
              WHERE execution_created_at = :executionCreatedAt AND id = :id
                FOR UPDATE
@@ -61,7 +68,7 @@ class CommunicationAdministration {
     private static final String RESTART = """
             UPDATE tc_communication
                SET status = 'PENDING', phase = 'PROCESS', status_description = NULL, next_attempt_at = now(),
-                   retry_cycle_started_at = now(),
+                   retry_cycle_started_at = now(), run_mode = 'ASYNC',
                    claim_order_at = now() + make_interval(secs => priority * :deadlineStep), updated_at = now()
              WHERE execution_created_at = :executionCreatedAt AND id = :id
             """;
@@ -189,7 +196,8 @@ class CommunicationAdministration {
                         rs.getBoolean("cancelled"),
                         Direction.valueOf(rs.getString("direction")),
                         rs.getString("system"),
-                        rs.getBoolean("unparsed")))
+                        rs.getBoolean("unparsed"),
+                        "SYNC".equals(rs.getString("run_mode"))))
                 .optional();
     }
 
@@ -219,6 +227,8 @@ class CommunicationAdministration {
             reason = "перезапускается только упавшая коммуникация, а эта в статусе " + locked.status();
         } else if (locked.unparsed()) {
             reason = "тело запроса не разобрано: обрабатывать нечего, нужна новая доставка";
+        } else if (locked.sync() && locked.direction() == Direction.OUTBOUND) {
+            reason = SYNC_OUTBOUND;
         } else {
             reason = null;
         }
@@ -233,6 +243,8 @@ class CommunicationAdministration {
      * @param direction направление
      * @param system внешняя система
      * @param unparsed доменной формы запроса нет — тело не разобрано
+     * @param sync синхронный запуск (docs/adr/0167-communication-run-mode.md)
      */
-    private record Locked(String status, boolean cancelled, Direction direction, String system, boolean unparsed) {}
+    private record Locked(
+            String status, boolean cancelled, Direction direction, String system, boolean unparsed, boolean sync) {}
 }

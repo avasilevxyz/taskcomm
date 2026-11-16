@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Button, Card, Flex, Progress, Space, Tabs, Tree, Typography } from 'antd';
+import { Button, Card, Flex, Progress, Space, Tabs, Tag, Tree, Typography } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import { useState, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router';
@@ -16,12 +16,15 @@ import {
   by,
   taskPath,
   useTime,
+  PhaseLabel,
+  Reason,
 } from '../common';
 import { CreateInExecutionButton } from '../createPanel';
 import { ColumnsSlotProvider, DataTable, useColumnsSlot } from '../dataTable';
 import { useI18n } from '../i18n';
+import { rowOpens, useEntityPanel } from '../entityPanel';
 import { useOpenPanel } from '../panels';
-import { buildTree, total, type TreeNode } from './executionTree';
+import { buildTree, total, type MoreNode, type TreeNode } from './executionTree';
 import { TaskTable, useTaskPages } from './TaskTable';
 
 export function Execution() {
@@ -46,24 +49,44 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
   const openPanel = useOpenPanel();
   const [tab, setTab] = useState('tree');
   const [slot, slotNode] = useColumnsSlot();
-  // Подзадачи узла — в боковой панели стопки, как карточки (docs/adr/0161-side-panel-stack.md).
-  const showUnits = (node: TreeNode) =>
-    node.task &&
+  // Все группы или подзадачи родителя — таблицей в боковой панели стопки (docs/adr/0161-side-panel-stack.md).
+  const showAll = (more: MoreNode) =>
     openPanel({
       kind: 'entity',
-      label: `${t('tasks.units')} · ${shortId(node.task.id)}`,
+      label: `${t(more.level === 'UNIT' ? 'tasks.units' : 'tasks.batches')} · ${shortId(more.parentId)}`,
       render: () => (
-        <UnitsOf
-          parentId={node.task!.id}
-          taskType={node.task!.taskType}
+        <ChildrenOf
+          level={more.level}
+          parentId={more.parentId}
+          taskType={more.taskType}
           executionId={outline.execution.id}
           executionCreatedAt={createdAt}
         />
       ),
     });
+  // Щелчок по узлу — карточка в боковой панели, как в таблицах; по попытке — карточка её сущности.
+  const openEntity = useEntityPanel();
+  const openNode = (node: TreeNode) => {
+    const kind = node.attempt?.kind ?? node.kind;
+    const id = node.attempt?.targetId ?? node.task?.id ?? node.communication?.id;
+    if (!id || kind === 'MORE' || kind === 'ATTEMPT') {
+      return;
+    }
+    openEntity(
+      kind === 'COMMUNICATION'
+        ? { kind: 'communication', id, createdAt: outline.execution.createdAt }
+        : { kind: 'task', level: kind, id, createdAt: outline.execution.createdAt },
+    );
+  };
   const toData = (node: TreeNode): DataNode => ({
     key: node.key,
-    title: <NodeTitle node={node} onUnits={() => showUnits(node)} />,
+    title: node.more ? (
+      <NodeTitle node={node} onMore={showAll} />
+    ) : (
+      <div {...rowOpens(() => openNode(node))}>
+        <NodeTitle node={node} onMore={showAll} />
+      </div>
+    ),
     children: node.children.map(toData),
   });
   const timeline = [
@@ -198,13 +221,38 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
   );
 }
 
-function NodeTitle({ node, onUnits }: { node: TreeNode; onUnits: () => void }) {
+function NodeTitle({ node, onMore }: { node: TreeNode; onMore: (more: MoreNode) => void }) {
   const { t } = useI18n();
+  const time = useTime();
   const createdAt = node.task?.execution.createdAt ?? node.communication?.execution.createdAt ?? '';
   const count = total(node.units);
+  if (node.more) {
+    const more = node.more;
+    return (
+      <Button size="small" onClick={() => onMore(more)}>
+        {t(more.level === 'UNIT' ? 'execution.allUnits' : 'execution.allBatches', { count: more.count })}
+      </Button>
+    );
+  }
+  if (node.attempt) {
+    const attempt = node.attempt;
+    return (
+      <Flex gap={8} wrap align="center">
+        <Typography.Text type="secondary">{t('execution.attempt', { number: attempt.number })}</Typography.Text>
+        <PhaseLabel phase={attempt.phase} />
+        {attempt.outcome.status ? (
+          <StatusTag status={attempt.outcome.status} description={attempt.outcome.statusDescription} />
+        ) : (
+          <Tag>{t('execution.attemptOpen')}</Tag>
+        )}
+        {attempt.times.startedAt && <Typography.Text type="secondary">{time(attempt.times.startedAt)}</Typography.Text>}
+        {attempt.outcome.statusDescription && <Reason text={attempt.outcome.statusDescription} width={360} />}
+      </Flex>
+    );
+  }
   return (
     <Flex gap={8} wrap align="center">
-      <Typography.Text strong>{t(`level.${node.kind}`)}</Typography.Text>
+      <Typography.Text strong>{t(`level.${node.kind as 'TASK' | 'BATCH' | 'UNIT' | 'COMMUNICATION'}`)}</Typography.Text>
       {node.task && (
         <>
           <IdLink to={taskPath(node.kind, node.task.id, createdAt)} id={node.task.id} />
@@ -246,9 +294,6 @@ function NodeTitle({ node, onUnits }: { node: TreeNode; onUnits: () => void }) {
                 {value}
               </Space>
             ))}
-            <Button size="small" onClick={onUnits}>
-              {t('execution.showUnits')}
-            </Button>
           </Space>
         </Card>
       )}
@@ -256,17 +301,19 @@ function NodeTitle({ node, onUnits }: { node: TreeNode; onUnits: () => void }) {
   );
 }
 
-function UnitsOf({ parentId, taskType, executionId, executionCreatedAt }: {
+/** Все группы или подзадачи родителя — списком, страницами. */
+function ChildrenOf({ level, parentId, taskType, executionId, executionCreatedAt }: {
+  level: 'BATCH' | 'UNIT';
   parentId: string;
   taskType: string;
   executionId: string;
   executionCreatedAt: string;
 }) {
-  const pages = useTaskPages(['units-of', parentId], () => ({
-    level: 'UNIT',
+  const pages = useTaskPages(['children-of', level, parentId], () => ({
+    level,
     parentId,
     executionId,
     executionCreatedAt,
   }));
-  return <TaskTable pages={pages} showWindow={false} level="UNIT" taskType={taskType} />;
+  return <TaskTable pages={pages} showWindow={false} level={level} taskType={taskType} />;
 }

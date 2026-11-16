@@ -15,5 +15,6 @@
                             http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.0.xsd">
 
     <include file="db/changelog/taskcomm/taskcomm-2.0.0.sql" relativeToChangelogFile="false"/>
+    <include file="db/changelog/taskcomm/taskcomm-2.3.0.sql" relativeToChangelogFile="false"/>
 
 </databaseChangeLog>

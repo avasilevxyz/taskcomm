@@ -92,11 +92,17 @@ final class CommunicationClaimQuery {
                 + ") x ORDER BY " + order.formatted("x");
     }
 
-    /** Готовая строка системы с этим номером параметра; граница — на таблице. */
+    /**
+     * Готовая строка системы с этим номером параметра; граница — на таблице. Синхронную отправку ведёт
+     * вызывающий, захват её не берёт, а колбэк синхронной — берёт
+     * (docs/adr/0167-communication-run-mode.md); условие — тем же выражением, что у индексов захвата,
+     * чтобы планировщик выводил из него их условие.
+     */
     private static String ready(final int system) {
         return """
 
                  WHERE c.status = 'PENDING'
+                   AND (c.run_mode = 'ASYNC' OR c.phase = 'HANDLE_RESPONSE')
                    AND coalesce(c.source, c.destination) = :system%d
                    AND c.next_attempt_at <= now()
                    AND c.execution_created_at >= :activeFrom

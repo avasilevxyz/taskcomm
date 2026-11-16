@@ -24,7 +24,7 @@ import xyz.avasilev.taskcomm.TaskcommConfigurationException;
 public class SchemaVerifier {
 
     /** Версия схемы, которую ожидает этот код. */
-    static final String SCHEMA_VERSION = "2.0.0";
+    static final String SCHEMA_VERSION = "2.3.0";
 
     /** Таблицы и колонки версии {@value #SCHEMA_VERSION}, в порядке файла схемы. */
     static final Map<String, List<String>> EXPECTED_COLUMNS = expectedColumns();
@@ -132,7 +132,7 @@ public class SchemaVerifier {
                 columns("id created_at updated_at execution_id execution_created_at"
                         + " direction source destination request_payload contract_shape phase status status_description"
                         + " priority next_attempt_at claim_order_at retry_cycle_started_at cancel_requested_at"
-                        + " origin_type origin_id origin_attempt_id origin_relation"));
+                        + " origin_type origin_id origin_attempt_id origin_relation run_mode"));
         tables.put(
                 "tc_task_attempt",
                 columns("id created_at updated_at execution_created_at level target_id phase"

@@ -82,10 +82,12 @@ taskcomm:
 
 - **`poll`**, **`lease`**, **`retry`** — как у задач;
 - **`response-timeout`** — сколько ждать асинхронного ответа до повторной отправки;
+- **`sync-wait`** — сколько [синхронная отправка](../communications/outbound.md#синхронная-отправка)
+  ждёт размыкатель и ограничение скорости в потоке, по умолчанию 30 с;
 - **`circuit-breaker`** — глобальные настройки размыкателя, см.
   [Коммуникации](../communications/rate-and-breaker.md#размыкатель);
 - **`systems.<система>`** — переопределения для системы: `priority`, `lease`, `retry`, `phases`,
-  `response-timeout`, `rate-limit-per-instance`, `failure-statuses`, `circuit-breaker`;
+  `response-timeout`, `sync-wait`, `rate-limit-per-instance`, `failure-statuses`, `circuit-breaker`;
 - **`pollers.<имя>`** — выделенные поллеры по системам: `systems`, `workers`;
 - **`safety`** — подстраховочный поллер истёкших ожиданий ответа.
 
@@ -212,6 +214,7 @@ taskcomm:
       max-delay: 1h
       jitter: 0.2
     response-timeout: 1h            # срок ожидания асинхронного ответа, потом повторная отправка
+    sync-wait: 30s                  # синхронная отправка ждёт размыкатель и скорость не дольше
     safety:                         # подстраховочный поллер: истёкшие ожидания ответа
       interval: 1m
     circuit-breaker:                # только исходящие; выключен по умолчанию

@@ -76,7 +76,8 @@ class TaskcommSchemaAutoConfigurationIT {
                 .withBean(String.class, () -> schema)
                 .withPropertyValues(
                         "spring.sql.init.mode=always",
-                        "spring.sql.init.schema-locations=classpath:db/changelog/taskcomm/taskcomm-2.0.0.sql")
+                        "spring.sql.init.schema-locations=classpath:db/changelog/taskcomm/taskcomm-2.0.0.sql,"
+                                + "classpath:db/changelog/taskcomm/taskcomm-2.3.0.sql")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context).hasSingleBean(SchemaStartup.class);

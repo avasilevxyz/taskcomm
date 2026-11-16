@@ -39,6 +39,12 @@ import xyz.avasilev.taskcomm.task.api.inspection.TaskUnitCount;
 @RequestMapping("${taskcomm.rest.base-path:/tc/api}/executions")
 public class ExecutionController extends RestErrors {
 
+    /**
+     * Сколько подзадач у каждого родителя попадает в выдачу дела без подзадач
+     * (docs/adr/0166-execution-outline-units-and-attempts.md); остальные — списком, страницами.
+     */
+    static final int UNITS_PER_PARENT = 50;
+
     /** Размер страницы, которой выдача читает партицию дела. */
     private static final int CHUNK = PageRequest.MAX_SIZE;
 
@@ -86,9 +92,11 @@ public class ExecutionController extends RestErrors {
     }
 
     /**
-     * Дело без подзадач (docs/adr/0150-execution-outline-and-meta.md): задачи, группы, коммуникации, ключи
-     * корреляции и счётчики подзадач по родителю и статусу. Сами подзадачи — списком {@code GET /tasks}
-     * с {@code level=UNIT}, делом и родителем, страницами.
+     * Дело для экрана (docs/adr/0150-execution-outline-and-meta.md,
+     * docs/adr/0166-execution-outline-units-and-attempts.md): задачи, группы, коммуникации, ключи
+     * корреляции, счётчики подзадач по родителю и статусу, подзадачи — не больше
+     * {@value #UNITS_PER_PARENT} у родителя — и попытки всех выданных сущностей без результатов.
+     * Остальные подзадачи — списком {@code GET /tasks} с {@code level=UNIT}, делом и родителем, страницами.
      *
      * @param id идентификатор дела
      * @param createdAt время создания дела; не задано — ищется по идентификатору
@@ -103,9 +111,15 @@ public class ExecutionController extends RestErrors {
                         this.mapper.execution(found),
                         this.level(found, TaskSnapshot.Level.TASK),
                         this.level(found, TaskSnapshot.Level.BATCH),
+                        this.tasks == null
+                                ? List.<RestDtos.TaskDto>of()
+                                : this.tasks.units(found, UNITS_PER_PARENT).stream()
+                                        .map(this.mapper::task)
+                                        .toList(),
                         this.tasks == null ? List.<TaskUnitCount>of() : this.tasks.unitCounts(found),
                         this.communications(found),
-                        this.correlationKeys(found))))
+                        this.correlationKeys(found),
+                        this.attempts(found))))
                 .orElseGet(() -> notFound("дело " + id));
     }
 
@@ -145,6 +159,11 @@ public class ExecutionController extends RestErrors {
                             HistoryWindow.everywhere(),
                             first));
             statements.put("Подзадачи дела по родителю и статусу", this.tasks.unitCountsSql(execution));
+            statements.put(
+                    "Подзадачи дела, первые " + UNITS_PER_PARENT + " у каждого родителя",
+                    this.tasks.unitsSql(execution, UNITS_PER_PARENT));
+            statements.put(
+                    "Попытки задач, групп и этих подзадач", this.tasks.attemptEntriesSql(execution, UNITS_PER_PARENT));
         }
         if (this.communications != null) {
             statements.put(
@@ -152,8 +171,37 @@ public class ExecutionController extends RestErrors {
                     this.communications.listSql(
                             CommunicationQuery.all().inExecution(execution), HistoryWindow.everywhere(), first));
             statements.put("Ключи корреляции дела", this.communications.correlationKeysSql(execution));
+            statements.put("Попытки коммуникаций дела", this.communications.attemptEntriesSql(execution));
         }
         return statements;
+    }
+
+    /** Попытки задач, групп, выданных подзадач и коммуникаций дела. */
+    private List<RestDtos.AttemptEntryDto> attempts(final ExecutionRef execution) {
+        final List<RestDtos.AttemptEntryDto> attempts = new ArrayList<>();
+        if (this.tasks != null) {
+            this.tasks
+                    .attemptEntries(execution, UNITS_PER_PARENT)
+                    .forEach(entry -> attempts.add(new RestDtos.AttemptEntryDto(
+                            entry.id(),
+                            entry.level().name(),
+                            entry.targetId(),
+                            entry.phase(),
+                            new RestDtos.OutcomeDto(entry.status(), entry.statusDescription()),
+                            new RestDtos.TimesDto(entry.startedAt(), entry.finishedAt()))));
+        }
+        if (this.communications != null) {
+            this.communications
+                    .attemptEntries(execution)
+                    .forEach(entry -> attempts.add(new RestDtos.AttemptEntryDto(
+                            entry.id(),
+                            "COMMUNICATION",
+                            entry.communicationId(),
+                            entry.phase(),
+                            new RestDtos.OutcomeDto(entry.status(), entry.statusDescription()),
+                            new RestDtos.TimesDto(entry.startedAt(), entry.finishedAt()))));
+        }
+        return attempts;
     }
 
     private Optional<ExecutionRef> ref(final UUID id, final Instant createdAt) {

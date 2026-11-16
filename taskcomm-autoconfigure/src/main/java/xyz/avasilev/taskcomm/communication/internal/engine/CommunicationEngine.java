@@ -67,6 +67,8 @@ public class CommunicationEngine implements SmartLifecycle {
 
     private final CircuitBreakers breakers;
 
+    private final SendGuards guards;
+
     /** Такт снимка метрик на всю схему; {@code null} — метрик нет, снимок не считается. */
     private final Runnable snapshot;
 
@@ -122,6 +124,7 @@ public class CommunicationEngine implements SmartLifecycle {
         this.externalScheduler = scheduler;
         this.breakers = new CircuitBreakers(
                 settings, System::nanoTime, () -> ThreadLocalRandom.current().nextDouble(), observation.metrics());
+        this.guards = new SendGuards(new RateLimiters(settings, System::nanoTime), this.breakers);
         this.worker = new CommunicationWorker(
                 registry,
                 codec,
@@ -130,7 +133,7 @@ public class CommunicationEngine implements SmartLifecycle {
                 new CommunicationExchange(dataSource, transactionManager, codec),
                 settings,
                 new ProcessorKeys(dataSource, transactionManager, ids),
-                new SendGuards(new RateLimiters(settings, System::nanoTime), this.breakers),
+                this.guards,
                 observation);
         this.safety =
                 new CommunicationSafetyPoller(dataSource, transactionManager, settings, retries, registry.systems());
@@ -207,7 +210,7 @@ public class CommunicationEngine implements SmartLifecycle {
     }
 
     /**
-     * Воркер для синхронного приёма — тот же, что у поллеров, с тем же heartbeat.
+     * Воркер для синхронного запуска — тот же, что у поллеров, с тем же heartbeat.
      *
      * @return воркер
      */
@@ -251,6 +254,16 @@ public class CommunicationEngine implements SmartLifecycle {
      */
     public CircuitBreakers breakers() {
         return this.breakers;
+    }
+
+    /**
+     * Защита отправки этого экземпляра — те же ограничители и размыкатели, что у воркеров: синхронная
+     * отправка ждёт их сама (docs/adr/0167-communication-run-mode.md).
+     *
+     * @return ограничение скорости и размыкатели
+     */
+    public SendGuards guards() {
+        return this.guards;
     }
 
     private void renewLeases() {

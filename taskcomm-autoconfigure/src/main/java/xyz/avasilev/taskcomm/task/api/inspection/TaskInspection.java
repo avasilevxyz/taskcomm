@@ -127,6 +127,57 @@ public interface TaskInspection {
     }
 
     /**
+     * Подзадачи дела — не больше {@code perParent} у каждого родителя, первые по времени создания
+     * (docs/adr/0166-execution-outline-units-and-attempts.md). Родитель — группа, у подзадачи без
+     * групп — задача. Чтение идёт в партиции дела; сколько подзадач всего, говорит {@link #unitCounts}.
+     *
+     * @param execution дело
+     * @param perParent предел на родителя
+     * @return подзадачи в порядке создания
+     * @throws UnsupportedOperationException если реализация это чтение не поддерживает
+     */
+    default List<TaskSnapshot> units(final ExecutionRef execution, final int perParent) {
+        throw new UnsupportedOperationException("это чтение реализация не поддерживает");
+    }
+
+    /**
+     * Запрос, которым {@link #units} читает подзадачи, — для разбора.
+     *
+     * @param execution дело
+     * @param perParent предел на родителя
+     * @return текст и параметры
+     * @throws UnsupportedOperationException если реализация SQL не отдаёт
+     */
+    default SqlQuery unitsSql(final ExecutionRef execution, final int perParent) {
+        throw new UnsupportedOperationException("SQL чтения эта реализация не отдаёт");
+    }
+
+    /**
+     * Попытки задач и групп дела и подзадач, которые отдаёт {@link #units} с тем же пределом, — без
+     * результатов, в порядке начала (docs/adr/0166-execution-outline-units-and-attempts.md).
+     *
+     * @param execution дело
+     * @param unitsPerParent предел подзадач на родителя — как у {@link #units}
+     * @return строки журнала попыток
+     * @throws UnsupportedOperationException если реализация это чтение не поддерживает
+     */
+    default List<TaskAttemptEntry> attemptEntries(final ExecutionRef execution, final int unitsPerParent) {
+        throw new UnsupportedOperationException("это чтение реализация не поддерживает");
+    }
+
+    /**
+     * Запрос, которым {@link #attemptEntries} читает попытки, — для разбора.
+     *
+     * @param execution дело
+     * @param unitsPerParent предел подзадач на родителя
+     * @return текст и параметры
+     * @throws UnsupportedOperationException если реализация SQL не отдаёт
+     */
+    default SqlQuery attemptEntriesSql(final ExecutionRef execution, final int unitsPerParent) {
+        throw new UnsupportedOperationException("SQL чтения эта реализация не отдаёт");
+    }
+
+    /**
      * Приоритет по умолчанию у типов задач с процессором — итог лестницы настроек
      * (docs/adr/0153-ui-creation-refinements.md): его получит задача, поставленная без своего приоритета.
      *

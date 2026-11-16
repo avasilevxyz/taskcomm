@@ -18,6 +18,8 @@ import java.util.stream.Stream;
  * @param responseTimeout срок ожидания асинхронного ответа или {@code null} — не задан
  * @param rateLimit отправок в секунду на экземпляр или {@code null} — не ограничено
  * @param breaker размыкатель
+ * @param syncWait предел ожидания защиты отправки синхронной исходящей или {@code null} — не задан
+ *     (docs/adr/0167-communication-run-mode.md)
  */
 public record SettingsOverride(
         Integer priority,
@@ -26,11 +28,12 @@ public record SettingsOverride(
         List<String> failureStatuses,
         Duration responseTimeout,
         Double rateLimit,
-        BreakerOverride breaker) {
+        BreakerOverride breaker,
+        Duration syncWait) {
 
     /** Ничего не задано. */
-    public static final SettingsOverride NONE =
-            new SettingsOverride(null, LeaseOverride.NONE, RetryOverride.NONE, null, null, null, BreakerOverride.NONE);
+    public static final SettingsOverride NONE = new SettingsOverride(
+            null, LeaseOverride.NONE, RetryOverride.NONE, null, null, null, BreakerOverride.NONE, null);
 
     /**
      * Проверяет, что группы настроек заданы, хотя бы пустыми, и копирует список статусов.
@@ -57,7 +60,7 @@ public record SettingsOverride(
             final LeaseOverride lease,
             final RetryOverride retry,
             final List<String> failureStatuses) {
-        this(priority, lease, retry, failureStatuses, null, null, BreakerOverride.NONE);
+        this(priority, lease, retry, failureStatuses, null, null, BreakerOverride.NONE, null);
     }
 
     /**
@@ -66,7 +69,7 @@ public record SettingsOverride(
      * @return {@code true}, если задано
      */
     boolean hasSystemSettings() {
-        return Stream.of(this.priority, this.failureStatuses, this.responseTimeout, this.rateLimit)
+        return Stream.of(this.priority, this.failureStatuses, this.responseTimeout, this.rateLimit, this.syncWait)
                         .anyMatch(Objects::nonNull)
                 || !BreakerOverride.NONE.equals(this.breaker);
     }

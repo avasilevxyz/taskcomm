@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.UUID;
 import xyz.avasilev.taskcomm.PayloadShape;
 import xyz.avasilev.taskcomm.communication.api.CommunicationStatus;
+import xyz.avasilev.taskcomm.communication.api.RunMode;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSnapshot;
 import xyz.avasilev.taskcomm.communication.api.inspection.CorrelationKeySnapshot;
 import xyz.avasilev.taskcomm.communication.api.inspection.DedupKeySnapshot;
@@ -58,9 +59,23 @@ public final class RestDtos {
      *
      * @param taskId задача или {@code null}
      * @param batchId группа или {@code null}
+     * @param attemptId попытка раскрытия родителя, создавшая группу или подзадачу, или {@code null}
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record ParentsDto(UUID taskId, UUID batchId) {}
+    public record ParentsDto(UUID taskId, UUID batchId, UUID attemptId) {}
+
+    /**
+     * Строка попытки для схемы дела (docs/adr/0166-execution-outline-units-and-attempts.md).
+     *
+     * @param id попытка
+     * @param kind чья: {@code TASK}, {@code BATCH}, {@code UNIT} или {@code COMMUNICATION}
+     * @param targetId сущность
+     * @param phase фаза
+     * @param outcome исход
+     * @param times начало и конец
+     */
+    public record AttemptEntryDto(
+            UUID id, String kind, UUID targetId, String phase, OutcomeDto outcome, TimesDto times) {}
 
     /**
      * Состояние сущности задач.
@@ -178,6 +193,7 @@ public final class RestDtos {
      * @param state состояние
      * @param origin создатель или {@code null}
      * @param requestPayload запрос или {@code null}
+     * @param runMode режим запуска (docs/adr/0167-communication-run-mode.md)
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record CommunicationDto(
@@ -187,7 +203,8 @@ public final class RestDtos {
             ExecutionRefDto execution,
             CommunicationStateDto state,
             Origin origin,
-            @JsonRawValue String requestPayload) {}
+            @JsonRawValue String requestPayload,
+            RunMode runMode) {}
 
     /**
      * Сообщение обмена — как есть.
@@ -250,23 +267,28 @@ public final class RestDtos {
             List<CorrelationKeySnapshot> correlationKeys) {}
 
     /**
-     * Дело без подзадач (docs/adr/0150-execution-outline-and-meta.md): сущности в порядке создания
-     * и счётчики подзадач по родителю и статусу.
+     * Дело для экрана (docs/adr/0150-execution-outline-and-meta.md,
+     * docs/adr/0166-execution-outline-units-and-attempts.md): сущности в порядке создания, подзадачи —
+     * не больше предела на родителя, счётчики подзадач по родителю и статусу и попытки без результатов.
      *
      * @param execution дело
      * @param tasks задачи
      * @param batches группы
-     * @param unitCounts счётчики подзадач
+     * @param units подзадачи, не больше предела на родителя
+     * @param unitCounts счётчики подзадач — сколько их всего
      * @param communications коммуникации
      * @param correlationKeys ключи корреляции
+     * @param attempts попытки задач, групп, выданных подзадач и коммуникаций
      */
     public record ExecutionOutlineDto(
             ExecutionRefDto execution,
             List<TaskDto> tasks,
             List<TaskDto> batches,
+            List<TaskDto> units,
             List<TaskUnitCount> unitCounts,
             List<CommunicationDto> communications,
-            List<CorrelationKeySnapshot> correlationKeys) {}
+            List<CorrelationKeySnapshot> correlationKeys,
+            List<AttemptEntryDto> attempts) {}
 
     /**
      * Описание экземпляра для интерфейса (docs/adr/0150-execution-outline-and-meta.md). Выключенной

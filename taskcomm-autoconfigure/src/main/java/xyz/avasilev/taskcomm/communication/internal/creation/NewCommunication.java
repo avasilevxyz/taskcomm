@@ -100,10 +100,25 @@ public record NewCommunication(
      * @param lease аренда синхронного приёма — коммуникация сразу {@code RUNNING} под этим экземпляром;
      *     иначе {@code null}
      * @param lockedBy имя экземпляра при синхронном приёме
+     * @param sync синхронный запуск — {@code run_mode = 'SYNC'} (docs/adr/0167-communication-run-mode.md):
+     *     коммуникацию ведёт вызывающий в своём потоке, захват её не берёт
      */
-    public record Start(ExchangeMessage request, String failure, AttemptLease lease, String lockedBy) {
+    public record Start(ExchangeMessage request, String failure, AttemptLease lease, String lockedBy, boolean sync) {
 
         /** Исходящая: попытка открыта и не захвачена. */
         public static final Start OUTBOUND = new Start(null, null, null, null);
+
+        /**
+         * Начало асинхронного запуска — его ведёт движок.
+         *
+         * @param request что прислали — у входящей; у исходящей {@code null}
+         * @param failure причина неразобранного тела или {@code null}
+         * @param lease аренда или {@code null}
+         * @param lockedBy имя экземпляра или {@code null}
+         */
+        public Start(
+                final ExchangeMessage request, final String failure, final AttemptLease lease, final String lockedBy) {
+            this(request, failure, lease, lockedBy, false);
+        }
     }
 }

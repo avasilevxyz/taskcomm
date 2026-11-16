@@ -6,6 +6,7 @@ import java.util.UUID;
 import xyz.avasilev.taskcomm.communication.api.Communication;
 import xyz.avasilev.taskcomm.communication.api.CommunicationService;
 import xyz.avasilev.taskcomm.communication.api.CommunicationStatus;
+import xyz.avasilev.taskcomm.communication.api.RunMode;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.api.Origin;
 
@@ -108,6 +109,15 @@ public interface CommunicationSnapshot {
      * @return JSON или пусто у входящей с неразобранным телом
      */
     Optional<String> requestPayload();
+
+    /**
+     * Режим запуска (docs/adr/0167-communication-run-mode.md).
+     *
+     * @return режим; по умолчанию — {@link RunMode#ASYNC}
+     */
+    default RunMode runMode() {
+        return RunMode.ASYNC;
+    }
 
     /**
      * Осиротела ли: у системы нет процессора (docs/adr/0105-orphan-communications.md).

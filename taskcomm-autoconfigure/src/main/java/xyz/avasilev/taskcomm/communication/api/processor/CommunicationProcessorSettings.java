@@ -105,6 +105,14 @@ public @interface CommunicationProcessorSettings {
     String responseTimeout() default "";
 
     /**
+     * Предел ожидания разомкнутого размыкателя и слота ограничителя скорости при синхронной отправке
+     * (docs/adr/0167-communication-run-mode.md), ISO-8601 или формат Spring: {@code 30s}. Только на классе.
+     *
+     * @return предел; пусто — не задан
+     */
+    String syncWait() default "";
+
+    /**
      * Отказные статусы ответа: записанный ответ с таким статусом делает попытку неуспешной
      * (docs/adr/0065-communication-circuit-breaker.md). Значения — код ({@code "429"}) или класс
      * ({@code "5xx"}). Пустой массив — умолчание транспорта: {@code 5xx} и {@code 429} у REST и SOAP,

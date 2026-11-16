@@ -4,10 +4,7 @@ import java.util.List;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.function.SingletonSupplier;
-import xyz.avasilev.taskcomm.TaskcommException;
-import xyz.avasilev.taskcomm.UnreadablePayloadException;
 import xyz.avasilev.taskcomm.communication.api.CallbackRequest;
 import xyz.avasilev.taskcomm.communication.api.Communication;
 import xyz.avasilev.taskcomm.communication.api.CommunicationCancelResult;
@@ -18,7 +15,9 @@ import xyz.avasilev.taskcomm.communication.api.InboundRequest;
 import xyz.avasilev.taskcomm.communication.api.ReceiveAndProcessResult;
 import xyz.avasilev.taskcomm.communication.api.ReceiveResponseResult;
 import xyz.avasilev.taskcomm.communication.api.ReceiveResult;
+import xyz.avasilev.taskcomm.communication.api.SendAndProcessResult;
 import xyz.avasilev.taskcomm.communication.api.SendResult;
+import xyz.avasilev.taskcomm.communication.api.SyncSendOptions;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSnapshot;
 import xyz.avasilev.taskcomm.communication.api.processor.CommunicationProcessor;
 import xyz.avasilev.taskcomm.communication.internal.CommunicationCodec;
@@ -30,7 +29,7 @@ import xyz.avasilev.taskcomm.communication.internal.processor.CommunicationProce
 import xyz.avasilev.taskcomm.communication.internal.processor.RegisteredProcessor;
 import xyz.avasilev.taskcomm.communication.internal.reception.CommunicationCallbacks;
 import xyz.avasilev.taskcomm.communication.internal.reception.CommunicationCreations;
-import xyz.avasilev.taskcomm.communication.internal.reception.SyncReception;
+import xyz.avasilev.taskcomm.communication.internal.reception.SyncRuns;
 import xyz.avasilev.taskcomm.communication.internal.settings.CommunicationSettings;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.internal.UuidV7;
@@ -38,7 +37,7 @@ import xyz.avasilev.taskcomm.execution.internal.UuidV7;
 /**
  * Реализация {@link CommunicationService}: создание исходящих, два метода приёма входящих, чтение
  * коммуникаций дела. Разбор тела — здесь, в потоке вызывающего (docs/adr/0074-uniform-communication-processing.md);
- * синхронный приём — {@link SyncReception}.
+ * синхронные приём и отправка — там же, вне транзакции вызывающего.
  *
  * <p>Создание и приём — {@link CommunicationCreations}, приём колбэка — {@link CommunicationCallbacks}.
  */
@@ -85,7 +84,15 @@ public class DefaultCommunicationService implements CommunicationService {
                 creator,
                 codec,
                 this.reader,
-                new SyncReception(resolved, SingletonSupplier.of(engine), creator, this.reader, ids));
+                new SyncRuns(
+                        resolved,
+                        SingletonSupplier.of(engine),
+                        creator,
+                        codec,
+                        this.reader,
+                        ids,
+                        dataSource,
+                        transactionManager));
         this.callbacks = new CommunicationCallbacks(dataSource, creator, codec, this.reader, resolved, ids);
         this.administration = new CommunicationAdministration(dataSource, transactionManager, resolved, ids);
         this.codec = codec;
@@ -127,14 +134,8 @@ public class DefaultCommunicationService implements CommunicationService {
     public SendResult<?> sendJson(
             final String destination, final String payloadJson, final CommunicationSendOptions options) {
         final RegisteredProcessor processor = this.registry.get().forCreate(destination);
-        final Object payload;
-        try {
-            payload = this.codec.read(payloadJson, processor.types().request());
-        } catch (final TaskcommException unreadable) {
-            throw new UnreadablePayloadException(
-                    "Запрос в систему '" + destination + "' не разбирается: " + unreadable.getMessage(), unreadable);
-        }
-        return this.creations.send(processor, payload, options);
+        return this.creations.send(
+                processor, this.codec.readRequest(payloadJson, processor.types().request(), destination), options);
     }
 
     @Override
@@ -150,7 +151,6 @@ public class DefaultCommunicationService implements CommunicationService {
 
     @Override
     public ReceiveAndProcessResult<?, ?> receiveAndProcess(final String source, final InboundRequest request) {
-        SyncReception.requireOutsideTransaction(TransactionSynchronizationManager.isActualTransactionActive());
         return this.creations.receiveAndProcess(this.registry.get().forCreate(source), request);
     }
 
@@ -158,8 +158,13 @@ public class DefaultCommunicationService implements CommunicationService {
     public <TRequest, TSyncResponse> ReceiveAndProcessResult<TRequest, TSyncResponse> receiveAndProcess(
             final Class<? extends CommunicationProcessor<TRequest, TSyncResponse, ?>> processor,
             final InboundRequest request) {
-        SyncReception.requireOutsideTransaction(TransactionSynchronizationManager.isActualTransactionActive());
         return this.creations.receiveAndProcess(this.registry.get().forCreate(processor), request);
+    }
+
+    @Override
+    public <TRequest> SendAndProcessResult<TRequest, ?, ?> sendAndProcess(
+            final String destination, final TRequest payload, final SyncSendOptions options) {
+        return this.creations.sendAndProcess(this.registry.get().forCreate(destination), payload, options);
     }
 
     @Override

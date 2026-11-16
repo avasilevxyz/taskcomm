@@ -38,6 +38,7 @@ import xyz.avasilev.taskcomm.task.api.processor.UnitTaskProcessor;
  * Процессоры демо и начальная работа: заказ, который отправляет платёж в банк (ребро «кто кого создал»),
  * и заказ, который падает без повтора; сверка подзадачами, часть которых не сходится; выгрузка группами;
  * банк, отвечающий колбэком через несколько секунд.
+ * Сложное дело отгрузки — в {@link DemoFulfillment}.
  */
 @Configuration(proxyBeanMethods = false)
 class DemoProcessors {
@@ -58,8 +59,8 @@ class DemoProcessors {
     }
 
     @Bean(destroyMethod = "close")
-    BankProcessor demoBank(@Lazy final CommunicationService communications) {
-        return new BankProcessor(communications);
+    BankProcessor demoBank(@Lazy final CommunicationService communications, @Lazy final TaskService tasks) {
+        return new BankProcessor(communications, tasks);
     }
 
     @Bean
@@ -88,7 +89,7 @@ class DemoProcessors {
         };
     }
 
-    private static void pause(final long millis) {
+    static void pause(final long millis) {
         try {
             Thread.sleep(millis);
         } catch (final InterruptedException interrupted) {
@@ -174,8 +175,26 @@ class DemoProcessors {
      *
      * @param id идентификатор
      * @param amount сумма
+     * @param shipping доставка, которую ставит подтверждение банка; {@code null} — платёж без доставки
      */
-    record Payment(String id, int amount) {}
+    record Payment(String id, int amount, Shipping shipping) {}
+
+    /**
+     * Куда и как сообщать клиенту.
+     *
+     * @param address адрес доставки
+     * @param phone телефон для SMS
+     * @param email почта
+     */
+    record Contact(String address, String phone, String email) {}
+
+    /**
+     * Доставка заказа — задача, которую ставит подтверждение банка.
+     *
+     * @param orderId номер заказа
+     * @param contact адрес и контакты
+     */
+    record Shipping(String orderId, Contact contact) {}
 
     /**
      * Подтверждение банка — колбэк.
@@ -231,7 +250,7 @@ class DemoProcessors {
             // Ключ дедупликации — чтобы на карточке коммуникации было что показать и по чему искать.
             this.communications.send(
                     "demo-bank",
-                    new Payment(task.payload().orderId(), task.payload().amount()),
+                    new Payment(task.payload().orderId(), task.payload().amount(), null),
                     CommunicationSendOptions.defaults()
                             .dedupKey("payment-" + task.payload().orderId()));
             return "оплата заказа " + task.payload().orderId() + " отправлена";
@@ -408,16 +427,22 @@ class DemoProcessors {
         }
     }
 
-    /** Банк: принимает платёж, ждёт колбэка по ключу {@code ref-<id>} и сам присылает его через 5 секунд. */
+    /**
+     * Банк: принимает платёж, ждёт колбэка по ключу {@code ref-<id>} и сам присылает его через 5 секунд.
+     * Подтверждение платежа с доставкой ставит задачу доставки — в том же деле.
+     */
     static final class BankProcessor
             implements RestCommunicationProcessor<Payment, String, Confirmation>, AutoCloseable {
 
         private final CommunicationService communications;
 
+        private final TaskService tasks;
+
         private final ScheduledExecutorService callbacks = Executors.newSingleThreadScheduledExecutor();
 
-        BankProcessor(final CommunicationService communications) {
+        BankProcessor(final CommunicationService communications, final TaskService tasks) {
             this.communications = communications;
+            this.tasks = tasks;
         }
 
         @Override
@@ -481,7 +506,12 @@ class DemoProcessors {
                 final Communication.Outbound<Payment> communication,
                 final Confirmation response,
                 final CommunicationContext context) {
-            // подтверждение сохранено в обмене попытки — больше ничего не нужно
+            // Подтверждение сохранено в обмене попытки. Платёж с доставкой ставит её задачу — в этом же
+            // потоке, поэтому она попадает в дело коммуникации с ребром «создана коммуникацией».
+            final Shipping shipping = communication.requestPayload().shipping();
+            if (shipping != null) {
+                this.tasks.submit("demo-shipping", shipping);
+            }
         }
 
         @Override

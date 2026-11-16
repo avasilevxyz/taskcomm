@@ -149,7 +149,8 @@ export interface TaskItem {
   level: Level;
   taskType: string;
   execution: ExecutionRef;
-  parents?: { taskId?: string; batchId?: string };
+  /** Родители; {@code attemptId} — попытка раскрытия, создавшая группу или подзадачу. */
+  parents?: { taskId?: string; batchId?: string; attemptId?: string };
   state: {
     status: string;
     statusDescription?: string;
@@ -206,6 +207,8 @@ export interface CommunicationItem {
   };
   origin?: Origin;
   requestPayload?: unknown;
+  /** Режим запуска (docs/adr/0167-communication-run-mode.md); нет — старый сервер, асинхронная. */
+  runMode?: 'SYNC' | 'ASYNC';
 }
 
 export interface ExchangeMessage {
@@ -244,13 +247,26 @@ export interface CorrelationKey {
   createdAt: string;
 }
 
+/** Строка попытки без результата — для дерева дела (docs/adr/0166-execution-outline-units-and-attempts.md). */
+export interface AttemptEntry {
+  id: string;
+  kind: Level | 'COMMUNICATION';
+  targetId: string;
+  phase: string;
+  outcome: Outcome;
+  times: Times;
+}
+
 export interface ExecutionOutline {
   execution: ExecutionRef;
   tasks: TaskItem[];
   batches: TaskItem[];
+  /** Подзадачи — не больше 50 у родителя; сколько всего, говорит {@code unitCounts}. */
+  units?: TaskItem[];
   unitCounts: UnitCount[];
   communications: CommunicationItem[];
   correlationKeys: CorrelationKey[];
+  attempts?: AttemptEntry[];
 }
 
 export interface TaskTypeSummary {

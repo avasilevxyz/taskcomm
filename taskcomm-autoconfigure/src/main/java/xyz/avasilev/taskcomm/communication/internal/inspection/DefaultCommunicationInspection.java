@@ -1,5 +1,6 @@
 package xyz.avasilev.taskcomm.communication.internal.inspection;
 
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -18,6 +19,7 @@ import xyz.avasilev.taskcomm.PayloadShape;
 import xyz.avasilev.taskcomm.SqlQuery;
 import xyz.avasilev.taskcomm.communication.api.CommunicationStatus;
 import xyz.avasilev.taskcomm.communication.api.inspection.CircuitBreakerSnapshot;
+import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationAttemptEntry;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationAttemptSnapshot;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationInspection;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationQuery;
@@ -47,7 +49,7 @@ public class DefaultCommunicationInspection implements CommunicationInspection {
             SELECT c.id, c.execution_id, c.execution_created_at, c.direction,
                    coalesce(c.source, c.destination) AS system, c.status, c.status_description, c.phase,
                    c.contract_shape, c.priority, c.created_at, c.updated_at, c.origin_type, c.origin_id,
-                   c.origin_attempt_id, c.origin_relation, c.request_payload::text AS request_payload
+                   c.origin_attempt_id, c.origin_relation, c.run_mode, c.request_payload::text AS request_payload
               FROM tc_communication c
             """;
 
@@ -93,6 +95,15 @@ public class DefaultCommunicationInspection implements CommunicationInspection {
             (c.execution_created_at, c.id) IN (
                 SELECT k.execution_created_at, k.communication_id FROM tc_communication_correlation k
                  WHERE k.external_system = :correlationSystem AND k.correlation_id = :correlationId)
+            """;
+
+    /** Попытки всех коммуникаций дела — без обмена. */
+    private static final String ATTEMPT_ENTRIES = """
+            SELECT a.id, a.communication_id, a.phase, a.status, a.status_description, a.started_at, a.finished_at
+              FROM tc_communication_attempt a
+              JOIN tc_communication c ON c.execution_created_at = a.execution_created_at AND c.id = a.communication_id
+             WHERE c.execution_created_at = :executionCreatedAt AND c.execution_id = :executionId
+             ORDER BY a.created_at, a.id
             """;
 
     private static final String SUMMARY = """
@@ -305,6 +316,35 @@ public class DefaultCommunicationInspection implements CommunicationInspection {
                         rs.getObject("communication_id", UUID.class),
                         rs.getObject("created_at", OffsetDateTime.class).toInstant()))
                 .list();
+    }
+
+    @Override
+    public SqlQuery attemptEntriesSql(final ExecutionRef execution) {
+        final Map<String, Object> params = new LinkedHashMap<>();
+        params.put("executionCreatedAt", CommunicationSql.parameter(execution.createdAt()));
+        params.put("executionId", execution.id());
+        return new SqlQuery(ATTEMPT_ENTRIES, params);
+    }
+
+    @Override
+    public List<CommunicationAttemptEntry> attemptEntries(final ExecutionRef execution) {
+        final SqlQuery statement = this.attemptEntriesSql(execution);
+        return this.jdbc
+                .sql(statement.sql())
+                .params(statement.parameters())
+                .query((rs, rowNum) -> new CommunicationAttemptEntry(
+                        rs.getObject("communication_id", UUID.class),
+                        rs.getObject("id", UUID.class),
+                        rs.getString("phase"),
+                        rs.getString("status"),
+                        rs.getString("status_description"),
+                        instantOrNull(rs.getObject("started_at", OffsetDateTime.class)),
+                        instantOrNull(rs.getObject("finished_at", OffsetDateTime.class))))
+                .list();
+    }
+
+    private static Instant instantOrNull(final OffsetDateTime value) {
+        return value == null ? null : value.toInstant();
     }
 
     @Override

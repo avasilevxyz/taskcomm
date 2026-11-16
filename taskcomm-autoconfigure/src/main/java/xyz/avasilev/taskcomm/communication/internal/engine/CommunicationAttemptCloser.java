@@ -24,9 +24,6 @@ public class CommunicationAttemptCloser {
     /** Начало причины {@code FAILED} у коммуникации, которой процессор запретил повтор. */
     static final String DO_NOT_RETRY = "повторять запрещено: ";
 
-    /** Начало причины {@code FAILED} у синхронно принятой коммуникации. */
-    static final String SYNC_FAILED = "синхронный приём не повторяется: ";
-
     /** Блокировка строки коммуникации: приём колбэка правит ту же строку (docs/adr/0099-early-callback-proves-delivery.md). */
     private static final String LOCK =
             "SELECT id::text FROM tc_communication WHERE execution_created_at = :executionCreatedAt AND id = :id FOR UPDATE";
@@ -105,21 +102,6 @@ public class CommunicationAttemptCloser {
                         closed(attempt),
                         doNotRetry == null,
                         doNotRetry == null ? null : DO_NOT_RETRY + doNotRetry));
-    }
-
-    /**
-     * Закрывает попытку синхронного приёма неуспехом: коммуникация {@code FAILED} без повтора —
-     * отвечать отправителю повтором уже некому (docs/adr/0133-synchronous-inbound-reception.md).
-     *
-     * @param attempt захваченная работа
-     * @param failure причина неуспеха
-     * @return {@code true}, если попытка была открыта и закрыта этим вызовом
-     */
-    boolean failWithoutRetry(final ClaimedCommunication attempt, final String failure) {
-        return this.close(
-                attempt,
-                new Outcome("FAILED", failure, null),
-                jdbc -> this.retries.afterUnsuccessful(jdbc, closed(attempt), false, SYNC_FAILED + failure));
     }
 
     private boolean close(

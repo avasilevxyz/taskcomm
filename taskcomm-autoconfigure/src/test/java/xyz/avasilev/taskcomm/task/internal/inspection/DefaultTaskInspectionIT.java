@@ -21,6 +21,7 @@ import xyz.avasilev.taskcomm.execution.api.HistoryWindow;
 import xyz.avasilev.taskcomm.execution.api.Page;
 import xyz.avasilev.taskcomm.execution.api.PageRequest;
 import xyz.avasilev.taskcomm.rest.SqlLiterals;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskAttemptEntry;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskAttemptSnapshot;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskQuery;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskSnapshot;
@@ -341,6 +342,44 @@ class DefaultTaskInspectionIT {
         return this.inspection.list(query, this.window(), page).items().stream()
                 .map(TaskSnapshot::id)
                 .toList();
+    }
+
+    /**
+     * Подзадачи для экрана дела (docs/adr/0166-execution-outline-units-and-attempts.md): не больше предела
+     * у каждого родителя, первые по созданию, с попыткой-создателем; попытки — задач, групп и только этих
+     * подзадач; подставленный SQL даёт те же строки.
+     */
+    @Test
+    void unitsPerParentAndAttemptEntries() {
+        final CreatedTask task = this.submit("A-1");
+        final UUID expansion = this.db.ids.next();
+        final UUID batch = this.batch(task, expansion);
+        final UUID first = this.unit(task, batch, "PENDING", expansion);
+        final UUID second = this.unit(task, batch, "PENDING", expansion);
+        this.unit(task, batch, "PENDING", expansion);
+        final UUID direct = this.unit(task, null, "PENDING", expansion);
+        this.db
+                .claimer("worker-a", TaskTestSettings.settings(3, Duration.ZERO, Duration.ofMinutes(1)), () -> 0.5)
+                .claim(
+                        TaskTestSettings.mainPoller(ClaimForm.DEADLINE),
+                        Map.of(TaskTestDatabase.FLAT_TYPE, ContractShape.FLAT),
+                        1);
+
+        final List<TaskSnapshot> units = this.inspection.units(task.execution(), 2);
+
+        assertThat(units).extracting(TaskSnapshot::id).containsExactlyInAnyOrder(first, second, direct);
+        assertThat(units).allSatisfy(unit -> assertThat(unit.parentAttemptId()).contains(expansion));
+        assertThat(this.ids(this.inspection.unitsSql(task.execution(), 2)))
+                .containsExactlyElementsOf(units.stream().map(TaskSnapshot::id).toList());
+        final List<TaskAttemptEntry> attempts = this.inspection.attemptEntries(task.execution(), 2);
+        // Захвачена одна из сущностей дела в очереди — задача или группа; открытая попытка без исхода.
+        assertThat(attempts).singleElement().satisfies(attempt -> {
+            assertThat(attempt.targetId()).isIn(task.id(), batch);
+            assertThat(attempt.status()).isNull();
+        });
+        assertThat(this.ids(this.inspection.attemptEntriesSql(task.execution(), 2)))
+                .containsExactlyElementsOf(
+                        attempts.stream().map(TaskAttemptEntry::id).toList());
     }
 
     @Test

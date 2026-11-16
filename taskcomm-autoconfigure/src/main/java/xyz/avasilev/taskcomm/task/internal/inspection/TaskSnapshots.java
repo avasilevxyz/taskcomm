@@ -36,7 +36,10 @@ final class TaskSnapshots {
                         rs.getObject("id", UUID.class),
                         new ExecutionRef(rs.getObject("execution_id", UUID.class), instant(rs, "execution_created_at")),
                         rs.getString("task_type")),
-                new Parents(rs.getObject("task_id", UUID.class), rs.getObject("batch_id", UUID.class)),
+                new Parents(
+                        rs.getObject("task_id", UUID.class),
+                        rs.getObject("batch_id", UUID.class),
+                        rs.getObject("parent_attempt_id", UUID.class)),
                 new State(
                         rs.getString("status"),
                         rs.getString("status_description"),
@@ -52,6 +55,19 @@ final class TaskSnapshots {
                                 OriginRelation.valueOf(rs.getString("origin_relation"))),
                 rs.getString("payload"),
                 orphan);
+    }
+
+    /**
+     * Время из колонки или {@code null}.
+     *
+     * @param rs строка
+     * @param column колонка
+     * @return время или {@code null}
+     * @throws SQLException ошибка чтения
+     */
+    static Instant instantOrNull(final ResultSet rs, final String column) throws SQLException {
+        final OffsetDateTime value = rs.getObject(column, OffsetDateTime.class);
+        return value == null ? null : value.toInstant();
     }
 
     /**
@@ -92,8 +108,9 @@ final class TaskSnapshots {
      *
      * @param taskId задача или {@code null}
      * @param batchId группа или {@code null}
+     * @param parentAttemptId попытка раскрытия родителя или {@code null} у задачи
      */
-    private record Parents(UUID taskId, UUID batchId) {}
+    private record Parents(UUID taskId, UUID batchId, UUID parentAttemptId) {}
 
     /**
      * Состояние.
@@ -159,6 +176,11 @@ final class TaskSnapshots {
         @Override
         public Optional<UUID> batchId() {
             return Optional.ofNullable(this.parents.batchId());
+        }
+
+        @Override
+        public Optional<UUID> parentAttemptId() {
+            return Optional.ofNullable(this.parents.parentAttemptId());
         }
 
         @Override

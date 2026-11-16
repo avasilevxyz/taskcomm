@@ -21,6 +21,7 @@ import xyz.avasilev.taskcomm.execution.api.HistoryWindow;
 import xyz.avasilev.taskcomm.execution.api.Page;
 import xyz.avasilev.taskcomm.execution.api.PageRequest;
 import xyz.avasilev.taskcomm.task.api.inspection.SearchableFieldSnapshot;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskAttemptEntry;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskAttemptSnapshot;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskInspection;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskQuery;
@@ -45,7 +46,7 @@ public class DefaultTaskInspection implements TaskInspection {
             SELECT e.id, e.execution_id, e.execution_created_at, e.task_type, NULL::uuid AS task_id,
                    NULL::uuid AS batch_id, e.status, e.status_description, e.phase, e.priority, e.created_at,
                    e.updated_at, e.origin_type, e.origin_id, e.origin_attempt_id, e.origin_relation,
-                   e.payload::text AS payload
+                   NULL::uuid AS parent_attempt_id, e.payload::text AS payload
               FROM tc_task e
             """;
 
@@ -53,7 +54,7 @@ public class DefaultTaskInspection implements TaskInspection {
             SELECT e.id, e.execution_id, e.execution_created_at, e.task_type, e.task_id, NULL::uuid AS batch_id,
                    e.status, e.status_description, e.phase, e.priority, e.created_at, e.updated_at,
                    NULL::text AS origin_type, NULL::uuid AS origin_id, NULL::uuid AS origin_attempt_id,
-                   NULL::text AS origin_relation, e.payload::text AS payload
+                   NULL::text AS origin_relation, e.parent_attempt_id, e.payload::text AS payload
               FROM tc_task_batch e
             """;
 
@@ -61,8 +62,44 @@ public class DefaultTaskInspection implements TaskInspection {
             SELECT e.id, e.execution_id, e.execution_created_at, e.task_type, e.task_id, e.batch_id,
                    e.status, e.status_description, 'PROCESS' AS phase, e.priority, e.created_at, e.updated_at,
                    NULL::text AS origin_type, NULL::uuid AS origin_id, NULL::uuid AS origin_attempt_id,
-                   NULL::text AS origin_relation, e.payload::text AS payload
+                   NULL::text AS origin_relation, e.parent_attempt_id, e.payload::text AS payload
               FROM tc_task_unit e
+            """;
+
+    /** Подзадачи дела, первые {@code perParent} у каждого родителя — группы или, без групп, задачи. */
+    private static final String UNITS_PER_PARENT = """
+            SELECT e.id, e.execution_id, e.execution_created_at, e.task_type, e.task_id, e.batch_id,
+                   e.status, e.status_description, 'PROCESS' AS phase, e.priority, e.created_at, e.updated_at,
+                   NULL::text AS origin_type, NULL::uuid AS origin_id, NULL::uuid AS origin_attempt_id,
+                   NULL::text AS origin_relation, e.parent_attempt_id, e.payload::text AS payload
+              FROM (SELECT u.*, row_number() OVER (PARTITION BY coalesce(u.batch_id, u.task_id)
+                                                   ORDER BY u.created_at, u.id) AS rn
+                      FROM tc_task_unit u
+                     WHERE u.execution_created_at = :executionCreatedAt AND u.execution_id = :executionId) e
+             WHERE e.rn <= :perParent
+             ORDER BY e.created_at, e.id
+            """;
+
+    /** Попытки задач и групп дела и подзадач из {@link #UNITS_PER_PARENT} — без результатов. */
+    private static final String ATTEMPT_ENTRIES = """
+            SELECT a.id, a.level, a.target_id, a.phase, a.status, a.status_description, a.started_at, a.finished_at
+              FROM tc_task_attempt a
+             WHERE a.execution_created_at = :executionCreatedAt
+               AND (   (a.level = 'TASK' AND a.target_id IN (
+                            SELECT t.id FROM tc_task t
+                             WHERE t.execution_created_at = :executionCreatedAt AND t.execution_id = :executionId))
+                    OR (a.level = 'BATCH' AND a.target_id IN (
+                            SELECT b.id FROM tc_task_batch b
+                             WHERE b.execution_created_at = :executionCreatedAt AND b.execution_id = :executionId))
+                    OR (a.level = 'UNIT' AND a.target_id IN (
+                            SELECT u.id
+                              FROM (SELECT u.id, row_number() OVER (PARTITION BY coalesce(u.batch_id, u.task_id)
+                                                                    ORDER BY u.created_at, u.id) AS rn
+                                      FROM tc_task_unit u
+                                     WHERE u.execution_created_at = :executionCreatedAt
+                                       AND u.execution_id = :executionId) u
+                             WHERE u.rn <= :perParent)))
+             ORDER BY a.started_at, a.id
             """;
 
     private static final String ATTEMPTS = """
@@ -323,6 +360,54 @@ public class DefaultTaskInspection implements TaskInspection {
                         rs.getString("status"),
                         rs.getLong("n")))
                 .list();
+    }
+
+    @Override
+    public List<TaskSnapshot> units(final ExecutionRef execution, final int perParent) {
+        final SqlQuery statement = this.unitsSql(execution, perParent);
+        final Set<String> known = this.registry.get().types();
+        return this.jdbc
+                .sql(statement.sql())
+                .params(statement.parameters())
+                .query((rs, rowNum) ->
+                        TaskSnapshots.entity(rs, TaskSnapshot.Level.UNIT, !known.contains(rs.getString("task_type"))))
+                .list();
+    }
+
+    @Override
+    public SqlQuery unitsSql(final ExecutionRef execution, final int perParent) {
+        return new SqlQuery(UNITS_PER_PARENT, executionParams(execution, perParent));
+    }
+
+    @Override
+    public List<TaskAttemptEntry> attemptEntries(final ExecutionRef execution, final int unitsPerParent) {
+        final SqlQuery statement = this.attemptEntriesSql(execution, unitsPerParent);
+        return this.jdbc
+                .sql(statement.sql())
+                .params(statement.parameters())
+                .query((rs, rowNum) -> new TaskAttemptEntry(
+                        TaskSnapshot.Level.valueOf(rs.getString("level")),
+                        rs.getObject("target_id", UUID.class),
+                        rs.getObject("id", UUID.class),
+                        rs.getString("phase"),
+                        rs.getString("status"),
+                        rs.getString("status_description"),
+                        rs.getObject("started_at", OffsetDateTime.class).toInstant(),
+                        TaskSnapshots.instantOrNull(rs, "finished_at")))
+                .list();
+    }
+
+    @Override
+    public SqlQuery attemptEntriesSql(final ExecutionRef execution, final int unitsPerParent) {
+        return new SqlQuery(ATTEMPT_ENTRIES, executionParams(execution, unitsPerParent));
+    }
+
+    private static Map<String, Object> executionParams(final ExecutionRef execution, final int perParent) {
+        final Map<String, Object> params = new LinkedHashMap<>();
+        params.put("executionCreatedAt", TaskSql.parameter(execution.createdAt()));
+        params.put("executionId", execution.id());
+        params.put("perParent", perParent);
+        return params;
     }
 
     @Override

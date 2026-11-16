@@ -57,6 +57,44 @@ private Ack send(Communication.Outbound<Order> outbound, CommunicationContext co
 `503` пройдёт как успех, повтора не будет, а размыкатель не узнает об отказе. Проверить это
 за вас нечем; REST- или SOAP-процессор, вернувшийся без записанного ответа, даёт WARN.
 
+## Синхронная отправка
+
+Бывает, что ответ внешней системы нужен прямо сейчас — например, раскрытию задачи: на какие
+группы её делить, видно только из ответа. `sendAndProcess` создаёт коммуникацию и обрабатывает её
+**в вашем потоке**, а синхронный ответ процессора возвращает вам:
+
+```java
+@Override
+public void expand(Task<Shipment> task, BatchSink<Stock, StockLine> sink, TaskContext context) {
+    StockAnswer stock = switch (communicationService.sendAndProcess(
+            "stock", new StockQuery(task.payload().orderId()))) {
+        case SendAndProcessResult.Processed<StockQuery, StockAnswer, Void> ok -> ok.response();
+        case SendAndProcessResult.Failed<StockQuery, StockAnswer, Void> failed ->
+                throw new IllegalStateException(failed.reason());
+        default -> throw new IllegalStateException("остатки недоступны");
+    };
+    stock.warehouses().forEach(warehouse -> sink.emit(new Stock(warehouse)));
+}
+```
+
+- **Повторы — в вашем потоке** по [настройкам повторов](retries.md) системы: паузу ждёт вызов,
+  следующую попытку берёт он же. Фоном такую коммуникацию (режим `SYNC`) движок не повторяет:
+  умер ваш поток — она `FAILED`.
+- **Размыкатель и ограничение скорости** вызов ждёт не дольше `sync-wait` — из
+  `SyncSendOptions.syncWait(...)` или свойства системы, по умолчанию 30 с. Не дождался до первой
+  попытки — `Unavailable`, и коммуникация **не создаётся**.
+- **Колбэк** по умолчанию не ждёт: его обработает движок. `SyncSendOptions.awaitResponse(предел)`
+  ждёт его опросом — `Responded` с колбэком или `Awaiting`, если предел вышел раньше.
+- **Вне своей транзакции**, как синхронный приём, и без `notBefore` — то и другое бросает
+  исключение до записи.
+- **Время вызова — ваше**: у раскрытия оно идёт в предел обработки фазы.
+- Вручную синхронную исходящую **не перезапускают** — ответ ждал ваш вызов.
+
+Итог — запечатанный `SendAndProcessResult`: `Processed`, `Responded`, `Awaiting`, `Failed`,
+`Duplicate`, `Unavailable`. Решение — [ADR 0167](../../adr/0167-communication-run-mode.md).
+
+## Тайм-аут клиента
+
 **У клиента внешней системы обязан быть тайм-аут, и короче предела обработки.** Прервать ваш код
 стартер не может: зависший вызов держит воркера, сколько висит. Предел обработки закроет попытку
 неуспешной, но поток останется занятым, пока клиент не вернёт управление, а размыкатель превышение

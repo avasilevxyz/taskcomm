@@ -32,7 +32,12 @@ final class ProcessorSettingsAnnotations {
     static final String FOREIGN = "xyz.avasilev.taskcomm.task.api.processor.TaskProcessorSettings";
 
     private static final List<String> SYSTEM_ONLY = List.of(
-            "priority", "responseTimeout", "failureStatuses", "rateLimitPerInstance", "circuitBreakerExceptions");
+            "priority",
+            "responseTimeout",
+            "failureStatuses",
+            "rateLimitPerInstance",
+            "circuitBreakerExceptions",
+            "syncWait");
 
     private ProcessorSettingsAnnotations() {}
 
@@ -117,6 +122,7 @@ final class ProcessorSettingsAnnotations {
             this.put("failureStatuses", List.of(annotation.getStringArray("failureStatuses")), source);
             this.put("rateLimitPerInstance", annotation.getDouble("rateLimitPerInstance"), source);
             this.put("circuitBreakerExceptions", List.of(annotation.getClassArray("circuitBreakerExceptions")), source);
+            this.put("syncWait", annotation.getString("syncWait"), source);
         }
 
         boolean has(final String attribute) {
@@ -140,7 +146,8 @@ final class ProcessorSettingsAnnotations {
                     (List<String>) this.values.get("failureStatuses"),
                     this.duration("responseTimeout"),
                     (Double) this.values.get("rateLimitPerInstance"),
-                    new BreakerOverride(null, this.exceptionNames()));
+                    new BreakerOverride(null, this.exceptionNames()),
+                    this.duration("syncWait"));
         }
 
         private void put(final String attribute, final Object value, final String source) {

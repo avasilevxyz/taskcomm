@@ -66,6 +66,7 @@ final class CommunicationSettingsResolver {
         final Map<String, Duration> timeouts = new HashMap<>();
         final Map<String, Double> rateLimits = new HashMap<>();
         final Map<String, BreakerPolicy> breakers = new HashMap<>();
+        final Map<String, Duration> syncWaits = new HashMap<>();
         for (final RegisteredProcessor processor : registry.all()) {
             final String system = processor.system();
             final SettingsOverride onClass = ProcessorSettingsAnnotations.onClass(processor.processorClass());
@@ -75,14 +76,11 @@ final class CommunicationSettingsResolver {
             statuses.put(system, failure);
             final Duration timeout = this.responseTimeout(system, onClass);
             timeouts.put(system, timeout);
+            syncWaits.put(system, this.syncWait(system, onClass));
             this.report.add("система '" + system + "' (" + processor.shape() + "), приоритет " + priority
-                    + ", отказные статусы " + failure.values() + ", срок ожидания ответа " + timeout);
-            for (final CommunicationPhase phase : CommunicationPhase.values()) {
-                final SettingsOverride onMethod =
-                        ProcessorSettingsAnnotations.onMethod(processor.processorClass(), phase);
-                attempts.put(
-                        new CommunicationSettings.Key(system, phase), this.attempt(system, phase, onMethod, onClass));
-            }
+                    + ", отказные статусы " + failure.values() + ", срок ожидания ответа " + timeout
+                    + ", ожидание защиты синхронной отправкой " + syncWaits.get(system));
+            this.phases(processor, onClass, attempts);
             this.guards(
                     system,
                     onClass,
@@ -113,7 +111,7 @@ final class CommunicationSettingsResolver {
                 statuses,
                 timeouts,
                 this.timing,
-                new CommunicationSettings.Guards(rateLimits, breakers),
+                new CommunicationSettings.Guards(rateLimits, breakers, syncWaits),
                 this.heartbeatTick(attempts),
                 this.pollers);
     }
@@ -172,6 +170,35 @@ final class CommunicationSettingsResolver {
             return fromYaml;
         }
         return onClass.priority() != null ? onClass.priority() : CommunicationSettings.DEFAULT_PRIORITY;
+    }
+
+    /** Аренда и повторы фаз системы с процессором — уровни 1–5. */
+    private void phases(
+            final RegisteredProcessor processor,
+            final SettingsOverride onClass,
+            final Map<CommunicationSettings.Key, AttemptSettings> attempts) {
+        for (final CommunicationPhase phase : CommunicationPhase.values()) {
+            final SettingsOverride onMethod = ProcessorSettingsAnnotations.onMethod(processor.processorClass(), phase);
+            attempts.put(
+                    new CommunicationSettings.Key(processor.system(), phase),
+                    this.attempt(processor.system(), phase, onMethod, onClass));
+        }
+    }
+
+    private Duration syncWait(final String system, final SettingsOverride onClass) {
+        final Duration fromYaml =
+                this.yaml.getOrDefault(system, SystemOverrides.NONE).system().syncWait();
+        final Duration chosen = fromYaml != null ? fromYaml : onClass.syncWait();
+        if (chosen == null) {
+            return this.timing.syncWait();
+        }
+        build(
+                () -> {
+                    Timing.notNegative("sync-wait", chosen);
+                    return chosen;
+                },
+                "внешняя система '" + system + "'");
+        return chosen;
     }
 
     private Duration responseTimeout(final String system, final SettingsOverride onClass) {

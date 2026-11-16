@@ -12,6 +12,7 @@ import org.springframework.core.ResolvableType;
 import xyz.avasilev.taskcomm.communication.api.CommunicationHeaders;
 import xyz.avasilev.taskcomm.communication.api.CommunicationStatus;
 import xyz.avasilev.taskcomm.communication.api.ExchangeMessage;
+import xyz.avasilev.taskcomm.communication.api.RunMode;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationAttemptSnapshot;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSnapshot;
 import xyz.avasilev.taskcomm.communication.internal.CommunicationCodec;
@@ -52,7 +53,8 @@ final class CommunicationSnapshots {
                         rs.getString("status_description"),
                         rs.getString("phase"),
                         rs.getString("contract_shape"),
-                        rs.getInt("priority")),
+                        rs.getInt("priority"),
+                        RunMode.valueOf(rs.getString("run_mode"))),
                 new Times(instant(rs, "created_at"), instant(rs, "updated_at")),
                 originType == null
                         ? null
@@ -150,9 +152,15 @@ final class CommunicationSnapshots {
      * @param phase фаза
      * @param contractShape форма контракта или {@code null}
      * @param priority приоритет
+     * @param runMode режим запуска
      */
     private record State(
-            CommunicationStatus status, String description, String phase, String contractShape, int priority) {}
+            CommunicationStatus status,
+            String description,
+            String phase,
+            String contractShape,
+            int priority,
+            RunMode runMode) {}
 
     /**
      * Пара моментов.
@@ -250,6 +258,11 @@ final class CommunicationSnapshots {
         @Override
         public Optional<String> requestPayload() {
             return Optional.ofNullable(this.payload);
+        }
+
+        @Override
+        public RunMode runMode() {
+            return this.state.runMode();
         }
     }
 

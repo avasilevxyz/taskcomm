@@ -38,7 +38,10 @@ import xyz.avasilev.taskcomm.execution.api.OriginType;
  *
  * <ul>
  *   <li><b>Брошенные попытки</b> — открытые, с истёкшей арендой — закрываются {@code LEASE_LOST},
- *       коммуникация уходит в очередь со следующей попыткой или становится терминальной.
+ *       коммуникация уходит в очередь со следующей попыткой или становится терминальной. Синхронную
+ *       отправку или приём, чей вызывающий не дождался, фоном не повторяют: {@code FAILED}
+ *       (docs/adr/0167-communication-run-mode.md).
+ *   <li>Синхронные коммуникации захват не берёт — их ведёт вызывающий; колбэк синхронной берёт.
  *   <li><b>Захват — одноветочный</b>: готовая коммуникация в {@code PENDING} соединяется со своей
  *       открытой, ещё не захваченной попыткой той фазы, что записана на коммуникации, и аренда
  *       <b>проставляется в существующую строку</b>, а не вставляется.
@@ -53,12 +56,15 @@ import xyz.avasilev.taskcomm.execution.api.OriginType;
 @Slf4j
 public class CommunicationClaimer {
 
+    /** Начало причины {@code FAILED} синхронной коммуникации, чей вызывающий не дождался попытки. */
+    static final String SYNC_ABANDONED = "синхронная: вызывающий не дождался попытки — ";
+
     private static final String RANGE = """
             AND %1$s.execution_created_at >= :activeFrom AND %1$s.execution_created_at < :activeTo""";
 
     private static final String EXPIRED = """
             SELECT a.id AS attempt_id, a.execution_created_at, a.communication_id, a.phase, a.locked_by,
-                   a.lease_renewals, c.direction, coalesce(c.source, c.destination) AS system
+                   a.lease_renewals, c.direction, coalesce(c.source, c.destination) AS system, c.run_mode
               FROM tc_communication c
               JOIN tc_communication_attempt a ON a.execution_created_at = c.execution_created_at
                    AND a.communication_id = c.id AND a.finished_at IS NULL AND a.locked_until < now() %2$s
@@ -269,6 +275,8 @@ public class CommunicationClaimer {
                 .param("attemptId", expired.attemptId())
                 .update();
         if (closed == 1) {
+            // Синхронную ждал вызывающий в своём потоке — раз он её бросил, фоном её не повторяют.
+            final boolean abandoned = expired.sync() && expired.phase() == CommunicationPhase.PROCESS;
             this.retries.afterUnsuccessful(
                     this.jdbc,
                     new CommunicationRetries.Closed(
@@ -277,8 +285,8 @@ public class CommunicationClaimer {
                             expired.system(),
                             expired.direction(),
                             expired.phase()),
-                    true,
-                    null);
+                    !abandoned,
+                    abandoned ? SYNC_ABANDONED + reason : null);
         }
     }
 
@@ -335,7 +343,8 @@ public class CommunicationClaimer {
                 Direction.valueOf(rs.getString("direction")),
                 CommunicationPhase.valueOf(rs.getString("phase")),
                 rs.getString("locked_by"),
-                rs.getInt("lease_renewals"));
+                rs.getInt("lease_renewals"),
+                "SYNC".equals(rs.getString("run_mode")));
     }
 
     private static Candidate candidate(final ResultSet rs) throws SQLException {
@@ -377,6 +386,7 @@ public class CommunicationClaimer {
      * @param phase фаза
      * @param lockedBy экземпляр, не продливший аренду
      * @param leaseRenewals сколько раз аренда продлевалась
+     * @param sync синхронный запуск — фоном не повторяется
      */
     private record Expired(
             CommunicationRef target,
@@ -385,7 +395,8 @@ public class CommunicationClaimer {
             Direction direction,
             CommunicationPhase phase,
             String lockedBy,
-            int leaseRenewals) {}
+            int leaseRenewals,
+            boolean sync) {}
 
     /**
      * Готовая коммуникация с открытой незахваченной попыткой.

@@ -96,7 +96,7 @@ class SchemaScriptIT {
                 .isInstanceOf(TaskcommConfigurationException.class)
                 .hasMessageContaining("'" + schema + "'")
                 .hasMessageContaining("нет таблиц tc_execution, tc_task")
-                .hasMessageContaining("Примените миграции taskcomm 2.0.0")
+                .hasMessageContaining("Примените миграции taskcomm 2.3.0")
                 .hasMessageContaining(CHANGELOG);
     }
 

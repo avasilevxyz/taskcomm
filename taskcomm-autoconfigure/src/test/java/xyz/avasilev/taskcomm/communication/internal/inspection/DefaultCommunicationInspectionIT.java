@@ -252,6 +252,22 @@ class DefaultCommunicationInspectionIT {
                 .containsExactly("corr-1");
     }
 
+    /** Попытки коммуникаций дела без обмена (docs/adr/0166-execution-outline-units-and-attempts.md). */
+    @Test
+    void attemptEntriesOfExecution() {
+        final CreatedCommunication owner = this.outbound("stock", NewCommunication.Keys.NONE);
+        this.outbound("stock", NewCommunication.Keys.NONE);
+
+        assertThat(this.inspection.attemptEntries(owner.execution()))
+                .singleElement()
+                .satisfies(attempt -> {
+                    assertThat(attempt.communicationId()).isEqualTo(owner.id());
+                    assertThat(attempt.status()).isNull();
+                });
+        assertThat(this.ids(this.inspection.attemptEntriesSql(owner.execution())))
+                .hasSize(1);
+    }
+
     private List<UUID> ids(final SqlQuery query) {
         return this.db
                 .jdbc
