@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { STATUSES } from './api';
+import { RUN_MODES, STATUSES } from './api';
 import { DICTIONARIES, format } from './i18n';
 
 describe('словари', () => {
@@ -21,10 +21,11 @@ describe('словари', () => {
     expect(format('Дело {id}: {missing}', { id: 'A-1' })).toBe('Дело A-1: {missing}');
   });
 
-  it('у каждого статуса фильтров и каждой фазы есть подпись', () => {
+  it('у каждого статуса фильтров, каждой фазы и каждого режима запуска есть подпись', () => {
     const codes = [
       ...[...new Set(Object.values(STATUSES).flat())].map((status) => `status.${status}`),
       ...['EXPAND', 'PROCESS', 'COLLECT', 'HANDLE_RESPONSE'].map((phase) => `phase.${phase}`),
+      ...RUN_MODES.flatMap((mode) => [`runMode.${mode}`, `runModeHint.${mode}`]),
     ];
     for (const key of codes) {
       expect(DICTIONARIES.ru, key).toHaveProperty([key]);

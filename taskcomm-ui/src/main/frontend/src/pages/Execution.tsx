@@ -10,6 +10,7 @@ import {
   IdLink,
   Loadable,
   OrphanTag,
+  SyncTag,
   ProcessorTitle,
   shortId,
   StatusTag,
@@ -110,9 +111,12 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
         id: item.id,
         name: `${t(`direction.${item.direction}`)} · ${item.externalSystem}`,
         label: (
-          <span>
-            {t(`direction.${item.direction}`)} · <ProcessorTitle kind="system" id={item.externalSystem} />
-          </span>
+          <Space size={4}>
+            <span>
+              {t(`direction.${item.direction}`)} · <ProcessorTitle kind="system" id={item.externalSystem} />
+            </span>
+            <SyncTag runMode={item.runMode} />
+          </Space>
         ),
         status: item.state.status,
         description: item.state.statusDescription,
@@ -269,6 +273,7 @@ function NodeTitle({ node, onMore }: { node: TreeNode; onMore: (more: MoreNode) 
           </span>
           <StatusTag status={node.communication.state.status} description={node.communication.state.statusDescription} />
           <OrphanTag orphan={node.communication.state.orphan} />
+          <SyncTag runMode={node.communication.runMode} />
         </>
       )}
       {node.outsideOrigin && (

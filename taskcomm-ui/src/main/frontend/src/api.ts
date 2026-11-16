@@ -208,8 +208,14 @@ export interface CommunicationItem {
   origin?: Origin;
   requestPayload?: unknown;
   /** Режим запуска (docs/adr/0167-communication-run-mode.md); нет — старый сервер, асинхронная. */
-  runMode?: 'SYNC' | 'ASYNC';
+  runMode?: RunMode;
 }
+
+/** Режим запуска коммуникации — {@code RunMode} стартера (docs/adr/0167-communication-run-mode.md). */
+export type RunMode = 'SYNC' | 'ASYNC';
+
+/** Все режимы запуска: у каждого есть подпись в словарях. */
+export const RUN_MODES: RunMode[] = ['SYNC', 'ASYNC'];
 
 export interface ExchangeMessage {
   body?: string;

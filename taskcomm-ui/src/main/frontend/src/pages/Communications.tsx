@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { getJson, STATUSES, type CommunicationItem, type Direction, type Page, type Params } from '../api';
 import { useMeta } from '../meta';
-import { communicationPath, IdLink, Loadable, MoreButton, NO_AUTOFILL, OrphanTag, Reason, PhaseLabel, processorOption, ProcessorTitle, StatusTag, by, useStatusOptions, useTime, WindowNote } from '../common';
+import { communicationPath, IdLink, Loadable, MoreButton, NO_AUTOFILL, OrphanTag, Reason, PhaseLabel, processorOption, ProcessorTitle, RunModeLabel, StatusTag, by, useStatusOptions, useTime, WindowNote } from '../common';
 import { useWindowChoice, windowParams } from '../windowChoice';
 import { rowOpens, useEntityPanel } from '../entityPanel';
 import { ColumnsSlotProvider, DataTable, useColumnsSlot } from '../dataTable';
@@ -87,6 +87,12 @@ export function CommunicationTable({ pages, showWindow = true }: {
               },
               { key: 'common.reason', title: t('common.reason'), sorter: by((row: CommunicationItem) => row.state.statusDescription), render: (_, row) => <Reason text={row.state.statusDescription} /> },
               { key: 'common.phase', title: t('common.phase'), sorter: by((row: CommunicationItem) => row.state.phase), render: (_, row) => <PhaseLabel phase={row.state.phase} /> },
+              {
+                key: 'communications.runMode',
+                title: t('communications.runMode'),
+                sorter: by((row: CommunicationItem) => row.runMode ?? 'ASYNC'),
+                render: (_, row) => <RunModeLabel runMode={row.runMode} />,
+              },
               { key: 'common.created', title: t('common.created'), sorter: by((row: CommunicationItem) => row.state.createdAt), render: (_, row) => time(row.state.createdAt) },
               { key: 'common.updated', title: t('common.updated'), sorter: by((row: CommunicationItem) => row.state.updatedAt), render: (_, row) => time(row.state.updatedAt) },
             ]}

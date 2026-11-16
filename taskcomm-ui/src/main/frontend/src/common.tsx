@@ -2,7 +2,7 @@ import { CheckOutlined, CopyOutlined, ExpandOutlined } from '@ant-design/icons';
 import { Alert, Button, Descriptions, Space, Spin, Tag, Tooltip, Typography } from 'antd';
 import { lazy, Suspense, useContext, useLayoutEffect, useRef, useState, type ComponentProps, type Key, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { ApiError, type Origin, type Window } from './api';
+import { ApiError, type Origin, type RunMode, type Window } from './api';
 import { useI18n } from './i18n';
 import { DarkContext, useMeta } from './meta';
 import { useOpenPanel } from './panels';
@@ -288,6 +288,35 @@ export function OrphanTag({ orphan }: { orphan: boolean }) {
   return (
     <Tooltip title={t('common.orphanHint')}>
       <Tag color="volcano">{t('common.orphan')}</Tag>
+    </Tooltip>
+  );
+}
+
+/**
+ * Режим запуска коммуникации с пояснением в подсказке. Сервер без режима — старый, а у него все
+ * коммуникации асинхронные (docs/adr/0167-communication-run-mode.md).
+ */
+export function RunModeLabel({ runMode = 'ASYNC' }: { runMode?: RunMode }) {
+  const { t } = useI18n();
+  return (
+    <Tooltip title={t(`runModeHint.${runMode}`)}>
+      <span>{t(`runMode.${runMode}`)}</span>
+    </Tooltip>
+  );
+}
+
+/**
+ * Метка синхронной коммуникации — рядом с названием, как метка сироты. Асинхронная — обычный случай,
+ * метки у неё нет: она шумела бы у каждой строки.
+ */
+export function SyncTag({ runMode }: { runMode?: RunMode }) {
+  const { t } = useI18n();
+  if (runMode !== 'SYNC') {
+    return null;
+  }
+  return (
+    <Tooltip title={t('runModeHint.SYNC')}>
+      <Tag color="purple">{t('runMode.SYNC')}</Tag>
     </Tooltip>
   );
 }
