@@ -165,6 +165,7 @@ class TaskcommRestAutoConfigurationIT {
                             .content("[1, 2]"))
                     .andExpect(status().isBadRequest());
             intoExecutionById(mvc, executionId, JsonPath.read(created, "$.execution.createdAt"));
+            executionMustExist(mvc, executionId, JsonPath.read(created, "$.execution.createdAt"));
             reads(mvc, id, executionId);
             actions(mvc, id);
         });
@@ -188,6 +189,54 @@ class TaskcommRestAutoConfigurationIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"orderId\":\"A-3\"}"))
                 .andExpect(status().isBadRequest());
+        // Пара тоже проверяется: несуществующее дело с настоящим временем и настоящее с чужим — 400.
+        mvc.perform(post(BASE + "/tasks")
+                        .param("type", "orders")
+                        .param("executionId", UUID.randomUUID().toString())
+                        .param("executionCreatedAt", executionCreatedAt)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"orderId\":\"A-4\"}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post(BASE + "/tasks")
+                        .param("type", "orders")
+                        .param("executionId", executionId)
+                        .param("executionCreatedAt", "2020-01-01T00:00:00Z")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"orderId\":\"A-5\"}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post(BASE + "/communications/outbound/bank")
+                        .param("executionId", UUID.randomUUID().toString())
+                        .param("executionCreatedAt", executionCreatedAt)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"id\":\"phantom-1\"}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post(BASE + "/communications/outbound/bank")
+                        .param("executionId", executionId)
+                        .param("executionCreatedAt", executionCreatedAt)
+                        .param("notBefore", later())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"id\":\"in-execution-1\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.execution.id").value(executionId));
+    }
+
+    /**
+     * Время создания в запросе — ключ партиции, а не доказательство, что дело есть: несуществующее дело
+     * с любым временем — {@code 404}, а не пустое дело.
+     */
+    private static void executionMustExist(final MockMvc mvc, final String executionId, final String createdAt)
+            throws Exception {
+        mvc.perform(get(BASE + "/executions/" + executionId + "/outline").param("createdAt", createdAt))
+                .andExpect(status().isOk());
+        final String phantom = UUID.randomUUID().toString();
+        mvc.perform(get(BASE + "/executions/" + phantom + "/outline").param("createdAt", createdAt))
+                .andExpect(status().isNotFound());
+        mvc.perform(get(BASE + "/executions/" + phantom).param("createdAt", createdAt))
+                .andExpect(status().isNotFound());
+        mvc.perform(get(BASE + "/executions/" + phantom + "/outline/sql").param("createdAt", createdAt))
+                .andExpect(status().isNotFound());
+        mvc.perform(get(BASE + "/executions/" + executionId + "/outline").param("createdAt", "2020-01-01T00:00:00Z"))
+                .andExpect(status().isNotFound());
     }
 
     private static void reads(final MockMvc mvc, final String id, final String executionId) throws Exception {

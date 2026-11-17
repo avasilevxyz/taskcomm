@@ -2,6 +2,7 @@ package xyz.avasilev.taskcomm.execution.internal;
 
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +44,23 @@ public class ExecutionRepository {
                 .single()
                 .toInstant();
         return new ExecutionRef(id, createdAt);
+    }
+
+    /**
+     * Ищет дело по ссылке — в партиции его времени создания, по первичному ключу.
+     *
+     * @param execution ссылка на дело
+     * @return дело или пусто, если такого нет или его партиция удалена
+     */
+    public Optional<Execution> find(final ExecutionRef execution) {
+        return this.jdbc
+                .sql("SELECT id, created_at FROM tc_execution WHERE created_at = :createdAt AND id = :id")
+                .param("createdAt", OffsetDateTime.ofInstant(execution.createdAt(), ZoneOffset.UTC))
+                .param("id", execution.id())
+                .query((rs, rowNum) -> (Execution) new ExecutionRow(
+                        rs.getObject("id", UUID.class),
+                        rs.getObject("created_at", OffsetDateTime.class).toInstant()))
+                .optional();
     }
 
     /**

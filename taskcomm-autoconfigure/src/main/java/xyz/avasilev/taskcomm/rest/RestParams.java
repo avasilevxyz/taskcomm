@@ -5,7 +5,7 @@ import java.time.format.DateTimeParseException;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.api.PageRequest;
 
@@ -67,18 +67,22 @@ final class RestParams {
 
     /**
      * Дело при создании: парой либо одним {@code executionId} — тогда время создания ищется
-     * (docs/adr/0153-ui-creation-refinements.md).
+     * (docs/adr/0153-ui-creation-refinements.md). Пара тоже проверяется: иначе сущность встала бы в дело,
+     * которого нет.
      *
-     * @param lookup поиск дела по идентификатору
+     * @param lookup поиск дела по идентификатору и времени создания, время — {@code null}, если не задано
      * @return дело или {@code null}
      * @throws IllegalArgumentException если задано только время или дело не найдено
      */
-    ExecutionRef execution(final Function<UUID, Optional<ExecutionRef>> lookup) {
+    ExecutionRef execution(final BiFunction<UUID, Instant, Optional<ExecutionRef>> lookup) {
         final UUID id = this.uuid("executionId");
-        if (id != null && this.instant("executionCreatedAt") == null) {
-            return lookup.apply(id).orElseThrow(() -> new IllegalArgumentException("Дело " + id + " не найдено"));
+        final Instant createdAt = this.instant("executionCreatedAt");
+        if (id == null) {
+            // Ничего не задано — без дела; задано одно время — та же ошибка, что у чтения парой.
+            return this.execution();
         }
-        return this.execution();
+        return lookup.apply(id, createdAt)
+                .orElseThrow(() -> new IllegalArgumentException("Дело " + id + " не найдено"));
     }
 
     PageRequest page() {

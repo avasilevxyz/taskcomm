@@ -18,7 +18,6 @@ import xyz.avasilev.taskcomm.SqlQuery;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationInspection;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationQuery;
 import xyz.avasilev.taskcomm.communication.api.inspection.CorrelationKeySnapshot;
-import xyz.avasilev.taskcomm.execution.api.Execution;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.api.ExecutionService;
 import xyz.avasilev.taskcomm.execution.api.HistoryWindow;
@@ -205,9 +204,7 @@ public class ExecutionController extends RestErrors {
     }
 
     private Optional<ExecutionRef> ref(final UUID id, final Instant createdAt) {
-        return createdAt == null
-                ? this.executions.find(id).map(Execution::ref)
-                : Optional.of(new ExecutionRef(id, createdAt));
+        return RestExecutions.find(this.executions, id, createdAt);
     }
 
     private RestDtos.ExecutionDto whole(final ExecutionRef execution) {

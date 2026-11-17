@@ -1,11 +1,12 @@
 package xyz.avasilev.taskcomm.rest;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.task.api.TaskSubmitOptions;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskQuery;
@@ -59,11 +60,11 @@ final class TaskRequests {
      * Опции постановки: дело, {@code priority}, {@code notBefore}.
      *
      * @param params все параметры
-     * @param lookup поиск дела по одному идентификатору
+     * @param lookup поиск дела по идентификатору и времени создания
      * @return опции
      */
     static TaskSubmitOptions options(
-            final Map<String, String> params, final Function<UUID, Optional<ExecutionRef>> lookup) {
+            final Map<String, String> params, final BiFunction<UUID, Instant, Optional<ExecutionRef>> lookup) {
         final RestParams p = new RestParams(params);
         TaskSubmitOptions options = TaskSubmitOptions.defaults();
         final ExecutionRef execution = p.execution(lookup);

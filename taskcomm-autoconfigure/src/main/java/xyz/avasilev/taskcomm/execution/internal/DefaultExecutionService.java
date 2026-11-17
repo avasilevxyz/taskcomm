@@ -4,6 +4,7 @@ import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import xyz.avasilev.taskcomm.execution.api.Execution;
+import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.api.ExecutionService;
 
 /**
@@ -19,5 +20,10 @@ public class DefaultExecutionService implements ExecutionService {
     @Override
     public Optional<Execution> find(final UUID executionId) {
         return this.executions.find(executionId);
+    }
+
+    @Override
+    public Optional<Execution> find(final ExecutionRef execution) {
+        return this.executions.find(execution);
     }
 }

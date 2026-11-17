@@ -26,7 +26,6 @@ import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationInspectio
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationQuery;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSnapshot;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSummary;
-import xyz.avasilev.taskcomm.execution.api.Execution;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.api.ExecutionService;
 import xyz.avasilev.taskcomm.execution.api.HistoryWindow;
@@ -293,8 +292,7 @@ public class CommunicationController extends RestErrors {
 
     private CommunicationSendOptions options(final RestParams p) {
         CommunicationSendOptions options = CommunicationSendOptions.defaults();
-        final ExecutionRef execution =
-                p.execution(id -> this.executions.find(id).map(Execution::ref));
+        final ExecutionRef execution = p.execution(RestExecutions.lookup(this.executions));
         if (execution != null) {
             options = options.inExecution(execution);
         }

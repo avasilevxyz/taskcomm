@@ -4,7 +4,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 import org.springframework.http.HttpStatus;
@@ -17,8 +16,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import xyz.avasilev.taskcomm.execution.api.Execution;
-import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.api.ExecutionService;
 import xyz.avasilev.taskcomm.execution.api.HistoryWindow;
 import xyz.avasilev.taskcomm.execution.api.Page;
@@ -257,7 +254,8 @@ public class TaskController extends RestErrors {
             @RequestParam("type") final String type,
             @RequestBody final String payload,
             @RequestParam final Map<String, String> params) {
-        final Task<?> task = this.tasks.submitJson(type, payload, TaskRequests.options(params, this::findExecution));
+        final Task<?> task = this.tasks.submitJson(
+                type, payload, TaskRequests.options(params, RestExecutions.lookup(this.executions)));
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new RestDtos.CreatedDto(
                         task.id(),
@@ -265,10 +263,6 @@ public class TaskController extends RestErrors {
                         task.status().name(),
                         null,
                         null));
-    }
-
-    private Optional<ExecutionRef> findExecution(final UUID id) {
-        return this.executions.find(id).map(Execution::ref);
     }
 
     /**

@@ -22,4 +22,19 @@ public interface ExecutionService {
      * @return дело или пусто, если его нет — например, оно удалено вместе с партицией
      */
     Optional<Execution> find(UUID executionId);
+
+    /**
+     * Проверяет, что дело есть: ищет его по ссылке — идентификатору и времени создания, в одной
+     * партиции. Ссылку можно собрать из чужих данных, например из параметров запроса, и тогда она
+     * указывает на дело, которого нет; чтения по такой ссылке вернули бы пустое дело.
+     *
+     * <p>По умолчанию — через {@link #find(UUID)} со сверкой времени создания; реализация стартера
+     * читает только партицию дела.
+     *
+     * @param execution ссылка на дело
+     * @return дело или пусто, если его нет или время создания не совпадает
+     */
+    default Optional<Execution> find(final ExecutionRef execution) {
+        return this.find(execution.id()).filter(found -> found.createdAt().equals(execution.createdAt()));
+    }
 }
