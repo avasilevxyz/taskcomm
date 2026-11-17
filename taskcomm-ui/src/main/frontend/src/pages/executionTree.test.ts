@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AttemptEntry, CommunicationItem, ExecutionOutline, Origin, TaskItem } from '../api';
-import { buildTree, CHILD_LIMIT, total } from './executionTree';
+import { buildTree, CHILD_LIMIT, restartBox, restartChoices, restartTargets, toggleRestart, total } from './executionTree';
 
 const EXECUTION = { id: 'e', createdAt: '2026-11-12T00:00:00Z' };
 
@@ -87,30 +87,91 @@ describe('дерево дела', () => {
     expect(root.children.at(-1)?.more).toMatchObject({ level: 'BATCH', count: CHILD_LIMIT + 2 });
   });
 
-  it('две попытки в фазе — узлами, созданное — под своей попыткой; одна попытка — без узла', () => {
-    const attempt = (id: string, targetId: string, phase: string, startedAt: string, status?: string): AttemptEntry => ({
-      id,
-      kind: 'COMMUNICATION',
-      targetId,
-      phase,
-      outcome: { status },
-      times: { startedAt },
-    });
-    const spawned = { type: 'COMMUNICATION' as const, id: 'c1', attemptId: 'a2', relation: 'SPAWNED' };
+  const attempt = (
+    id: string,
+    kind: AttemptEntry['kind'],
+    targetId: string,
+    phase: string,
+    startedAt: string,
+    status?: string,
+  ): AttemptEntry => ({ id, kind, targetId, phase, outcome: { status }, times: { startedAt } });
+
+  it('под сущностью — фазы, под фазой — попытки, если их больше одной, под попыткой — созданное ею по времени', () => {
+    const spawned = (id: string) => ({ type: 'COMMUNICATION' as const, id: 'c1', attemptId: id, relation: 'SPAWNED' });
     const tree = buildTree({
       ...outline,
-      tasks: [outline.tasks[0], task('t2', '2026-11-12T00:00:05Z', spawned)],
+      tasks: [
+        outline.tasks[0],
+        task('t5', '2026-11-12T00:00:07Z', spawned('a2')),
+        task('t4', '2026-11-12T00:00:06Z', spawned('a2')),
+      ],
       attempts: [
-        attempt('a1', 'c1', 'PROCESS', '2026-11-12T00:00:04Z', 'FAILED'),
-        attempt('a2', 'c1', 'PROCESS', '2026-11-12T00:00:05Z', 'SUCCEEDED'),
-        attempt('a3', 'c1', 'RESPONSE', '2026-11-12T00:00:06Z', 'SUCCEEDED'),
+        attempt('a3', 'COMMUNICATION', 'c1', 'HANDLE_RESPONSE', '2026-11-12T00:00:08Z', 'SUCCEEDED'),
+        attempt('a2', 'COMMUNICATION', 'c1', 'PROCESS', '2026-11-12T00:00:05Z', 'SUCCEEDED'),
+        attempt('a1', 'COMMUNICATION', 'c1', 'PROCESS', '2026-11-12T00:00:04Z', 'FAILED'),
       ],
     });
     const comm = tree[0].children.find((node) => node.key === 'COMMUNICATION:c1')!;
 
-    expect(comm.children.map((node) => node.key)).toEqual(['ATTEMPT:a1', 'ATTEMPT:a2']);
-    expect(comm.children.map((node) => node.attempt?.number)).toEqual([1, 2]);
-    expect(comm.children[1].children.map((node) => node.key)).toEqual(['TASK:t2']);
+    // У обработки узла фазы нет: две её попытки — прямо под коммуникацией.
+    expect(comm.children.map((node) => node.key)).toEqual(['ATTEMPT:a1', 'ATTEMPT:a2', 'PHASE-HANDLE_RESPONSE:COMMUNICATION:c1']);
+    expect(comm.children.map((node) => node.attempt?.number)).toEqual([1, 2, undefined]);
+    expect(comm.children[1].children.map((node) => node.key)).toEqual(['TASK:t4', 'TASK:t5']);
+    expect(comm.processAttempt).toBeUndefined();
+    // Одна попытка в фазе узлом не становится.
+    const response = comm.children[2];
+    expect(response.phase).toMatchObject({ attempts: 1, last: { id: 'a3' } });
+    expect(response.children).toEqual([]);
+  });
+
+  it('единственная попытка обработки сливается со строкой сущности, созданное ею — прямо под сущностью', () => {
+    const spawned = { type: 'COMMUNICATION' as const, id: 'c1', attemptId: 'a1', relation: 'SPAWNED' };
+    const tree = buildTree({
+      ...outline,
+      tasks: [outline.tasks[0], task('t4', '2026-11-12T00:00:06Z', spawned)],
+      attempts: [attempt('a1', 'COMMUNICATION', 'c1', 'PROCESS', '2026-11-12T00:00:04Z', 'SUCCEEDED')],
+    });
+    const comm = tree[0].children.find((node) => node.key === 'COMMUNICATION:c1')!;
+
+    expect(comm.processAttempt).toMatchObject({ id: 'a1' });
+    expect(comm.children.map((node) => node.key)).toEqual(['TASK:t4']);
+  });
+
+  it('сборка без попыток, пока задача ждёт детей, — узел фазы; у завершённой — нет', () => {
+    const waiting = { ...task('t1', '2026-11-12T00:00:01Z'), state: { ...task('t1', '2026-11-12T00:00:01Z').state, status: 'AWAITING_CHILDREN', phase: 'COLLECT' } };
+    const base = { ...outline, communications: [], unitCounts: [], attempts: [attempt('x1', 'TASK', 't1', 'EXPAND', '2026-11-12T00:00:01Z', 'SUCCEEDED')] };
+
+    const [root] = buildTree({ ...base, tasks: [waiting] });
+    const phases = root.children.filter((node) => node.kind === 'PHASE');
+    expect(phases.map((node) => node.key)).toEqual(['PHASE-EXPAND:TASK:t1', 'PHASE-COLLECT:TASK:t1']);
+    expect(phases[1].phase).toMatchObject({ attempts: 0, waiting: { status: 'AWAITING_CHILDREN' } });
+    // Группы без попытки-создателя — под самой задачей.
+    expect(root.children.map((node) => node.key)).toContain('BATCH:b1');
+
+    const done = { ...waiting, state: { ...waiting.state, status: 'SUCCEEDED' } };
+    expect(buildTree({ ...base, tasks: [done] })[0].children.filter((node) => node.kind === 'PHASE')).toHaveLength(1);
+  });
+
+  it('единственная попытка раскрытия слита с фазой: группы и кнопка «Все подзадачи» — прямо в фазе', () => {
+    const batch = (id: string, createdAt: string): TaskItem => ({
+      ...task(id, createdAt, undefined, 't1'),
+      parents: { taskId: 't1', attemptId: 'x1' },
+    });
+    const [root] = buildTree({
+      ...outline,
+      communications: [],
+      batches: [batch('b2', '2026-11-12T00:00:03Z'), batch('b1', '2026-11-12T00:00:02Z')],
+      attempts: [attempt('x1', 'TASK', 't1', 'EXPAND', '2026-11-12T00:00:01Z', 'SUCCEEDED')],
+    });
+    const expand = root.children.find((node) => node.kind === 'PHASE')!;
+
+    expect(expand.children.map((node) => node.key)).toEqual(['BATCH:b1', 'BATCH:b2', 'MORE-UNIT:t1']);
+  });
+
+  it('старый сервер без попыток — фаз в дереве нет', () => {
+    const waiting = { ...task('t1', '2026-11-12T00:00:01Z'), state: { ...task('t1', '2026-11-12T00:00:01Z').state, phase: 'COLLECT' } };
+
+    expect(buildTree({ ...outline, tasks: [waiting] })[0].children.some((node) => node.kind === 'PHASE')).toBe(false);
   });
 
   it('раскладывает счётчики подзадач по группе и по задаче без групп', () => {
@@ -120,5 +181,41 @@ describe('дерево дела', () => {
     expect(batch.units).toEqual({ SUCCEEDED: 7, FAILED: 3 });
     expect(total(batch.units)).toBe(10);
     expect(root.units).toEqual({ PENDING: 2 });
+  });
+
+  describe('выбор для перезапуска', () => {
+    const status = (item: TaskItem, value: string): TaskItem => ({ ...item, state: { ...item.state, status: value } });
+    const unit: TaskItem = { ...status(task('u1', '2026-11-12T00:00:09Z'), 'FAILED'), level: 'UNIT', parents: { taskId: 't1', batchId: 'b1' } };
+    const tree = () =>
+      buildTree({
+        ...outline,
+        tasks: [outline.tasks[0]],
+        batches: [status(outline.batches[1], 'SUCCEEDED')],
+        units: [unit],
+        unitCounts: [],
+      });
+
+    it('сущности — с предками в дереве; доступность — по правилам уровня', () => {
+      const choices = restartChoices(tree());
+
+      expect([...choices.keys()]).toEqual(['TASK:t1', 'BATCH:b1', 'UNIT:u1', 'COMMUNICATION:c1']);
+      expect(choices.get('UNIT:u1')!.ancestors).toEqual(['BATCH:b1', 'TASK:t1']);
+      expect(restartBox('TASK:t1', new Set(), choices)).toEqual({ disabled: true, hint: 'notRestartable' });
+      expect(restartBox('COMMUNICATION:c1', new Set(), choices)).toEqual({ disabled: true, hint: 'onlyWithParent' });
+      expect(restartBox('UNIT:u1', new Set(), choices)).toEqual({ disabled: false });
+    });
+
+    it('выбранный родитель снимает выбор с потомков и закрывает их флажки', () => {
+      const choices = restartChoices(tree());
+
+      const unitOnly = toggleRestart(new Set(), choices, 'UNIT:u1', true);
+      const withBatch = toggleRestart(unitOnly, choices, 'BATCH:b1', true);
+
+      expect([...withBatch]).toEqual(['BATCH:b1']);
+      expect(restartBox('UNIT:u1', withBatch, choices)).toEqual({ disabled: true, hint: 'withParent' });
+      expect(restartTargets(withBatch, choices)).toEqual([{ kind: 'BATCH', id: 'b1', executionCreatedAt: EXECUTION.createdAt }]);
+      // Подзадача, выбранная до родителя, на перезапуск не уходит, даже если осталась в выборе.
+      expect(restartTargets(new Set(['BATCH:b1', 'UNIT:u1']), choices).map((target) => target.id)).toEqual(['b1']);
+    });
   });
 });

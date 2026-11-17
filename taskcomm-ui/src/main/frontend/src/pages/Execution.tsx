@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Button, Card, Flex, Progress, Space, Tabs, Tag, Tree, Typography } from 'antd';
+import { Button, Flex, Space, Tabs, Tag, Tree, Typography } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import { useState, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router';
@@ -24,7 +24,16 @@ import { ColumnsSlotProvider, DataTable, useColumnsSlot } from '../dataTable';
 import { useI18n } from '../i18n';
 import { rowOpens, useEntityPanel } from '../entityPanel';
 import { useOpenPanel } from '../panels';
-import { buildTree, total, type MoreNode, type TreeNode } from './executionTree';
+import { RestartBox, RestartSelected } from '../restartMany';
+import {
+  buildTree,
+  restartBox,
+  restartChoices,
+  restartTargets,
+  toggleRestart,
+  type MoreNode,
+  type TreeNode,
+} from './executionTree';
 import { TaskTable, useTaskPages } from './TaskTable';
 
 export function Execution() {
@@ -46,6 +55,22 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
   const { t } = useI18n();
   const time = useTime();
   const roots = useMemo(() => buildTree(outline), [outline]);
+  // Выбор для перезапуска нескольких сразу (docs/adr/0169-restart-many.md): ключи узлов сущностей.
+  const choices = useMemo(() => restartChoices(roots), [roots]);
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  // Раскрыто всё, кроме свёрнутого руками: узлы, появившиеся при опросе, — тоже раскрыты.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const expanded = useMemo(() => {
+    const keys: string[] = [];
+    const walk = (node: TreeNode) => {
+      if (node.children.length > 0 && !collapsed.has(node.key)) {
+        keys.push(node.key);
+      }
+      node.children.forEach(walk);
+    };
+    roots.forEach(walk);
+    return keys;
+  }, [roots, collapsed]);
   const openPanel = useOpenPanel();
   const [tab, setTab] = useState('tree');
   const [slot, slotNode] = useColumnsSlot();
@@ -64,12 +89,12 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
         />
       ),
     });
-  // Щелчок по узлу — карточка в боковой панели, как в таблицах; по попытке — карточка её сущности.
+  // Щелчок по узлу — карточка в боковой панели, как в таблицах; по фазе и попытке — карточка их сущности.
   const openEntity = useEntityPanel();
   const openNode = (node: TreeNode) => {
-    const kind = node.attempt?.kind ?? node.kind;
-    const id = node.attempt?.targetId ?? node.task?.id ?? node.communication?.id;
-    if (!id || kind === 'MORE' || kind === 'ATTEMPT') {
+    const kind = node.attempt?.kind ?? node.phase?.kind ?? node.kind;
+    const id = node.attempt?.targetId ?? node.phase?.targetId ?? node.task?.id ?? node.communication?.id;
+    if (!id || kind === 'MORE' || kind === 'ATTEMPT' || kind === 'PHASE') {
       return;
     }
     openEntity(
@@ -78,14 +103,31 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
         : { kind: 'task', level: kind, id, createdAt: outline.execution.createdAt },
     );
   };
+  const box = (node: TreeNode) => {
+    if (!choices.has(node.key)) {
+      return null;
+    }
+    const state = restartBox(node.key, selected, choices);
+    return (
+      <RestartBox
+        checked={selected.has(node.key)}
+        disabled={state.disabled}
+        hint={state.hint && t(`restart.${state.hint}`)}
+        onChange={(checked) => setSelected(toggleRestart(selected, choices, node.key, checked))}
+      />
+    );
+  };
   const toData = (node: TreeNode): DataNode => ({
     key: node.key,
     title: node.more ? (
       <NodeTitle node={node} onMore={showAll} />
     ) : (
-      <div {...rowOpens(() => openNode(node))}>
-        <NodeTitle node={node} onMore={showAll} />
-      </div>
+      <Flex gap={8} align="center">
+        {box(node)}
+        <div {...rowOpens(() => openNode(node))} style={{ flex: 1, cursor: 'pointer' }}>
+          <NodeTitle node={node} onMore={showAll} />
+        </div>
+      </Flex>
     ),
     children: node.children.map(toData),
   });
@@ -137,8 +179,14 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
       <Tabs
         activeKey={tab}
         onChange={setTab}
-        // Кнопка «Столбцы» ленты — справа от вкладок, пока открыта лента.
-        tabBarExtraContent={tab === 'timeline' ? slot : null}
+        // Справа от вкладок: у ленты — кнопка «Столбцы», у дерева — перезапуск выбранных.
+        tabBarExtraContent={
+          tab === 'timeline' ? (
+            slot
+          ) : tab === 'tree' ? (
+            <RestartSelected targets={restartTargets(selected, choices)} onDone={() => setSelected(new Set())} />
+          ) : null
+        }
         items={[
           {
             key: 'tree',
@@ -147,7 +195,21 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
               roots.length === 0 ? (
                 <Typography.Text type="secondary">{t('common.empty')}</Typography.Text>
               ) : (
-                <Tree blockNode defaultExpandAll selectable={false} treeData={roots.map(toData)} />
+                <Tree
+                  blockNode
+                  selectable={false}
+                  treeData={roots.map(toData)}
+                  expandedKeys={expanded}
+                  onExpand={(_keys, info) => {
+                    const next = new Set(collapsed);
+                    if (info.expanded) {
+                      next.delete(String(info.node.key));
+                    } else {
+                      next.add(String(info.node.key));
+                    }
+                    setCollapsed(next);
+                  }}
+                />
               ),
           },
           {
@@ -225,7 +287,6 @@ function NodeTitle({ node, onMore }: { node: TreeNode; onMore: (more: MoreNode) 
   const { t } = useI18n();
   const time = useTime();
   const createdAt = node.task?.execution.createdAt ?? node.communication?.execution.createdAt ?? '';
-  const count = total(node.units);
   if (node.more) {
     const more = node.more;
     return (
@@ -234,12 +295,45 @@ function NodeTitle({ node, onMore }: { node: TreeNode; onMore: (more: MoreNode) 
       </Button>
     );
   }
+  if (node.phase) {
+    const phase = node.phase;
+    return (
+      <Flex gap={8} wrap align="center">
+        <Typography.Text strong>
+          <PhaseLabel phase={phase.phase} />
+        </Typography.Text>
+        {phase.waiting ? (
+          <>
+            <Tag>{t('execution.phaseNotStarted')}</Tag>
+            <StatusTag status={phase.waiting.status} description={phase.waiting.statusDescription} />
+          </>
+        ) : (
+          <>
+            {phase.attempts > 1 && (
+              <Typography.Text type="secondary">{t('execution.phaseAttempts', { count: phase.attempts })}</Typography.Text>
+            )}
+            {phase.last?.outcome.status ? (
+              <StatusTag status={phase.last.outcome.status} description={phase.last.outcome.statusDescription} />
+            ) : (
+              <Tag>{t('execution.attemptOpen')}</Tag>
+            )}
+            {/* Одна попытка слита с фазой — её время и причина здесь же. */}
+            {phase.attempts === 1 && phase.last?.times.startedAt && (
+              <Typography.Text type="secondary">{time(phase.last.times.startedAt)}</Typography.Text>
+            )}
+            {phase.attempts === 1 && phase.last?.outcome.statusDescription && (
+              <Reason text={phase.last.outcome.statusDescription} width={360} />
+            )}
+          </>
+        )}
+      </Flex>
+    );
+  }
   if (node.attempt) {
     const attempt = node.attempt;
     return (
       <Flex gap={8} wrap align="center">
         <Typography.Text type="secondary">{t('execution.attempt', { number: attempt.number })}</Typography.Text>
-        <PhaseLabel phase={attempt.phase} />
         {attempt.outcome.status ? (
           <StatusTag status={attempt.outcome.status} description={attempt.outcome.statusDescription} />
         ) : (
@@ -271,31 +365,14 @@ function NodeTitle({ node, onMore }: { node: TreeNode; onMore: (more: MoreNode) 
           <OrphanTag orphan={node.communication.state.orphan} />
         </>
       )}
+      {/* Единственная попытка обработки слита со строкой сущности — её время здесь. */}
+      {node.processAttempt?.times.startedAt && (
+        <Typography.Text type="secondary">{time(node.processAttempt.times.startedAt)}</Typography.Text>
+      )}
       {node.outsideOrigin && (
         <Typography.Text type="secondary">
           {t('execution.createdBy', { type: t(`level.${node.outsideOrigin.type}`), id: shortId(node.outsideOrigin.id) })}
         </Typography.Text>
-      )}
-      {count > 0 && (
-        <Card size="small" styles={{ body: { padding: '2px 8px' } }}>
-          <Space size={8} wrap>
-            <Typography.Text>{t('execution.units', { count })}</Typography.Text>
-            <Progress
-              style={{ width: 120, margin: 0 }}
-              size="small"
-              showInfo={false}
-              percent={Math.round((100 * (count - (node.units.PENDING ?? 0) - (node.units.RUNNING ?? 0) - (node.units.AWAITING_PARENT ?? 0))) / count)}
-              success={{ percent: Math.round((100 * (node.units.SUCCEEDED ?? 0)) / count) }}
-              status={(node.units.FAILED ?? 0) > 0 ? 'exception' : 'normal'}
-            />
-            {Object.entries(node.units).map(([status, value]) => (
-              <Space key={status} size={2}>
-                <StatusTag status={status} />
-                {value}
-              </Space>
-            ))}
-          </Space>
-        </Card>
       )}
     </Flex>
   );

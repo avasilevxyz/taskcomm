@@ -28,6 +28,9 @@ import xyz.avasilev.taskcomm.task.api.processor.TaskProcessor;
  */
 public interface TaskService {
 
+    /** Сколько сущностей {@link #restartAll(List)} перезапускает за один вызов. */
+    int RESTART_ALL_LIMIT = 500;
+
     /**
      * Ставит задачу.
      *
@@ -245,6 +248,40 @@ public interface TaskService {
      * @return принят перезапуск или отвергнут с причиной
      */
     TaskRestartResult restart(TaskSnapshot entity);
+
+    /**
+     * Перезапускает несколько сущностей одной транзакцией (docs/adr/0169-restart-many.md): предки
+     * переводятся в ожидание детей один раз, и сборка начнётся, только когда закончится последняя
+     * перезапущенная. По одной этого не добиться: быстрая подзадача успевает закончиться, родитель уходит
+     * в сборку, и следующий перезапуск отвергается.
+     *
+     * <p>Каждая сущность — по правилам своего уровня, как в {@link #restart(TaskSnapshot)}; отказ одной
+     * не отменяет остальные. Отвергаются также повтор в списке и потомок другой сущности списка:
+     * перезапущенный родитель раскроется заново и создаст новых детей.
+     *
+     * @param entities снимки задач, групп и подзадач — не больше {@link #RESTART_ALL_LIMIT}
+     * @return исход по каждой сущности — в порядке списка
+     * @throws IllegalArgumentException если сущностей больше {@link #RESTART_ALL_LIMIT}
+     */
+    default List<TaskRestartResult> restartAll(final List<TaskSnapshot> entities) {
+        throw new UnsupportedOperationException("restartAll");
+    }
+
+    /**
+     * Перезапускает все упавшие подзадачи текущего раскрытия задачи или группы одной транзакцией, без
+     * предела по числу (docs/adr/0170-restart-failed-units.md). У задачи — и подзадачи её групп. Подзадачи
+     * прежних раскрытий не трогаются: их чинит перезапуск родителя.
+     *
+     * <p>Всё или ничего: если предок не принимает перезапуск детей — идёт сборка, стоит отметка отмены,
+     * удалены результаты, — не перезапускается ни одна, и причина называет этого предка.
+     *
+     * @param parent снимок задачи или группы
+     * @return принят — сколько подзадач поставлено в очередь, — или отвергнут с причиной, в том числе
+     *     если упавших подзадач нет или передана подзадача
+     */
+    default TaskRestartResult restartFailedUnits(final TaskSnapshot parent) {
+        throw new UnsupportedOperationException("restartFailedUnits");
+    }
 
     /**
      * Удаляет результаты детей у всех собранных родителей (docs/adr/0122-child-results-discard-sweep.md).

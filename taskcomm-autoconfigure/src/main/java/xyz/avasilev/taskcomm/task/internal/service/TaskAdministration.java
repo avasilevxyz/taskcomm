@@ -1,6 +1,7 @@
 package xyz.avasilev.taskcomm.task.internal.service;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.function.Supplier;
 import javax.sql.DataSource;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -51,6 +52,14 @@ class TaskAdministration {
 
     TaskRestartResult restart(final TaskEntityRef target) {
         return this.restart.restart(target);
+    }
+
+    List<TaskRestartResult> restartAll(final List<TaskEntityRef> targets) {
+        return this.restart.restartAll(targets);
+    }
+
+    TaskRestartResult restartFailedUnits(final TaskEntityRef parent) {
+        return this.restart.restartFailedUnits(parent);
     }
 
     int discardChildResults(final Duration olderThan) {

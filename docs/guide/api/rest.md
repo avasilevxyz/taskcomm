@@ -54,6 +54,8 @@ SecurityFilterChain security(HttpSecurity http,
 | `GET /tasks/{level}/{id}/attempts/sql` | Запрос, которым читаются её попытки                                                         |
 | `POST /tasks/{level}/{id}/cancel`   | Отмена                                                                                         |
 | `POST /tasks/{level}/{id}/restart`  | Перезапуск                                                                                     |
+| `POST /tasks/{level}/{id}/restart-failed-units` | Все упавшие подзадачи текущего раскрытия задачи или группы — одной транзакцией |
+| `POST /tasks/restart`               | Перезапуск списка одной транзакцией: тело `[{level, id, executionCreatedAt}]`, до 500; исход по каждой |
 | `POST /tasks?type={taskType}`       | Постановка; тело — нагрузка в JSON                                                             |
 | `GET /tasks/search-fields`          | Поля, доступные для поиска, с подписями и описаниями                                           |
 | `GET /tasks/payload-shape?type=`    | Структура JSON параметров задачи типа: ключи, виды значений, перечисления; `404` без процессора |

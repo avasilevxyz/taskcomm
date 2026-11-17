@@ -1,5 +1,6 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Flex, Space, Tooltip } from 'antd';
+import { useState, type Key } from 'react';
 import { getJson, type Level, type Page, type Params, type TaskItem } from '../api';
 import {
   IdLink,
@@ -18,6 +19,7 @@ import {
 import { rowOpens, useEntityPanel } from '../entityPanel';
 import { ColumnsSlotProvider, DataTable, useColumnsSlot } from '../dataTable';
 import { useI18n } from '../i18n';
+import { RestartSelected, taskRestartable } from '../restartMany';
 import { cellText, fieldColumns, fieldValue, useSearchFields } from './searchFields';
 
 const PAGE_SIZE = 50;
@@ -61,16 +63,23 @@ export function TaskTable({ pages, showWindow = true, level, taskType }: {
   const items = pages.data?.pages.flatMap((page) => page.items) ?? [];
   const open = useEntityPanel();
   const [slot, slotNode] = useColumnsSlot();
+  // Выбор для перезапуска нескольких сразу (docs/adr/0169-restart-many.md).
+  const [selected, setSelected] = useState<Key[]>([]);
+  const restartable = (row: TaskItem) => taskRestartable(row.level, row.state.status);
+  const targets = items
+    .filter((row) => selected.includes(row.id) && restartable(row))
+    .map((row) => ({ kind: row.level, id: row.id, executionCreatedAt: row.execution.createdAt }));
   return (
     <Loadable loading={pages.isLoading} error={pages.error}>
       {() => (
         <Flex vertical gap={8}>
-          {showWindow && (
-            <Flex justify="space-between" align="center" gap={8}>
-              <WindowNote window={pages.data?.pages[0]?.window} />
-              {slot}
-            </Flex>
-          )}
+          <Flex justify="space-between" align="center" gap={8} wrap>
+            {showWindow ? <WindowNote window={pages.data?.pages[0]?.window} /> : <span />}
+            <Space>
+              <RestartSelected targets={targets} onDone={() => setSelected([])} />
+              {showWindow && slot}
+            </Space>
+          </Flex>
           <ColumnsSlotProvider node={slotNode} enabled={showWindow}>
           <DataTable<TaskItem>
             settings="tasks"
@@ -78,6 +87,23 @@ export function TaskTable({ pages, showWindow = true, level, taskType }: {
             size="small"
             scroll={{ x: 'max-content' }}
             rowKey="id"
+            rowSelection={{
+              selectedRowKeys: selected,
+              onChange: (keys) => setSelected(keys),
+              getCheckboxProps: (row) => ({ disabled: !restartable(row) }),
+              // Недоступный флажок — с причиной по наведению и по щелчку.
+              renderCell: (_checked, row, _index, node) =>
+                restartable(row) ? (
+                  node
+                ) : (
+                  <Tooltip
+                    title={t(row.level === 'TASK' ? 'restart.notRestartable' : 'restart.onlyWithParent')}
+                    trigger={['hover', 'click']}
+                  >
+                    <span>{node}</span>
+                  </Tooltip>
+                ),
+            }}
             onRow={(row) =>
               rowOpens(() => open({ kind: 'task', level: row.level, id: row.id, createdAt: row.execution.createdAt }))
             }

@@ -213,6 +213,128 @@ class TaskRestartIT {
         }
     }
 
+    @Test
+    void listRestartsUnitsTogetherAndParentCollectsAfterTheLast() {
+        final CreatedTask task = this.db.submit(TYPE, 100);
+        final ClaimedAttempt expansion = this.claimer.claim(DEADLINE, UNIT, 1).getFirst();
+        this.expand(expansion, 3);
+        final List<ClaimedAttempt> units = this.claimer.claim(DEADLINE, UNIT, 10);
+        assertThat(this.closer.succeed(units.get(0), "10")).isTrue();
+        assertThat(this.closer.fail(units.get(1), "упал", "битая")).isTrue();
+        assertThat(this.closer.fail(units.get(2), "упал", "битая")).isTrue();
+        final ClaimedAttempt collect = this.claimer.claim(DEADLINE, UNIT, 1).getFirst();
+        assertThat(this.closer.collected(
+                        collect, "\"свод\"", TaskLevel.UNIT, expansion.lease().attemptId()))
+                .isTrue();
+        final Family family = new Family(
+                task,
+                expansion.lease().attemptId(),
+                units.get(0).target().id(),
+                units.get(1).target().id());
+        final UUID second = units.get(2).target().id();
+
+        final List<TaskRestartResult> results = this.restart.restartAll(
+                List.of(family.unit(family.failed()), family.unit(second), family.unit(family.succeeded())));
+
+        assertThat(results).extracting(TaskRestartResult::accepted).containsExactly(true, true, false);
+        assertThat(results.get(2).reason()).contains("только упавшая подзадача");
+        assertThat(this.db.status(TaskLevel.TASK, task.id())).isEqualTo("AWAITING_CHILDREN");
+        // Первая закончилась — вторая ещё в очереди, и сборка не начинается.
+        final List<ClaimedAttempt> again = this.claimer.claim(DEADLINE, UNIT, 2);
+        assertThat(again).hasSize(2);
+        assertThat(this.closer.succeed(again.get(0), "20")).isTrue();
+        assertThat(this.db.status(TaskLevel.TASK, task.id())).isEqualTo("AWAITING_CHILDREN");
+        assertThat(this.closer.succeed(again.get(1), "30")).isTrue();
+        assertThat(this.db.status(TaskLevel.TASK, task.id())).isEqualTo("PENDING");
+    }
+
+    @Test
+    void failedUnitsOfParentRestartTogether() {
+        final CreatedTask task = this.db.submit(TYPE, 100);
+        final ClaimedAttempt expansion = this.claimer.claim(DEADLINE, UNIT, 1).getFirst();
+        this.expand(expansion, 3);
+        final List<ClaimedAttempt> units = this.claimer.claim(DEADLINE, UNIT, 10);
+        assertThat(this.closer.succeed(units.get(0), "10")).isTrue();
+        assertThat(this.closer.fail(units.get(1), "упал", "битая")).isTrue();
+        assertThat(this.closer.fail(units.get(2), "упал", "битая")).isTrue();
+        final ClaimedAttempt collect = this.claimer.claim(DEADLINE, UNIT, 1).getFirst();
+        assertThat(this.closer.collected(
+                        collect, "\"свод\"", TaskLevel.UNIT, expansion.lease().attemptId()))
+                .isTrue();
+        final Family family = new Family(
+                task,
+                expansion.lease().attemptId(),
+                units.get(0).target().id(),
+                units.get(1).target().id());
+
+        final TaskRestartResult result = this.restart.restartFailedUnits(family.taskRef());
+
+        assertThat(result.accepted()).as(result.reason()).isTrue();
+        assertThat(result.reason()).contains("2");
+        assertThat(this.db.status(TaskLevel.UNIT, family.failed())).isEqualTo("PENDING");
+        assertThat(this.db.status(TaskLevel.UNIT, units.get(2).target().id())).isEqualTo("PENDING");
+        assertThat(this.db.status(TaskLevel.UNIT, family.succeeded())).isEqualTo("SUCCEEDED");
+        assertThat(this.db.status(TaskLevel.TASK, task.id())).isEqualTo("AWAITING_CHILDREN");
+        assertThat(this.restart.restartFailedUnits(family.unit(family.failed())).reason())
+                .contains("нет подзадач");
+    }
+
+    @Test
+    void failedUnitsRestartIsAllOrNothingAndSkipsPreviousExpansion() {
+        final Family family = this.readyForCollect();
+        final ClaimedAttempt collect = this.claimer.claim(DEADLINE, UNIT, 1).getFirst();
+        assertThat(collect.phase()).isEqualTo(TaskPhase.COLLECT);
+
+        assertThat(this.restart.restartFailedUnits(family.taskRef()).reason()).contains("идёт сборка");
+        assertThat(this.db.status(TaskLevel.UNIT, family.failed())).isEqualTo("FAILED");
+
+        assertThat(this.closer.collected(collect, "\"свод\"", TaskLevel.UNIT, family.expansion()))
+                .isTrue();
+        assertThat(this.restart.restart(family.taskRef()).accepted()).isTrue();
+        // Пока новое раскрытие не началось, прежнее ещё последнее — отказ называет задачу.
+        assertThat(this.restart.restartFailedUnits(family.taskRef()).reason()).contains("прежней попытке");
+        this.expand(this.claimer.claim(DEADLINE, UNIT, 1).getFirst(), 1);
+        // Новое раскрытие прошло — упавшая подзадача прежнего стала историей.
+        assertThat(this.restart.restartFailedUnits(family.taskRef()).reason()).contains("нет упавших подзадач");
+    }
+
+    @Test
+    void listRejectsDescendantOfListedAncestorAndRepeats() {
+        final Family family = this.collected();
+
+        final List<TaskRestartResult> results =
+                this.restart.restartAll(List.of(family.unit(family.failed()), family.taskRef(), family.taskRef()));
+
+        assertThat(results).extracting(TaskRestartResult::accepted).containsExactly(false, true, false);
+        assertThat(results.get(0).reason())
+                .contains("вместе с предком")
+                .contains(family.task().id().toString());
+        assertThat(results.get(2).reason()).contains("повторяется в списке");
+        assertThat(this.db.status(TaskLevel.UNIT, family.failed())).isEqualTo("FAILED");
+        assertThat(this.db.status(TaskLevel.TASK, family.task().id())).isEqualTo("PENDING");
+    }
+
+    @Test
+    void rejectedAncestorRollsBackOnlyItsEntity() {
+        final Family family = this.readyForCollect();
+        final ClaimedAttempt collect = this.claimer.claim(DEADLINE, UNIT, 1).getFirst();
+        assertThat(collect.phase()).isEqualTo(TaskPhase.COLLECT);
+        final CreatedTask other = this.db.submit(TYPE, 100);
+        final UUID missing = UUID.randomUUID();
+
+        final List<TaskRestartResult> results = this.restart.restartAll(List.of(
+                family.unit(family.failed()),
+                new TaskEntityRef(
+                        TaskLevel.TASK, missing, family.task().execution().createdAt()),
+                new TaskEntityRef(TaskLevel.TASK, other.id(), other.execution().createdAt())));
+
+        assertThat(results).extracting(TaskRestartResult::accepted).containsExactly(false, false, false);
+        assertThat(results.get(0).reason()).contains("идёт сборка");
+        assertThat(results.get(1).reason()).contains("не найдена");
+        assertThat(results.get(2).reason()).contains("только завершённая");
+        assertThat(this.db.status(TaskLevel.UNIT, family.failed())).isEqualTo("FAILED");
+    }
+
     /** Задача раскрыта в две подзадачи: одна успешна, другая упала без повтора; задача ждёт сборки. */
     private Family readyForCollect() {
         final CreatedTask task = this.db.submit(TYPE, 100);

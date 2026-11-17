@@ -188,6 +188,22 @@ public class DefaultTaskService implements TaskService {
     }
 
     @Override
+    public TaskRestartResult restartFailedUnits(final TaskSnapshot parent) {
+        return this.administration.get().restartFailedUnits(ref(parent));
+    }
+
+    @Override
+    public List<TaskRestartResult> restartAll(final List<TaskSnapshot> entities) {
+        if (entities.size() > RESTART_ALL_LIMIT) {
+            throw new IllegalArgumentException("Перезапуск списком — не больше " + RESTART_ALL_LIMIT
+                    + " сущностей за вызов, передано " + entities.size());
+        }
+        return this.administration
+                .get()
+                .restartAll(entities.stream().map(DefaultTaskService::ref).toList());
+    }
+
+    @Override
     public int discardChildResults() {
         return this.discardChildResults(Duration.ZERO);
     }

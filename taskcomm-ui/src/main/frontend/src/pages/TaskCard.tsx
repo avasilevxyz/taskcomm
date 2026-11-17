@@ -9,6 +9,7 @@ import {
   JsonBlock,
   Loadable,
   OriginLink,
+  AttemptsLabel,
   CountLabel,
   OrphanTag,
   Outcome,
@@ -99,6 +100,7 @@ function TaskDetails({ task }: { task: TaskItem }) {
         params={{ executionCreatedAt: createdAt }}
         cancellable={canCancel(task.state.status)}
         restartable={canRestart(task.state.status)}
+        failedUnits={task.level !== 'UNIT' && contract !== undefined && contract !== 'FLAT'}
       />
       {/* Попытки — на своей вкладке: на основной то, что сущность сейчас представляет собой. */}
       <Tabs
@@ -151,7 +153,7 @@ function TaskDetails({ task }: { task: TaskItem }) {
           },
           {
             key: 'attempts',
-            label: <CountLabel label={t('common.attempts')} count={attempts.data?.length} />,
+            label: <AttemptsLabel attempts={attempts.data} />,
             children: (
               <Flex vertical gap={16}>
             <Card size="small" title={t('common.attempts')} extra={attemptsSlot}>

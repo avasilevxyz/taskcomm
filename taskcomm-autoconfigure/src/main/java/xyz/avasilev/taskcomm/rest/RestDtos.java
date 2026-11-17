@@ -405,6 +405,25 @@ public final class RestDtos {
     public record ResultDto(boolean accepted, String reason) {}
 
     /**
+     * Сущность задач в запросе перезапуска списком.
+     *
+     * @param level уровень
+     * @param id идентификатор
+     * @param executionCreatedAt время создания дела — партиция, в которой искать
+     */
+    public record TaskTargetDto(TaskSnapshot.Level level, UUID id, Instant executionCreatedAt) {}
+
+    /**
+     * Исход перезапуска одной сущности списка.
+     *
+     * @param level уровень
+     * @param id идентификатор
+     * @param accepted принят ли
+     * @param reason причина
+     */
+    public record RestartItemDto(TaskSnapshot.Level level, UUID id, boolean accepted, String reason) {}
+
+    /**
      * Созданная сущность.
      *
      * @param id идентификатор

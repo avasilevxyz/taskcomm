@@ -68,7 +68,7 @@ export function rowOpens(open: () => void) {
       clearTimeout(pending);
       pending = undefined;
       const row = event.currentTarget;
-      if (event.detail > 1 || (event.target as HTMLElement).closest('a, button, .ant-table-row-expand-icon')) {
+      if (event.detail > 1 || (event.target as HTMLElement).closest('a, button, .ant-table-row-expand-icon, .ant-table-selection-column, [data-no-open]')) {
         return;
       }
       pending = setTimeout(() => {

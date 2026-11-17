@@ -130,5 +130,7 @@ taskInspection.find(TaskSnapshot.Level.UNIT, id, window)
 ```
 
 `TaskService.cancel(TaskSnapshot)`, `restart(TaskSnapshot)` и те же у `CommunicationService`
-по `CommunicationSnapshot`. Правила — в [Задачах](../tasks/cancel-restart.md)
+по `CommunicationSnapshot`. Несколько задач, групп и подзадач — `TaskService.restartAll(List<TaskSnapshot>)`
+одной транзакцией: так родитель не уйдёт в сборку между перезапусками. Все упавшие подзадачи
+задачи или группы — `TaskService.restartFailedUnits(TaskSnapshot)`, без предела по числу. Правила — в [Задачах](../tasks/cancel-restart.md)
 и [Коммуникациях](../communications/cancel-restart.md).

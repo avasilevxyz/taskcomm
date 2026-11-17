@@ -8,13 +8,18 @@ import { useI18n } from '../i18n';
  * Отмена и перезапуск: отказ (409) — исход с причиной, а не ошибка; после действия затронутые
  * экраны перечитываются сразу, не дожидаясь опроса.
  */
-export function Actions({ path, params, cancellable, restartable, restartHint, extra }: {
+export function Actions({ path, params, cancellable, restartable, restartHint, failedUnits = false, extra }: {
   path: string;
   params: Params;
   cancellable: boolean;
   restartable: boolean;
   /** Почему перезапуск недоступен, если причина не в статусе, — подсказкой у кнопки. */
   restartHint?: string;
+  /**
+   * Кнопка «Перезапустить упавшие подзадачи» — у задачи и группы с подзадачами
+   * (docs/adr/0170-restart-failed-units.md). Есть ли упавшие, решит сервер.
+   */
+  failedUnits?: boolean;
   /** Прочие действия карточки — в той же строке. */
   extra?: ReactNode;
 }) {
@@ -22,11 +27,12 @@ export function Actions({ path, params, cancellable, restartable, restartHint, e
   const client = useQueryClient();
   const [outcome, setOutcome] = useState<{ ok: boolean; text: string } | null>(null);
   const action = useMutation({
-    mutationFn: (name: 'cancel' | 'restart') => postJson<ActionResult>(`${path}/${name}`, params),
+    mutationFn: (name: 'cancel' | 'restart' | 'restart-failed-units') =>
+      postJson<ActionResult>(`${path}/${name}`, params),
     onSuccess: (response) => {
       setOutcome(
         response.body.accepted
-          ? { ok: true, text: t('common.accepted') }
+          ? { ok: true, text: response.body.reason ? `${t('common.accepted')}: ${response.body.reason}` : t('common.accepted') }
           : { ok: false, text: t('common.rejected', { reason: response.body.reason ?? '' }) },
       );
       void client.invalidateQueries();
@@ -53,6 +59,13 @@ export function Actions({ path, params, cancellable, restartable, restartHint, e
             </Button>
           </Popconfirm>
         </Tooltip>
+        {failedUnits && (
+          <Popconfirm title={t('restart.failedUnitsConfirm')} onConfirm={() => action.mutate('restart-failed-units')}>
+            <Button loading={action.isPending && action.variables === 'restart-failed-units'}>
+              {t('restart.failedUnits')}
+            </Button>
+          </Popconfirm>
+        )}
         {extra}
       </Space>
       {outcome && <Alert type={outcome.ok ? 'success' : 'warning'} showIcon closable title={outcome.text} />}

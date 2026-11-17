@@ -107,6 +107,34 @@ export function CountLabel({ label, count }: { label: string; count?: number }) 
   );
 }
 
+/** Сколько попыток в каждой фазе — в порядке первой попытки фазы. */
+export function phaseCounts(attempts: { phase: string }[]): { phase: string; count: number }[] {
+  const counts = new Map<string, number>();
+  attempts.forEach((attempt) => counts.set(attempt.phase, (counts.get(attempt.phase) ?? 0) + 1));
+  return [...counts].map(([phase, count]) => ({ phase, count }));
+}
+
+/**
+ * Подпись вкладки попыток: число по каждой фазе, без названий — фаза в подсказке у числа.
+ * Одна сумма врала бы: у задачи с подзадачами попытки раскрытия и сборки — разные вещи.
+ */
+export function AttemptsLabel({ attempts }: { attempts?: { phase: string }[] }) {
+  const { t, code } = useI18n();
+  return (
+    <Space size={6}>
+      {t('common.attempts')}
+      {attempts &&
+        phaseCounts(attempts).map(({ phase, count }) => (
+          <Tooltip key={phase} title={code('phaseAttempts', phase)}>
+            <Tag bordered={false} style={{ marginInlineEnd: 0 }}>
+              {count.toLocaleString()}
+            </Tag>
+          </Tooltip>
+        ))}
+    </Space>
+  );
+}
+
 /** Ширина блока, с которой описание раскладывается в две колонки, и с которой — в три. */
 const TWO_COLUMNS = 560;
 const THREE_COLUMNS = 900;

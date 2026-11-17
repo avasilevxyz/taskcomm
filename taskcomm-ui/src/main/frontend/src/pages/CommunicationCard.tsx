@@ -3,7 +3,7 @@ import { Card, Empty, Flex, Space, Tabs, Tag, Tooltip, Typography } from 'antd';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { getJson, type CommunicationAttempt, type CommunicationItem, type CommunicationKeys, type ExchangeMessage } from '../api';
 import {
-  CountLabel,
+  AttemptsLabel,
   executionPath,
   IdLink,
   JsonBlock,
@@ -167,7 +167,7 @@ function CommunicationDetails({ communication }: { communication: CommunicationI
           },
           {
             key: 'attempts',
-            label: <CountLabel label={t('common.attempts')} count={attempts.data?.length} />,
+            label: <AttemptsLabel attempts={attempts.data} />,
             children: (
               <Flex vertical gap={16}>
             <Card size="small" title={t('common.attempts')} extra={attemptsSlot}>

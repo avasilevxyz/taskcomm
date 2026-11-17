@@ -1,5 +1,12 @@
 package xyz.avasilev.taskcomm.task.internal.lifecycle;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -13,7 +20,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import xyz.avasilev.taskcomm.task.api.TaskRestartResult;
 import xyz.avasilev.taskcomm.task.internal.ClaimRows;
 import xyz.avasilev.taskcomm.task.internal.ClaimedEntity;
-import xyz.avasilev.taskcomm.task.internal.ContractShape;
 import xyz.avasilev.taskcomm.task.internal.TaskEntityRef;
 import xyz.avasilev.taskcomm.task.internal.TaskLevel;
 import xyz.avasilev.taskcomm.task.internal.TaskPhase;
@@ -32,6 +38,11 @@ import xyz.avasilev.taskcomm.task.internal.settings.PollerLayout;
  * раскрытия (docs/adr/0098-restart-only-latest-expansion.md). Предок не обновился — откат, а причину
  * называет чтение его строки в той же транзакции. Захват сборки, перезапуск предка и перезапуск
  * ребёнка сериализуются на строке предка; порядок блокировок — от ребёнка к родителю, как у воркера.
+ *
+ * <p>Перезапуск списком (docs/adr/0169-restart-many.md) — тоже одна транзакция: сначала блокируются все
+ * сущности списка, от подзадач к задачам, затем все их предки — группы, потом задачи; затем каждая
+ * сущность перезапускается под своей точкой сохранения, и отказ откатывает только её. Предок переводится
+ * в ожидание детей один раз за список, и сборка не начнётся, пока не закончится последний из них.
  */
 @Slf4j
 public class TaskRestart {
@@ -104,11 +115,54 @@ public class TaskRestart {
             """;
 
     /**
+     * Упавшие подзадачи текущего раскрытия родителя под блокировкой (docs/adr/0170-restart-failed-units.md):
+     * подзадача принадлежит последней попытке раскрытия своего родителя, а её группа — последней попытке
+     * раскрытия задачи. Подзадачи прежних раскрытий — история, их чинит перезапуск родителя.
+     */
+    private static final String FAILED_UNITS = """
+            SELECT u.id, u.task_id, u.batch_id, u.parent_attempt_id, u.task_type
+              FROM tc_task_unit u
+             WHERE u.execution_created_at = :executionCreatedAt AND {scope}
+               AND u.status = 'FAILED' AND u.cancel_requested_at IS NULL
+               AND u.parent_attempt_id = (
+                       SELECT a.id FROM tc_task_attempt a
+                        WHERE a.execution_created_at = :executionCreatedAt
+                          AND a.level = CASE WHEN u.batch_id IS NULL THEN 'TASK' ELSE 'BATCH' END
+                          AND a.target_id = coalesce(u.batch_id, u.task_id) AND a.phase = 'EXPAND'
+                        ORDER BY a.started_at DESC, a.id DESC
+                        LIMIT 1)
+               AND (u.batch_id IS NULL OR EXISTS (
+                       SELECT 1 FROM tc_task_batch b
+                        WHERE b.execution_created_at = :executionCreatedAt AND b.id = u.batch_id
+                          AND b.parent_attempt_id = (
+                                  SELECT a.id FROM tc_task_attempt a
+                                   WHERE a.execution_created_at = :executionCreatedAt AND a.level = 'TASK'
+                                     AND a.target_id = u.task_id AND a.phase = 'EXPAND'
+                                   ORDER BY a.started_at DESC, a.id DESC
+                                   LIMIT 1)))
+             ORDER BY u.id
+               FOR UPDATE OF u
+            """;
+
+    /** Перезапуск отобранных подзадач одним обновлением — как {@link #RESTART_UNIT}. */
+    private static final String RESTART_UNITS = """
+            UPDATE tc_task_unit
+               SET status = 'PENDING', status_description = NULL, next_attempt_at = now(),
+                   retry_cycle_started_at = now(),
+                   claim_order_at = now() + make_interval(secs => priority * :deadlineStep), updated_at = now()
+             WHERE execution_created_at = :executionCreatedAt AND id = ANY(:ids)
+            """;
+
+    /**
      * Первая фаза задачи по записанной форме контракта ({@link ContractShape#firstPhase()}). Формы нет
      * только до первого захвата — тогда нет и фазы, её выберет захват по текущему процессору.
      */
     private static final String TASK_FIRST_PHASE = """
             CASE contract_shape WHEN 'FLAT' THEN 'PROCESS' WHEN 'UNIT' THEN 'EXPAND' WHEN 'BATCH' THEN 'EXPAND' END""";
+
+    /** Порядок блокировок списка: от подзадач к задачам, внутри уровня — по идентификатору. */
+    private static final Comparator<TaskEntityRef> LOCK_ORDER =
+            Comparator.comparingInt(TaskRestart::lockRank).thenComparing(TaskEntityRef::id);
 
     private final JdbcClient jdbc;
 
@@ -135,6 +189,70 @@ public class TaskRestart {
     }
 
     /**
+     * Перезапускает все упавшие подзадачи текущего раскрытия родителя одной транзакцией, без предела
+     * по числу (docs/adr/0170-restart-failed-units.md). Всё или ничего: если хоть один предок не принимает
+     * перезапуск детей — сборка, отмена, удалённые результаты, — не перезапускается ни одна.
+     *
+     * @param parent задача или группа
+     * @return принят перезапуск — сколько подзадач поставлено в очередь — или отвергнут с причиной
+     */
+    public TaskRestartResult restartFailedUnits(final TaskEntityRef parent) {
+        if (parent.level() == TaskLevel.UNIT) {
+            return new TaskRestartResult.Rejected("у подзадачи нет подзадач: " + name(parent));
+        }
+        final TaskRestartResult result =
+                this.transactions.execute(status -> this.failedUnitsInTransaction(parent, status));
+        return result == null ? new TaskRestartResult.Rejected("перезапуск не выполнен") : result;
+    }
+
+    private TaskRestartResult failedUnitsInTransaction(final TaskEntityRef parent, final TransactionStatus status) {
+        final String scope = parent.level() == TaskLevel.TASK ? "u.task_id = :parentId" : "u.batch_id = :parentId";
+        final List<FailedUnit> units = this.jdbc
+                .sql(FAILED_UNITS.replace("{scope}", scope))
+                .param("executionCreatedAt", TaskSql.parameter(parent.executionCreatedAt()))
+                .param("parentId", parent.id())
+                .query((rs, rowNum) -> new FailedUnit(
+                        rs.getObject("id", UUID.class),
+                        new ClaimedEntity.Parent(
+                                rs.getObject("task_id", UUID.class),
+                                rs.getObject("batch_id", UUID.class),
+                                rs.getObject("parent_attempt_id", UUID.class)),
+                        rs.getString("task_type")))
+                .list();
+        if (units.isEmpty()) {
+            return new TaskRestartResult.Rejected("у " + name(parent) + " нет упавших подзадач текущего раскрытия");
+        }
+        // Предки — после всех подзадач, от групп к задаче: порядок воркера на одной цепочке.
+        final Set<ClaimedEntity.Parent> parents = new LinkedHashSet<>();
+        units.forEach(unit -> parents.add(unit.parent()));
+        final Set<TaskEntityRef> ancestors = new HashSet<>();
+        parents.forEach(link -> {
+            ancestors.add(link.entity(parent.executionCreatedAt()));
+            ancestors.add(new TaskEntityRef(TaskLevel.TASK, link.taskId(), parent.executionCreatedAt()));
+        });
+        ancestors.stream().sorted(LOCK_ORDER).forEach(this::lock);
+        for (final ClaimedEntity.Parent link : parents) {
+            final String rejection = this.ancestors(parent, link);
+            if (rejection != null) {
+                status.setRollbackOnly();
+                return new TaskRestartResult.Rejected(rejection);
+            }
+        }
+        this.jdbc
+                .sql(RESTART_UNITS)
+                .param(
+                        "deadlineStep",
+                        TaskSql.seconds(
+                                this.pollers.deadlineStep(units.getFirst().taskType())))
+                .param("executionCreatedAt", TaskSql.parameter(parent.executionCreatedAt()))
+                .param("ids", units.stream().map(FailedUnit::id).toArray(UUID[]::new))
+                .update();
+        log.info("{}: перезапущено вручную упавших подзадач — {}", name(parent), units.size());
+        return new TaskRestartResult.Accepted(
+                "перезапущено упавших подзадач: " + units.size() + "; родитель соберётся, когда закончится последняя");
+    }
+
+    /**
      * Перезапускает сущность.
      *
      * @param target сущность
@@ -145,23 +263,104 @@ public class TaskRestart {
         return result == null ? new TaskRestartResult.Rejected("перезапуск не выполнен") : result;
     }
 
-    private TaskRestartResult inTransaction(final TaskEntityRef target, final TransactionStatus status) {
-        final Optional<Locked> locked = this.lock(target);
-        final String rejection = locked.isEmpty() ? "не найдена: " + name(target) : rejection(target, locked.get());
-        if (rejection != null) {
-            return new TaskRestartResult.Rejected(rejection);
+    /**
+     * Перезапускает список сущностей в одной транзакции: принятые перезапуски видны захвату все сразу.
+     *
+     * @param targets сущности; повтор и потомок другой сущности списка отвергаются
+     * @return исход по каждой сущности — в порядке списка
+     */
+    public List<TaskRestartResult> restartAll(final List<TaskEntityRef> targets) {
+        final List<TaskRestartResult> results =
+                this.transactions.execute(status -> this.allInTransaction(targets, status));
+        return results == null ? List.of() : results;
+    }
+
+    private List<TaskRestartResult> allInTransaction(
+            final List<TaskEntityRef> targets, final TransactionStatus status) {
+        final Set<TaskEntityRef> selected = new LinkedHashSet<>(targets);
+        // Не найденная сущность — без строки в отображении.
+        final Map<TaskEntityRef, Locked> locked = new HashMap<>();
+        selected.stream()
+                .sorted(LOCK_ORDER)
+                .forEach(target -> this.lock(target).ifPresent(row -> locked.put(target, row)));
+        // Предки — после всех детей, от групп к задачам: тот же порядок, что у воркера на одной цепочке.
+        final Set<TaskEntityRef> ancestors = new HashSet<>();
+        locked.forEach((target, row) -> {
+            if (row.parent() != null) {
+                ancestors.add(row.parent().entity(target.executionCreatedAt()));
+                ancestors.add(new TaskEntityRef(TaskLevel.TASK, row.parent().taskId(), target.executionCreatedAt()));
+            }
+        });
+        ancestors.removeAll(selected);
+        ancestors.stream().sorted(LOCK_ORDER).forEach(this::lock);
+
+        final Set<TaskEntityRef> seen = new HashSet<>();
+        final List<TaskRestartResult> results = new ArrayList<>(targets.size());
+        for (final TaskEntityRef target : targets) {
+            final String skipped = seen.add(target)
+                    ? selectedAncestor(target, locked.get(target), selected)
+                    : name(target) + " повторяется в списке";
+            if (skipped != null) {
+                results.add(new TaskRestartResult.Rejected(skipped));
+                continue;
+            }
+            final Object savepoint = status.createSavepoint();
+            final Outcome outcome = this.perform(target, locked.get(target));
+            if (outcome.rollback()) {
+                status.rollbackToSavepoint(savepoint);
+            } else {
+                status.releaseSavepoint(savepoint);
+            }
+            results.add(outcome.result());
         }
-        final String ancestors = this.ancestors(target, locked.get().parent());
-        if (ancestors != null) {
+        return results;
+    }
+
+    /** Потомок сущности списка перезапускается вместе с ней: новое раскрытие создаст новых детей. */
+    private static String selectedAncestor(
+            final TaskEntityRef target, final Locked locked, final Set<TaskEntityRef> selected) {
+        final ClaimedEntity.Parent parent = locked == null ? null : locked.parent();
+        if (parent == null) {
+            return null;
+        }
+        TaskEntityRef ancestor = parent.entity(target.executionCreatedAt());
+        if (!selected.contains(ancestor)) {
+            ancestor = new TaskEntityRef(TaskLevel.TASK, parent.taskId(), target.executionCreatedAt());
+        }
+        return selected.contains(ancestor)
+                ? name(target) + " перезапускается вместе с предком " + name(ancestor)
+                        + " из того же списка: его новое раскрытие создаст новых детей"
+                : null;
+    }
+
+    private TaskRestartResult inTransaction(final TaskEntityRef target, final TransactionStatus status) {
+        final Outcome outcome = this.perform(target, this.lock(target).orElse(null));
+        if (outcome.rollback()) {
             status.setRollbackOnly();
-            return new TaskRestartResult.Rejected(ancestors);
+        }
+        return outcome.result();
+    }
+
+    /**
+     * Перезапуск под блокировкой сущности; отказ после перевода предков требует отката.
+     *
+     * @param locked строка сущности или {@code null}, если её нет
+     */
+    private Outcome perform(final TaskEntityRef target, final Locked locked) {
+        final String rejection = locked == null ? "не найдена: " + name(target) : rejection(target, locked);
+        if (rejection != null) {
+            return new Outcome(new TaskRestartResult.Rejected(rejection), false);
+        }
+        final String ancestors = this.ancestors(target, locked.parent());
+        if (ancestors != null) {
+            return new Outcome(new TaskRestartResult.Rejected(ancestors), true);
         }
         final String reason;
         if (target.level() == TaskLevel.UNIT) {
-            this.restartQuery(RESTART_UNIT, target, locked.get()).update();
+            this.restartQuery(RESTART_UNIT, target, locked).update();
             reason = "подзадача снова в очереди: обработка заново, новый цикл попыток";
         } else {
-            final String phase = this.restartQuery(parentRestart(target.level()), target, locked.get())
+            final String phase = this.restartQuery(parentRestart(target.level()), target, locked)
                     .query(String.class)
                     .optional()
                     .orElse(null);
@@ -170,7 +369,7 @@ public class TaskRestart {
                     : "снова в очереди: новое раскрытие, прежние дети остаются историей";
         }
         log.info("{} перезапущена вручную", name(target));
-        return new TaskRestartResult.Accepted(reason);
+        return new Outcome(new TaskRestartResult.Accepted(reason), false);
     }
 
     private JdbcClient.StatementSpec restartQuery(final String sql, final TaskEntityRef target, final Locked locked) {
@@ -297,6 +496,15 @@ public class TaskRestart {
         };
     }
 
+    /** Место уровня в порядке блокировок: ребёнок раньше родителя, как у воркера. */
+    private static int lockRank(final TaskEntityRef ref) {
+        return switch (ref.level()) {
+            case UNIT -> 0;
+            case BATCH -> 1;
+            case TASK -> 2;
+        };
+    }
+
     /** Колонки родства в {@link #LOCK}: у задачи их нет. */
     private static String link(final TaskLevel level) {
         return switch (level) {
@@ -310,6 +518,23 @@ public class TaskRestart {
     private static String parentAttempt(final TaskLevel level) {
         return level == TaskLevel.BATCH ? "p.parent_attempt_id" : "NULL::uuid AS parent_attempt_id";
     }
+
+    /**
+     * Упавшая подзадача текущего раскрытия.
+     *
+     * @param id идентификатор
+     * @param parent родство
+     * @param taskType тип задачи
+     */
+    private record FailedUnit(UUID id, ClaimedEntity.Parent parent, String taskType) {}
+
+    /**
+     * Исход перезапуска одной сущности.
+     *
+     * @param result исход
+     * @param rollback нужно ли откатить сделанное: предки уже переводились
+     */
+    private record Outcome(TaskRestartResult result, boolean rollback) {}
 
     /**
      * Сущность под блокировкой.

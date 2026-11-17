@@ -212,6 +212,39 @@ public class TaskController extends RestErrors {
     }
 
     /**
+     * Перезапуск всех упавших подзадач текущего раскрытия задачи или группы одной транзакцией
+     * (docs/adr/0170-restart-failed-units.md).
+     *
+     * @param level уровень — {@code TASK} или {@code BATCH}
+     * @param id идентификатор
+     * @param params окно или {@code executionCreatedAt}
+     * @return {@code 200} — принят, {@code 409} — отвергнут, {@code 404} — не найдена
+     */
+    @PostMapping("/{level}/{id}/restart-failed-units")
+    public ResponseEntity<RestDtos.ResultDto> restartFailedUnits(
+            @PathVariable("level") final TaskSnapshot.Level level,
+            @PathVariable("id") final UUID id,
+            @RequestParam final Map<String, String> params) {
+        return this.withEntity(level, id, params, found -> {
+            final TaskRestartResult result = this.tasks.restartFailedUnits(found);
+            return result(result.accepted(), result.reason());
+        });
+    }
+
+    /**
+     * Перезапуск списком в одной транзакции (docs/adr/0169-restart-many.md). Сущность ищется в партиции
+     * своего дела; не найденная — отказ в своей строке, остальные перезапускаются.
+     *
+     * @param targets сущности — не больше {@link TaskService#RESTART_ALL_LIMIT}
+     * @return {@code 200} с исходом по каждой сущности в порядке запроса; {@code 400} — список длиннее предела
+     */
+    @PostMapping(path = "/restart", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<List<RestDtos.RestartItemDto>> restartAll(
+            @RequestBody final List<RestDtos.TaskTargetDto> targets) {
+        return ResponseEntity.ok(TaskRestarts.restartAll(this.tasks, this.inspection, this.windows, targets));
+    }
+
+    /**
      * Постановка задачи из JSON: тело запроса — нагрузка задачи.
      *
      * @param type тип задачи
