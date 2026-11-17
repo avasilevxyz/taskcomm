@@ -92,4 +92,29 @@ describe('стопка панелей', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Раскрыть: A' }));
     expect(labels()).toEqual(['A', 'A+']);
   });
+
+  it('свёрнуты все — нет подложки, страница прокручивается, Esc не закрывает; раскрыта одна — всё как было', () => {
+    window.innerWidth = 3000;
+    stack();
+    const backdrop = () => document.querySelector('.panels-backdrop');
+    fireEvent.click(screen.getByText('открыть A'));
+    fireEvent.click(screen.getByText('открыть A+'));
+    expect(backdrop()).not.toBeNull();
+    expect(document.body.style.overflow).toBe('hidden');
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Свернуть' })[1]);
+    expect(backdrop()).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Свернуть' }));
+    expect(labels()).toEqual([]);
+    expect(backdrop()).toBeNull();
+    expect(document.body.style.overflow).toBe('');
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getAllByRole('button', { name: /^Раскрыть: / })).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Раскрыть: A' }));
+    expect(labels()).toEqual(['A']);
+    expect(backdrop()).not.toBeNull();
+    expect(document.body.style.overflow).toBe('hidden');
+  });
 });

@@ -22,7 +22,8 @@ import { expanded, MIN_PANEL_WIDTH, shownWidth, toggledWidth } from './panelLayo
 // Новая встаёт у правого края, прежние сдвигаются влево; не помещаются — самые старые сворачиваются
 // в вертикальные полосы с названием, и щелчок по полосе раскрывает её, сворачивая самые новые справа.
 // Открытая из панели панель заменяет все, что правее неё: цепочка читается как путь.
-// Страница под панелями размыта; щелчок по ней закрывает все, Esc — правую.
+// Страница под панелями размыта; щелчок по ней закрывает все, Esc — правую. Свёрнуты все в полосы —
+// страница не размыта, прокручивается, и Esc панелей не трогает.
 
 /** Вид панели — у каждого своя запомненная ширина. */
 export type PanelKind = 'entity' | 'create' | 'columns' | 'code';
@@ -186,8 +187,18 @@ export function PanelStackProvider({ children }: { children: ReactNode }) {
     setPanels([]);
   }, [location.pathname, location.search]);
 
+  const kindWidths = panels.map((panel) => widths[panel.spec.kind]);
+  const shown = expanded(
+    kindWidths,
+    focus,
+    available,
+    panels.map((panel) => panel.collapsed === true),
+  );
+  // Свёрнуто всё — страница снова своя: прокручивается, и Esc панели не закрывает.
+  const anyOpen = shown.some(Boolean);
+
   useEffect(() => {
-    if (panels.length === 0) {
+    if (!anyOpen) {
       return undefined;
     }
     const onKey = (event: KeyboardEvent) => {
@@ -202,7 +213,7 @@ export function PanelStackProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = overflow;
     };
-  }, [panels.length, closeFrom]);
+  }, [anyOpen, panels.length, closeFrom]);
 
   const resize = (kind: PanelKind, width: number) => {
     const next = Math.max(MIN_PANEL_WIDTH, Math.min(width, available));
@@ -217,8 +228,8 @@ export function PanelStackProvider({ children }: { children: ReactNode }) {
         createPortal(
           <PanelStack
             panels={panels}
-            focus={focus}
-            widths={panels.map((panel) => widths[panel.spec.kind])}
+            widths={kindWidths}
+            open={shown}
             available={available}
             onFocus={expand}
             onCollapse={collapse}
@@ -231,10 +242,11 @@ export function PanelStackProvider({ children }: { children: ReactNode }) {
   );
 }
 
-function PanelStack({ panels, focus, widths, available, onFocus, onCollapse, onClose, onResize }: {
+function PanelStack({ panels, widths, open, available, onFocus, onCollapse, onClose, onResize }: {
   panels: Opened[];
-  focus: number;
   widths: number[];
+  /** Раскрыта ли панель; нет — на её месте полоса. */
+  open: boolean[];
   available: number;
   onFocus: (index: number) => void;
   onCollapse: (index: number) => void;
@@ -256,12 +268,6 @@ function PanelStack({ panels, focus, widths, available, onFocus, onCollapse, onC
     }
     return ref;
   };
-  const open = expanded(
-    widths,
-    focus,
-    available,
-    panels.map((panel) => panel.collapsed === true),
-  );
   const surface = {
     background: token.colorBgElevated,
     color: token.colorText,
@@ -288,7 +294,7 @@ function PanelStack({ panels, focus, widths, available, onFocus, onCollapse, onC
 
   return (
     <>
-      <div className="panels-backdrop" onClick={() => onClose(0)} />
+      {open.some(Boolean) &&<div className="panels-backdrop" onClick={() => onClose(0)} />}
       <div className="panels" style={typography}>
         {/* Свёрнутая панель не размонтируется: её содержимое уходит за край экрана, а на её месте —
             полоса. Так при раскрытии сохраняются прокрутка, выбранная попытка, вкладки — всё как было. */}
