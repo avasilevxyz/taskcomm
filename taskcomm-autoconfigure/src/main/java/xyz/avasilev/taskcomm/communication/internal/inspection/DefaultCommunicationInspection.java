@@ -1,5 +1,6 @@
 package xyz.avasilev.taskcomm.communication.internal.inspection;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -22,12 +23,15 @@ import xyz.avasilev.taskcomm.communication.api.inspection.CircuitBreakerSnapshot
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationAttemptEntry;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationAttemptSnapshot;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationInspection;
+import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationLimits;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationQuery;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSnapshot;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSummary;
 import xyz.avasilev.taskcomm.communication.api.inspection.CorrelationKeySnapshot;
+import xyz.avasilev.taskcomm.communication.api.inspection.DedupKeyEntry;
 import xyz.avasilev.taskcomm.communication.api.inspection.DedupKeySnapshot;
 import xyz.avasilev.taskcomm.communication.internal.CommunicationCodec;
+import xyz.avasilev.taskcomm.communication.internal.CommunicationPhase;
 import xyz.avasilev.taskcomm.communication.internal.CommunicationSql;
 import xyz.avasilev.taskcomm.communication.internal.engine.CommunicationEngine;
 import xyz.avasilev.taskcomm.communication.internal.processor.CommunicationProcessorRegistry;
@@ -83,6 +87,17 @@ public class DefaultCommunicationInspection implements CommunicationInspection {
               FROM tc_communication_dedup
              WHERE execution_created_at = :executionCreatedAt AND communication_id = :id
              ORDER BY created_at, id
+            """;
+
+    // В ключе дедупликации дела нет — оно у коммуникации; обе таблицы — в партиции дела.
+    private static final String EXECUTION_DEDUP = """
+            SELECT d.direction, d.external_system, d.subject, d.dedup_key, d.communication_id, d.created_at
+              FROM tc_communication c
+              JOIN tc_communication_dedup d
+                ON d.execution_created_at = c.execution_created_at AND d.communication_id = c.id
+             WHERE c.execution_created_at = :executionCreatedAt AND c.execution_id = :executionId
+               AND d.execution_created_at = :executionCreatedAt
+             ORDER BY d.created_at, d.id
             """;
 
     // Пространство ключа — направление и система; заданные в условиях, они ведут по индексу ключей.
@@ -167,6 +182,21 @@ public class DefaultCommunicationInspection implements CommunicationInspection {
             pollers.put(system, this.settings.get().pollers().pollerOf(system).name());
         }
         return Collections.unmodifiableMap(pollers);
+    }
+
+    @Override
+    public Map<String, CommunicationLimits> limits() {
+        final Map<String, CommunicationLimits> limits = new TreeMap<>();
+        final CommunicationSettings resolved = this.settings.get();
+        for (final String system : this.registry.get().systems()) {
+            final Map<String, Duration> perPhase = new LinkedHashMap<>();
+            for (final CommunicationPhase phase : CommunicationPhase.values()) {
+                perPhase.put(
+                        phase.name(), resolved.attempt(system, phase).lease().maxExecutionTime());
+            }
+            limits.put(system, new CommunicationLimits(perPhase, resolved.responseTimeout(system)));
+        }
+        return Collections.unmodifiableMap(limits);
     }
 
     @Override
@@ -313,6 +343,30 @@ public class DefaultCommunicationInspection implements CommunicationInspection {
                 .query((rs, rowNum) -> new CorrelationKeySnapshot(
                         rs.getString("external_system"),
                         rs.getString("correlation_id"),
+                        rs.getObject("communication_id", UUID.class),
+                        rs.getObject("created_at", OffsetDateTime.class).toInstant()))
+                .list();
+    }
+
+    @Override
+    public SqlQuery dedupKeysSql(final ExecutionRef execution) {
+        final Map<String, Object> params = new LinkedHashMap<>();
+        params.put("executionCreatedAt", CommunicationSql.parameter(execution.createdAt()));
+        params.put("executionId", execution.id());
+        return new SqlQuery(EXECUTION_DEDUP, params);
+    }
+
+    @Override
+    public List<DedupKeyEntry> dedupKeys(final ExecutionRef execution) {
+        final SqlQuery statement = this.dedupKeysSql(execution);
+        return this.jdbc
+                .sql(statement.sql())
+                .params(statement.parameters())
+                .query((rs, rowNum) -> new DedupKeyEntry(
+                        CommunicationSnapshot.Direction.valueOf(rs.getString("direction")),
+                        rs.getString("external_system"),
+                        rs.getString("subject"),
+                        rs.getString("dedup_key"),
                         rs.getObject("communication_id", UUID.class),
                         rs.getObject("created_at", OffsetDateTime.class).toInstant()))
                 .list();

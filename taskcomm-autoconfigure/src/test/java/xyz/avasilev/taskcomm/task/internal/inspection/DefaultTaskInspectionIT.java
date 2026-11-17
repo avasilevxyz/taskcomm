@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.sql.Types;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,6 +24,7 @@ import xyz.avasilev.taskcomm.execution.api.Page;
 import xyz.avasilev.taskcomm.execution.api.PageRequest;
 import xyz.avasilev.taskcomm.rest.SqlLiterals;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskAttemptEntry;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskAttemptLimit;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskAttemptSnapshot;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskQuery;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskSnapshot;
@@ -39,6 +42,7 @@ import xyz.avasilev.taskcomm.task.internal.processor.TaskProcessorRegistry;
 import xyz.avasilev.taskcomm.task.internal.processor.TaskStartup;
 import xyz.avasilev.taskcomm.task.internal.processor.TaskStartupIT;
 import xyz.avasilev.taskcomm.task.internal.settings.ClaimForm;
+import xyz.avasilev.taskcomm.task.internal.settings.TaskSettings;
 
 /**
  * Чтение задач (docs/adr/0138-inspection-api.md): страницы по ключу без пропусков и повторов, окно
@@ -206,10 +210,57 @@ class DefaultTaskInspectionIT {
         this.unit(other, null, "PENDING");
 
         assertThat(this.inspection.unitCounts(task.execution()))
+                .allSatisfy(count -> assertThat(count.lastUpdatedAt()).isNotNull())
+                .extracting(count -> new TaskUnitCount(count.taskId(), count.batchId(), count.status(), count.count()))
                 .containsExactly(
                         new TaskUnitCount(task.id(), null, "PENDING", 2),
                         new TaskUnitCount(task.id(), null, "SUCCEEDED", 1),
                         new TaskUnitCount(task.id(), batch, "FAILED", 1));
+    }
+
+    @Test
+    void unitCountsKnowWhenTheLastUnitOfTheParentChanged() {
+        final CreatedTask task = this.submit("A-1");
+        this.unit(task, null, "SUCCEEDED");
+        final UUID last = this.unit(task, null, "SUCCEEDED", this.db.ids.next());
+        this.db
+                .jdbc
+                .sql("UPDATE tc_task_unit SET updated_at = now() + interval '1 hour' WHERE id = :id")
+                .param("id", last)
+                .update();
+        final Instant expected = this.db
+                .jdbc
+                .sql("SELECT updated_at FROM tc_task_unit WHERE id = :id")
+                .param("id", last)
+                .query(OffsetDateTime.class)
+                .single()
+                .toInstant();
+
+        assertThat(this.inspection.unitCounts(task.execution()))
+                .singleElement()
+                .extracting(TaskUnitCount::lastUpdatedAt)
+                .isEqualTo(expected);
+    }
+
+    @Test
+    void attemptLimitsNameEveryMethodOfTheProcessor() {
+        final TaskProcessorRegistry registry =
+                new TaskProcessorRegistry(List.of(new TaskStartupIT.Report("Номер заказа", "$.orderId")));
+        final TaskSettings settings = TaskSettings.resolve(
+                TaskTestSettings.settings(3, Duration.ZERO, Duration.ofMinutes(1)),
+                Map.of(),
+                registry,
+                TaskTestSettings.layout(),
+                TaskTestSettings.KEEP_RESULTS,
+                TaskTestSettings.SAFETY);
+        final DefaultTaskInspection withSettings = new DefaultTaskInspection(
+                this.db.dataSource,
+                () -> registry,
+                () -> settings,
+                new TaskPayloadCodec(JsonMapper.builder().build()));
+
+        assertThat(withSettings.attemptLimits().get(TaskTestDatabase.FLAT_TYPE))
+                .containsExactly(new TaskAttemptLimit(TASK, "PROCESS", Duration.ofMinutes(3)));
     }
 
     @Test
@@ -306,7 +357,9 @@ class DefaultTaskInspectionIT {
                                 rs.getObject("task_id", UUID.class),
                                 rs.getObject("batch_id", UUID.class),
                                 rs.getString("status"),
-                                rs.getLong("n")))
+                                rs.getLong("n"),
+                                rs.getObject("last_updated_at", OffsetDateTime.class)
+                                        .toInstant()))
                         .list())
                 .containsExactlyElementsOf(this.inspection.unitCounts(wanted.execution()));
     }

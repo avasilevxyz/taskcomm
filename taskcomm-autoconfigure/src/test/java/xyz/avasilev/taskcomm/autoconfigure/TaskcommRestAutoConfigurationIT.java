@@ -263,6 +263,10 @@ class TaskcommRestAutoConfigurationIT {
                 .andExpect(jsonPath("$.tasks[0].id").value(id))
                 .andExpect(jsonPath("$.unitCounts", hasSize(0)))
                 .andExpect(jsonPath("$.units", hasSize(0)))
+                // Ключи — полями самой выдачи, не вложенным объектом (docs/adr/0172-execution-dedup-keys.md).
+                .andExpect(jsonPath("$.correlationKeys").isArray())
+                .andExpect(jsonPath("$.dedupKeys").isArray())
+                .andExpect(jsonPath("$.keys").doesNotExist())
                 .andExpect(jsonPath("$.attempts").isArray());
         mvc.perform(get(BASE + "/executions/" + UUID.randomUUID() + "/outline")).andExpect(status().isNotFound());
         // SQL для разбора (docs/adr/0165-read-sql.md) — с подставленными значениями
@@ -319,6 +323,26 @@ class TaskcommRestAutoConfigurationIT {
                         .perform(get(BASE + "/meta"))
                         .andExpect(jsonPath("$.tasks").doesNotExist())
                         .andExpect(jsonPath("$.communications.systems").isArray()));
+    }
+
+    @Test
+    void metaNamesAttemptLimits() {
+        this.contextRunner
+                .withPropertyValues("taskcomm.rest.enabled=true")
+                .run(context -> MockMvcBuilders.webAppContextSetup(context)
+                        .build()
+                        .perform(get(BASE + "/meta"))
+                        .andExpect(jsonPath("$.tasks.types[0].limits[0].level").value("TASK"))
+                        .andExpect(jsonPath("$.tasks.types[0].limits[0].phase").value("PROCESS"))
+                        .andExpect(jsonPath("$.tasks.types[0].limits[0].maxExecutionTime")
+                                .value("PT30M"))
+                        .andExpect(jsonPath("$.communications.systems[?(@.system == 'bank')].limits[0].phase")
+                                .value("HANDLE_RESPONSE"))
+                        .andExpect(
+                                jsonPath("$.communications.systems[?(@.system == 'bank')].limits[1].maxExecutionTime")
+                                        .value("PT5M"))
+                        .andExpect(jsonPath("$.communications.systems[?(@.system == 'bank')].responseTimeout")
+                                .value("PT1H")));
     }
 
     @Test

@@ -21,6 +21,7 @@ import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationQuery;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSnapshot;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSummary;
 import xyz.avasilev.taskcomm.communication.api.inspection.CorrelationKeySnapshot;
+import xyz.avasilev.taskcomm.communication.api.inspection.DedupKeyEntry;
 import xyz.avasilev.taskcomm.communication.api.inspection.DedupKeySnapshot;
 import xyz.avasilev.taskcomm.communication.internal.CommunicationTestDatabase;
 import xyz.avasilev.taskcomm.communication.internal.ContractShape;
@@ -148,6 +149,34 @@ class DefaultCommunicationInspectionIT {
                     assertThat(key.correlationId()).isEqualTo("corr-1");
                     assertThat(key.communicationId()).isEqualTo(anchor.id());
                 });
+    }
+
+    /** Ключи дедупликации дела (docs/adr/0172-execution-dedup-keys.md): только своих коммуникаций. */
+    @Test
+    void dedupKeysOfExecution() {
+        final CreatedCommunication owner = this.outbound(
+                "stock",
+                new NewCommunication.Keys(
+                        List.of(new DedupKey.WholeHistory("k-1"), new DedupKey.LastSucceeded("sku-1", "price-1")),
+                        List.of()));
+        this.outbound("stock", new NewCommunication.Keys(List.of(new DedupKey.WholeHistory("k-2")), List.of()));
+
+        assertThat(this.inspection.dedupKeys(owner.execution()))
+                .extracting(
+                        DedupKeyEntry::direction,
+                        DedupKeyEntry::externalSystem,
+                        DedupKeyEntry::subject,
+                        DedupKeyEntry::key,
+                        DedupKeyEntry::communicationId)
+                .containsExactly(
+                        tuple(CommunicationSnapshot.Direction.OUTBOUND, "stock", null, "k-1", owner.id()),
+                        tuple(CommunicationSnapshot.Direction.OUTBOUND, "stock", "sku-1", "price-1", owner.id()));
+        assertThat(this.db
+                        .jdbc
+                        .sql(SqlLiterals.statement(this.inspection.dedupKeysSql(owner.execution())))
+                        .query((rs, rowNum) -> rs.getString("dedup_key"))
+                        .list())
+                .containsExactly("k-1", "price-1");
     }
 
     @Test

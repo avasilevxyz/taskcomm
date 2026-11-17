@@ -82,6 +82,29 @@ public interface CommunicationInspection {
     }
 
     /**
+     * Ключи дедупликации, зарегистрированные за коммуникациями дела
+     * (docs/adr/0172-execution-dedup-keys.md).
+     *
+     * @param execution дело
+     * @return ключи в порядке регистрации
+     * @throws UnsupportedOperationException если реализация это чтение не поддерживает
+     */
+    default List<DedupKeyEntry> dedupKeys(final ExecutionRef execution) {
+        throw new UnsupportedOperationException("это чтение реализация не поддерживает");
+    }
+
+    /**
+     * Запрос, которым {@link #dedupKeys(ExecutionRef)} читает ключи дедупликации дела, — для разбора.
+     *
+     * @param execution дело
+     * @return текст и параметры
+     * @throws UnsupportedOperationException если реализация SQL не отдаёт
+     */
+    default SqlQuery dedupKeysSql(final ExecutionRef execution) {
+        throw new UnsupportedOperationException("SQL чтения эта реализация не отдаёт");
+    }
+
+    /**
      * Запрос, которым {@link #correlationKeys(ExecutionRef)} читает реестр корреляции дела, — для разбора.
      *
      * @param execution дело
@@ -164,6 +187,17 @@ public interface CommunicationInspection {
      * @return внешняя система с процессором → имя поллера, по имени системы
      */
     Map<String, String> pollers();
+
+    /**
+     * Пределы коммуникаций систем с процессором — итог лестницы настроек: предел одной попытки
+     * {@code lease.max-execution-time} по фазе и срок ожидания асинхронного ответа
+     * {@code response-timeout} (docs/adr/0171-durations-and-limits.md). Вычисляется из настроек.
+     *
+     * @return система → её пределы, по имени системы; реализация, которая настроек не знает, отдаёт пустое
+     */
+    default Map<String, CommunicationLimits> limits() {
+        return Map.of();
+    }
 
     /**
      * Структура JSON запроса к внешней системе — ключи и виды значений {@code TRequest}, которые

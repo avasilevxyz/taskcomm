@@ -118,7 +118,8 @@ GET /tc/api/tasks?level=UNIT&field.order_id=A-1024&status=FAILED
 ## Дела
 
 `GET {base-path}/executions/{id}?createdAt={время создания дела}` — дело целиком: задачи, группы,
-подзадачи, коммуникации и ключи корреляции, в порядке создания, каждая сущность с указателем
+подзадачи, коммуникации, ключи корреляции и ключи дедупликации (`dedupKeys`: направление, система,
+предмет, ключ, коммуникация, время регистрации), в порядке создания, каждая сущность с указателем
 на создателя. Без `createdAt` дело ищется по всем партициям — медленнее, но работает
 с идентификатором из лога.
 
@@ -127,7 +128,8 @@ GET /tc/api/tasks?level=UNIT&field.order_id=A-1024&status=FAILED
 
 `GET {base-path}/executions/{id}/outline?createdAt={время создания дела}` — то же дело, но подзадач
 в нём не больше 50 у каждого родителя (`units`), а сколько их всего — в `unitCounts`: у каждой задачи
-и группы по статусам (`batchId` пуст у подзадач без групп). Остальные подзадачи читайте списком
+и группы по статусам (`batchId` пуст у подзадач без групп), с `lastUpdatedAt` — последним изменением
+подзадач родителя в этом статусе: у завершённых это время, когда закончилась последняя. Остальные подзадачи читайте списком
 `GET {base-path}/tasks?level=UNIT` с делом (`executionId`, `executionCreatedAt`) и родителем
 (`parentId`), страницами. В `attempts` — попытки задач, групп, выданных подзадач и коммуникаций без
 результатов и обмена: чья (`kind`, `targetId`), фаза, исход, время. Какая попытка что создала —
@@ -154,10 +156,12 @@ GET /tc/api/tasks?level=UNIT&field.order_id=A-1024&status=FAILED
 и `poller` — поллер, который их захватывает на этом экземпляре, `title` и `description` — название
 и описание из процессора (без своего названия — ключ, без описания — `null`), у типа задачи —
 `titleTemplates` — шаблоны названия одной задачи, группы и подзадачи (`task`, `batch`, `unit`);
-`communications.manualInbound` — включён ли ручной приём; `instance` — имя ответившего экземпляра,
+`limits` — предел одной попытки (`lease.max-execution-time`) по методу процессора: у типа задачи
+`level` и `phase`, у системы `phase`, сам предел — `maxExecutionTime` в ISO-8601; у системы ещё
+`responseTimeout` — сколько ждать асинхронного ответа; `communications.manualInbound` — включён ли ручной приём; `instance` — имя ответившего экземпляра,
 то же, что в `lockedBy` попыток. Выключенной подсистемы в ответе нет.
 Из Java те же приоритеты и поллеры — `defaultPriorities()` и `pollers()` у `TaskInspection`
-и `CommunicationInspection`.
+и `CommunicationInspection`, пределы — `TaskInspection.attemptLimits()` и `CommunicationInspection.limits()`.
 
 ## Поиск и окно
 
@@ -347,7 +351,8 @@ GET /tc/api/executions/01a1b72c-7426-…?createdAt=2026-11-07T18:01:46.271987Z
   "batches": [],
   "units": [],
   "communications": [],
-  "correlationKeys": []
+  "correlationKeys": [],
+  "dedupKeys": []
 }
 ```
 

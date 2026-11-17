@@ -9,11 +9,13 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationInspection;
+import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationLimits;
 import xyz.avasilev.taskcomm.communication.api.processor.CommunicationProcessor;
 import xyz.avasilev.taskcomm.communication.api.processor.KafkaCommunicationProcessor;
 import xyz.avasilev.taskcomm.communication.api.processor.RawCommunicationProcessor;
 import xyz.avasilev.taskcomm.communication.api.processor.RestCommunicationProcessor;
 import xyz.avasilev.taskcomm.communication.api.processor.SoapCommunicationProcessor;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskAttemptLimit;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskInspection;
 import xyz.avasilev.taskcomm.task.api.processor.BatchTaskProcessor;
 import xyz.avasilev.taskcomm.task.api.processor.FlatTaskProcessor;
@@ -50,46 +52,67 @@ public class MetaController {
             final TaskInspection tasks,
             final CommunicationInspection communications,
             final boolean manualInbound) {
-        final Map<String, Integer> taskPriorities = tasks == null ? Map.of() : tasks.defaultPriorities();
-        final Map<String, String> taskPollers = tasks == null ? Map.of() : tasks.pollers();
-        final Map<String, Integer> systemPriorities =
-                communications == null ? Map.of() : communications.defaultPriorities();
-        final Map<String, String> systemPollers = communications == null ? Map.of() : communications.pollers();
         this.meta = new RestDtos.MetaDto(
                 version,
                 // То же выражение, что у движков: оно стоит в locked_by попыток (docs/adr/0154-ui-shell.md).
                 ManagementFactory.getRuntimeMXBean().getName(),
                 searchWindow.toString(),
-                taskProcessors == null || tasks == null
-                        ? null
-                        : new RestDtos.TasksMetaDto(taskProcessors.stream()
-                                .map(processor -> new RestDtos.TaskTypeDto(
-                                        processor.taskType(),
-                                        titleOr(processor.title(), processor.taskType()),
-                                        blankToNull(processor.description()),
-                                        new RestDtos.TitleTemplatesDto(
-                                                blankToNull(processor.taskTitle()),
-                                                blankToNull(batchTitle(processor)),
-                                                blankToNull(unitTitle(processor))),
-                                        contract(processor),
-                                        taskPriorities.get(processor.taskType()),
-                                        taskPollers.get(processor.taskType())))
-                                .sorted(Comparator.comparing(RestDtos.TaskTypeDto::type))
-                                .toList()),
+                taskProcessors == null || tasks == null ? null : tasksMeta(taskProcessors, tasks),
                 communicationProcessors == null || communications == null
                         ? null
-                        : new RestDtos.CommunicationsMetaDto(
-                                communicationProcessors.stream()
-                                        .map(processor -> new RestDtos.ExternalSystemDto(
-                                                processor.externalSystem(),
-                                                titleOr(processor.title(), processor.externalSystem()),
-                                                blankToNull(processor.description()),
-                                                transport(processor),
-                                                systemPriorities.get(processor.externalSystem()),
-                                                systemPollers.get(processor.externalSystem())))
-                                        .sorted(Comparator.comparing(RestDtos.ExternalSystemDto::system))
-                                        .toList(),
-                                manualInbound));
+                        : communicationsMeta(communicationProcessors, communications, manualInbound));
+    }
+
+    /** Типы задач с процессором — подсистема задач включена. */
+    private static RestDtos.TasksMetaDto tasksMeta(
+            final List<TaskProcessor<?>> processors, final TaskInspection tasks) {
+        final Map<String, Integer> priorities = tasks.defaultPriorities();
+        final Map<String, String> pollers = tasks.pollers();
+        final Map<String, List<TaskAttemptLimit>> limits = tasks.attemptLimits();
+        return new RestDtos.TasksMetaDto(processors.stream()
+                .map(processor -> new RestDtos.TaskTypeDto(
+                        processor.taskType(),
+                        titleOr(processor.title(), processor.taskType()),
+                        blankToNull(processor.description()),
+                        new RestDtos.TitleTemplatesDto(
+                                blankToNull(processor.taskTitle()),
+                                blankToNull(batchTitle(processor)),
+                                blankToNull(unitTitle(processor))),
+                        contract(processor),
+                        priorities.get(processor.taskType()),
+                        pollers.get(processor.taskType()),
+                        limits.getOrDefault(processor.taskType(), List.of()).stream()
+                                .map(limit -> new RestDtos.AttemptLimitDto(
+                                        limit.level().name(),
+                                        limit.phase(),
+                                        limit.maxExecutionTime().toString()))
+                                .toList()))
+                .sorted(Comparator.comparing(RestDtos.TaskTypeDto::type))
+                .toList());
+    }
+
+    /** Внешние системы с процессором — подсистема коммуникаций включена. */
+    private static RestDtos.CommunicationsMetaDto communicationsMeta(
+            final List<CommunicationProcessor<?, ?, ?>> processors,
+            final CommunicationInspection communications,
+            final boolean manualInbound) {
+        final Map<String, Integer> priorities = communications.defaultPriorities();
+        final Map<String, String> pollers = communications.pollers();
+        final Map<String, CommunicationLimits> limits = communications.limits();
+        return new RestDtos.CommunicationsMetaDto(
+                processors.stream()
+                        .map(processor -> new RestDtos.ExternalSystemDto(
+                                processor.externalSystem(),
+                                titleOr(processor.title(), processor.externalSystem()),
+                                blankToNull(processor.description()),
+                                transport(processor),
+                                priorities.get(processor.externalSystem()),
+                                pollers.get(processor.externalSystem()),
+                                systemLimits(limits.get(processor.externalSystem())),
+                                responseTimeout(limits.get(processor.externalSystem()))))
+                        .sorted(Comparator.comparing(RestDtos.ExternalSystemDto::system))
+                        .toList(),
+                manualInbound);
     }
 
     /**
@@ -100,6 +123,21 @@ public class MetaController {
     @GetMapping
     public RestDtos.MetaDto meta() {
         return this.meta;
+    }
+
+    /** Пределы попыток системы по фазам; реализация без настроек — пусто. */
+    private static List<RestDtos.AttemptLimitDto> systemLimits(final CommunicationLimits limits) {
+        return limits == null
+                ? List.of()
+                : limits.maxExecutionTimes().entrySet().stream()
+                        .sorted(Map.Entry.comparingByKey())
+                        .map(entry -> new RestDtos.AttemptLimitDto(
+                                null, entry.getKey(), entry.getValue().toString()))
+                        .toList();
+    }
+
+    private static String responseTimeout(final CommunicationLimits limits) {
+        return limits == null ? null : limits.responseTimeout().toString();
     }
 
     /** Форма контракта — разбор запечатанной иерархии без {@code default}. */

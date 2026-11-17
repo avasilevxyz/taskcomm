@@ -1,4 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
+import { attemptMillis, communicationAttemptLimit } from '../duration';
+import { Elapsed } from '../elapsed';
 import { Card, Empty, Flex, Space, Tabs, Tag, Typography } from 'antd';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { getJson, type CommunicationAttempt, type CommunicationItem, type CommunicationKeys, type ExchangeMessage } from '../api';
@@ -214,6 +216,18 @@ function CommunicationDetails({ communication }: { communication: CommunicationI
                       },
                       { key: 'common.started', title: t('common.started'), sorter: by((row: CommunicationAttempt) => row.times.startedAt), render: (_, attempt) => time(attempt.times.startedAt) },
                       { key: 'common.finished', title: t('common.finished'), sorter: by((row: CommunicationAttempt) => row.times.finishedAt), render: (_, attempt) => time(attempt.times.finishedAt) },
+                      {
+                        key: 'common.duration',
+                        title: t('common.duration'),
+                        sorter: by((row: CommunicationAttempt) => attemptMillis(row.times)),
+                        render: (_, attempt) => (
+                          <Elapsed
+                            start={attempt.times.startedAt}
+                            end={attempt.times.startedAt ? (attempt.times.finishedAt ?? null) : undefined}
+                            limit={communicationAttemptLimit(meta.data, communication.externalSystem, attempt.phase)}
+                          />
+                        ),
+                      },
                       { title: t('common.instance'), sorter: by((row: CommunicationAttempt) => row.lockedBy), dataIndex: 'lockedBy', render: (value?: string) => value ?? '—' },
                     ]}
                   />

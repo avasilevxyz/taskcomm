@@ -244,6 +244,8 @@ export interface UnitCount {
   batchId: string | null;
   status: string;
   count: number;
+  /** Последнее изменение подзадач родителя в статусе (docs/adr/0171-durations-and-limits.md); нет — старый сервер. */
+  lastUpdatedAt?: string;
 }
 
 export interface CorrelationKey {
@@ -263,6 +265,16 @@ export interface AttemptEntry {
   times: Times;
 }
 
+/** Ключ дедупликации коммуникации дела: пространство ключа — направление и система. */
+export interface DedupKeyEntry {
+  direction: Direction;
+  externalSystem: string;
+  subject?: string | null;
+  key: string;
+  communicationId: string;
+  createdAt: string;
+}
+
 export interface ExecutionOutline {
   execution: ExecutionRef;
   tasks: TaskItem[];
@@ -272,6 +284,8 @@ export interface ExecutionOutline {
   unitCounts: UnitCount[];
   communications: CommunicationItem[];
   correlationKeys: CorrelationKey[];
+  /** Ключи дедупликации дела (docs/adr/0172-execution-dedup-keys.md); нет — старый сервер. */
+  dedupKeys?: DedupKeyEntry[];
   attempts?: AttemptEntry[];
 }
 
@@ -342,6 +356,13 @@ export interface PayloadShape {
   values?: string[];
 }
 
+/** Предел одной попытки: уровень — только у задач, предел — строкой ISO-8601. */
+export interface AttemptLimit {
+  level?: Level;
+  phase: string;
+  maxExecutionTime: string;
+}
+
 export interface Meta {
   version?: string;
   /** Имя ответившего экземпляра — то же, что в locked_by попыток. */
@@ -360,6 +381,8 @@ export interface Meta {
       contract: string;
       defaultPriority?: number;
       poller?: string;
+      /** Предел одной попытки каждого метода (docs/adr/0171-durations-and-limits.md). */
+      limits?: AttemptLimit[];
     }[];
   };
   communications?: {
@@ -370,6 +393,10 @@ export interface Meta {
       transport: string;
       defaultPriority?: number;
       poller?: string;
+      /** Предел одной попытки по фазе (docs/adr/0171-durations-and-limits.md). */
+      limits?: AttemptLimit[];
+      /** Срок ожидания асинхронного ответа, ISO-8601. */
+      responseTimeout?: string;
     }[];
     /** Включён ли ручной приём входящих (docs/adr/0153-ui-creation-refinements.md). */
     manualInbound: boolean;

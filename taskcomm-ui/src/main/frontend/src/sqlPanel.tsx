@@ -1,4 +1,4 @@
-import { ConsoleSqlOutlined } from '@ant-design/icons';
+import { DatabaseOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Flex, Tooltip, Typography } from 'antd';
 import { useContext } from 'react';
@@ -65,7 +65,7 @@ export function TableSqlButton({ request }: { request: TableRequest }) {
     });
   return (
     <Tooltip title={t('sql.title')}>
-      <Button size="small" type="text" icon={<ConsoleSqlOutlined />} aria-label={t('sql.title')} onClick={onClick} />
+      <Button size="small" type="text" icon={<DatabaseOutlined />} aria-label={t('sql.title')} onClick={onClick} />
     </Tooltip>
   );
 }

@@ -2,6 +2,7 @@ package xyz.avasilev.taskcomm.rest;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonRawValue;
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -12,6 +13,7 @@ import xyz.avasilev.taskcomm.communication.api.CommunicationStatus;
 import xyz.avasilev.taskcomm.communication.api.RunMode;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationSnapshot;
 import xyz.avasilev.taskcomm.communication.api.inspection.CorrelationKeySnapshot;
+import xyz.avasilev.taskcomm.communication.api.inspection.DedupKeyEntry;
 import xyz.avasilev.taskcomm.communication.api.inspection.DedupKeySnapshot;
 import xyz.avasilev.taskcomm.execution.api.Origin;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskSnapshot;
@@ -257,6 +259,7 @@ public final class RestDtos {
      * @param units подзадачи
      * @param communications коммуникации
      * @param correlationKeys ключи корреляции
+     * @param dedupKeys ключи дедупликации (docs/adr/0172-execution-dedup-keys.md)
      */
     public record ExecutionDto(
             ExecutionRefDto execution,
@@ -264,7 +267,8 @@ public final class RestDtos {
             List<TaskDto> batches,
             List<TaskDto> units,
             List<CommunicationDto> communications,
-            List<CorrelationKeySnapshot> correlationKeys) {}
+            List<CorrelationKeySnapshot> correlationKeys,
+            List<DedupKeyEntry> dedupKeys) {}
 
     /**
      * Дело для экрана (docs/adr/0150-execution-outline-and-meta.md,
@@ -277,7 +281,7 @@ public final class RestDtos {
      * @param units подзадачи, не больше предела на родителя
      * @param unitCounts счётчики подзадач — сколько их всего
      * @param communications коммуникации
-     * @param correlationKeys ключи корреляции
+     * @param keys ключи корреляции и дедупликации — полями самой выдачи, без вложенного объекта
      * @param attempts попытки задач, групп, выданных подзадач и коммуникаций
      */
     public record ExecutionOutlineDto(
@@ -287,8 +291,17 @@ public final class RestDtos {
             List<TaskDto> units,
             List<TaskUnitCount> unitCounts,
             List<CommunicationDto> communications,
-            List<CorrelationKeySnapshot> correlationKeys,
+            @JsonUnwrapped ExecutionKeysDto keys,
             List<AttemptEntryDto> attempts) {}
+
+    /**
+     * Ключи коммуникаций дела. В выдаче дела без подзадач — полями самой выдачи: запись только держит
+     * число компонентов выдачи в пределах.
+     *
+     * @param correlationKeys ключи корреляции
+     * @param dedupKeys ключи дедупликации (docs/adr/0172-execution-dedup-keys.md)
+     */
+    public record ExecutionKeysDto(List<CorrelationKeySnapshot> correlationKeys, List<DedupKeyEntry> dedupKeys) {}
 
     /**
      * Описание экземпляра для интерфейса (docs/adr/0150-execution-outline-and-meta.md). Выключенной
@@ -326,6 +339,7 @@ public final class RestDtos {
      * @param contract форма контракта: {@code FLAT}, {@code UNIT} или {@code BATCH}
      * @param defaultPriority приоритет по умолчанию — итог лестницы настроек
      * @param poller поллер, который захватывает работу типа на ответившем экземпляре
+     * @param limits предел одной попытки каждого метода процессора (docs/adr/0171-durations-and-limits.md)
      */
     public record TaskTypeDto(
             String type,
@@ -334,7 +348,18 @@ public final class RestDtos {
             TitleTemplatesDto titleTemplates,
             String contract,
             Integer defaultPriority,
-            String poller) {}
+            String poller,
+            List<AttemptLimitDto> limits) {}
+
+    /**
+     * Предел одной попытки (docs/adr/0171-durations-and-limits.md).
+     *
+     * @param level уровень сущности у задач; у коммуникаций поля нет
+     * @param phase фаза попытки
+     * @param maxExecutionTime предел строкой ISO-8601
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record AttemptLimitDto(String level, String phase, String maxExecutionTime) {}
 
     /**
      * Шаблоны названия одной сущности по уровням: подстановка {@code {имя}} — поле поиска своего
@@ -365,6 +390,8 @@ public final class RestDtos {
      * @param transport транспорт: {@code REST}, {@code SOAP}, {@code KAFKA} или {@code RAW}
      * @param defaultPriority приоритет по умолчанию — итог лестницы настроек
      * @param poller поллер, который захватывает коммуникации системы на ответившем экземпляре
+     * @param limits предел одной попытки по фазе (docs/adr/0171-durations-and-limits.md)
+     * @param responseTimeout срок ожидания асинхронного ответа строкой ISO-8601 или {@code null}
      */
     public record ExternalSystemDto(
             String system,
@@ -372,7 +399,9 @@ public final class RestDtos {
             String description,
             String transport,
             Integer defaultPriority,
-            String poller) {}
+            String poller,
+            List<AttemptLimitDto> limits,
+            String responseTimeout) {}
 
     /**
      * Число.

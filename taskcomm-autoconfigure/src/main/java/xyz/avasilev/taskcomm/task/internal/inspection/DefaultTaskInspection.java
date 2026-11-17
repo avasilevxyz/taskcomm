@@ -22,6 +22,7 @@ import xyz.avasilev.taskcomm.execution.api.Page;
 import xyz.avasilev.taskcomm.execution.api.PageRequest;
 import xyz.avasilev.taskcomm.task.api.inspection.SearchableFieldSnapshot;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskAttemptEntry;
+import xyz.avasilev.taskcomm.task.api.inspection.TaskAttemptLimit;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskAttemptSnapshot;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskInspection;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskQuery;
@@ -29,6 +30,7 @@ import xyz.avasilev.taskcomm.task.api.inspection.TaskSnapshot;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskTypeSummary;
 import xyz.avasilev.taskcomm.task.api.inspection.TaskUnitCount;
 import xyz.avasilev.taskcomm.task.api.processor.FieldType;
+import xyz.avasilev.taskcomm.task.internal.ProcessorMethod;
 import xyz.avasilev.taskcomm.task.internal.TaskLevel;
 import xyz.avasilev.taskcomm.task.internal.TaskPayloadCodec;
 import xyz.avasilev.taskcomm.task.internal.TaskSql;
@@ -119,7 +121,7 @@ public class DefaultTaskInspection implements TaskInspection {
             """;
 
     private static final String UNIT_COUNTS = """
-            SELECT e.task_id, e.batch_id, e.status, count(*) AS n
+            SELECT e.task_id, e.batch_id, e.status, count(*) AS n, max(e.updated_at) AS last_updated_at
               FROM tc_task_unit e
              WHERE e.execution_created_at = :executionCreatedAt AND e.execution_id = :executionId
              GROUP BY e.task_id, e.batch_id, e.status
@@ -358,7 +360,8 @@ public class DefaultTaskInspection implements TaskInspection {
                         rs.getObject("task_id", UUID.class),
                         rs.getObject("batch_id", UUID.class),
                         rs.getString("status"),
-                        rs.getLong("n")))
+                        rs.getLong("n"),
+                        rs.getObject("last_updated_at", OffsetDateTime.class).toInstant()))
                 .list();
     }
 
@@ -417,6 +420,28 @@ public class DefaultTaskInspection implements TaskInspection {
             priorities.put(type, this.settings.get().priority(type));
         }
         return Collections.unmodifiableMap(priorities);
+    }
+
+    @Override
+    public Map<String, List<TaskAttemptLimit>> attemptLimits() {
+        final Map<String, List<TaskAttemptLimit>> limits = new TreeMap<>();
+        this.registry
+                .get()
+                .shapes()
+                .forEach((type, shape) -> limits.put(
+                        type,
+                        ProcessorMethod.of(shape).stream()
+                                .map(method -> new TaskAttemptLimit(
+                                        TaskSnapshot.Level.valueOf(
+                                                method.level().name()),
+                                        method.phase().name(),
+                                        this.settings
+                                                .get()
+                                                .settings(type, method)
+                                                .lease()
+                                                .maxExecutionTime()))
+                                .toList()));
+        return Collections.unmodifiableMap(limits);
     }
 
     @Override

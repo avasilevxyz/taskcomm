@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, Flex, Space, Tabs, Typography } from 'antd';
 import { Link, useParams, useSearchParams } from 'react-router';
+import { attemptMillis, taskAttemptLimit } from '../duration';
+import { Elapsed } from '../elapsed';
 import { getJson, type Level, type TaskAttempt, type TaskItem } from '../api';
 import {
   executionPath,
@@ -185,6 +187,18 @@ function TaskDetails({ task }: { task: TaskItem }) {
                       { key: 'common.reason', title: t('common.reason'), sorter: by((row: TaskAttempt) => row.outcome.statusDescription), render: (_, attempt) => <Reason text={attempt.outcome.statusDescription} /> },
                       { key: 'common.started', title: t('common.started'), sorter: by((row: TaskAttempt) => row.times.startedAt), render: (_, attempt) => time(attempt.times.startedAt) },
                       { key: 'common.finished', title: t('common.finished'), sorter: by((row: TaskAttempt) => row.times.finishedAt), render: (_, attempt) => time(attempt.times.finishedAt) },
+                      {
+                        key: 'common.duration',
+                        title: t('common.duration'),
+                        sorter: by((row: TaskAttempt) => attemptMillis(row.times)),
+                        render: (_, attempt) => (
+                          <Elapsed
+                            start={attempt.times.startedAt}
+                            end={attempt.times.startedAt ? (attempt.times.finishedAt ?? null) : undefined}
+                            limit={taskAttemptLimit(meta.data, task.taskType, task.level, attempt.phase)}
+                          />
+                        ),
+                      },
                       { title: t('common.instance'), sorter: by((row: TaskAttempt) => row.lockedBy), dataIndex: 'lockedBy', render: (value?: string) => value ?? '—' },
                       { title: t('common.leaseRenewals'), sorter: by((row: TaskAttempt) => row.leaseRenewals), dataIndex: 'leaseRenewals' },
                     ]}

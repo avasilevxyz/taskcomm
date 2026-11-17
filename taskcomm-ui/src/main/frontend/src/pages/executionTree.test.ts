@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AttemptEntry, CommunicationItem, ExecutionOutline, Origin, TaskItem } from '../api';
-import { buildTree, CHILD_LIMIT, restartBox, restartChoices, restartTargets, toggleRestart, total } from './executionTree';
+import { buildTree, CHILD_LIMIT, restartBox, restartChoices, restartTargets, toggleRestart, total, treeTimes } from './executionTree';
 
 const EXECUTION = { id: 'e', createdAt: '2026-11-12T00:00:00Z' };
 
@@ -217,5 +217,162 @@ describe('дерево дела', () => {
       // Подзадача, выбранная до родителя, на перезапуск не уходит, даже если осталась в выборе.
       expect(restartTargets(new Set(['BATCH:b1', 'UNIT:u1']), choices).map((target) => target.id)).toEqual(['b1']);
     });
+  });
+});
+
+describe('время узлов дерева', () => {
+  const at = (seconds: number) => new Date(Date.parse('2026-11-17T10:00:00Z') + seconds * 1000).toISOString();
+  const attempt = (
+    id: string,
+    kind: AttemptEntry['kind'],
+    targetId: string,
+    phase: string,
+    started: number,
+    finished?: number,
+  ): AttemptEntry => ({
+    id,
+    kind,
+    targetId,
+    phase,
+    outcome: finished === undefined ? {} : { status: 'SUCCEEDED' },
+    times: { startedAt: at(started), finishedAt: finished === undefined ? undefined : at(finished) },
+  });
+  const parent = (status: string, phase: string): TaskItem => ({
+    ...task('t', at(0)),
+    state: { status, phase, priority: 100, createdAt: at(0), updatedAt: at(0), orphan: false },
+  });
+  const unit = (id: string, status: string): TaskItem => ({
+    ...task(id, at(1)),
+    level: 'UNIT',
+    parents: { taskId: 't', attemptId: 'x1' },
+    state: { status, phase: 'PROCESS', priority: 100, createdAt: at(1), updatedAt: at(1), orphan: false },
+  });
+  const base = (units: TaskItem[], attempts: AttemptEntry[], unitCounts: ExecutionOutline['unitCounts']): ExecutionOutline => ({
+    execution: EXECUTION,
+    tasks: [parent('AWAITING_CHILDREN', 'COLLECT')],
+    batches: [],
+    units,
+    unitCounts,
+    communications: [],
+    correlationKeys: [],
+    attempts,
+  });
+  const expandOf = (outline: ExecutionOutline) => {
+    const roots = buildTree(outline);
+    const expand = roots[0].children.find((node) => node.phase?.phase === 'EXPAND')!;
+    return { roots, times: treeTimes(roots), expand };
+  };
+
+  it('фаза раскрытия идёт, пока идёт хоть одна её подзадача, хотя попытка раскрытия закончилась', () => {
+    const { times, expand } = expandOf(
+      base(
+        [unit('u1', 'SUCCEEDED'), unit('u2', 'RUNNING')],
+        [
+          attempt('x1', 'TASK', 't', 'EXPAND', 0, 1),
+          attempt('p1', 'UNIT', 'u1', 'PROCESS', 2, 5),
+          attempt('p2', 'UNIT', 'u2', 'PROCESS', 3),
+        ],
+        [
+          { taskId: 't', batchId: null, status: 'SUCCEEDED', count: 1, lastUpdatedAt: at(5) },
+          { taskId: 't', batchId: null, status: 'RUNNING', count: 1, lastUpdatedAt: at(3) },
+        ],
+      ),
+    );
+
+    expect(times.get(expand.key)).toMatchObject({ start: at(0), end: null });
+    expect(times.get('UNIT:u1')).toMatchObject({ start: at(1), end: at(5) });
+    // «Всего» подзадачи — от её создания: ожидание в очереди до первой попытки входит, работа — нет.
+    expect(times.get('UNIT:u1')?.work).toEqual({ closedMs: 3_000, openStarts: [] });
+    // Идущая попытка — в работе началом, её время тикает до текущего момента.
+    expect(times.get(expand.key)?.work).toEqual({ closedMs: 4_000, openStarts: [at(3)] });
+  });
+
+  it('окончание фазы — окончание последнего ребёнка, а не её попытки', () => {
+    const { times, expand, roots } = expandOf(
+      base(
+        [unit('u1', 'SUCCEEDED'), unit('u2', 'SUCCEEDED')],
+        [
+          attempt('x1', 'TASK', 't', 'EXPAND', 0, 1),
+          attempt('p1', 'UNIT', 'u1', 'PROCESS', 2, 5),
+          attempt('p2', 'UNIT', 'u2', 'PROCESS', 3, 9),
+        ],
+        [{ taskId: 't', batchId: null, status: 'SUCCEEDED', count: 2, lastUpdatedAt: at(9) }],
+      ),
+    );
+
+    expect(times.get(expand.key)).toMatchObject({ start: at(0), end: at(9) });
+    // Работа — сумма попыток фазы и всего под ней: 1s раскрытия, 3s и 6s подзадач.
+    expect(times.get(expand.key)?.work).toEqual({ closedMs: 10_000, openStarts: [] });
+    // Сборка ещё не начата — задача целиком идёт, от начала первой попытки.
+    expect(times.get(roots[0].key)).toMatchObject({ start: at(0), end: null });
+  });
+
+  it('подзадачи вне выдачи — по счётчикам: их последнее изменение продлевает фазу', () => {
+    const { times, expand } = expandOf(
+      base(
+        [unit('u1', 'SUCCEEDED')],
+        [attempt('x1', 'TASK', 't', 'EXPAND', 0, 1), attempt('p1', 'UNIT', 'u1', 'PROCESS', 2, 5)],
+        [{ taskId: 't', batchId: null, status: 'SUCCEEDED', count: 80, lastUpdatedAt: at(60) }],
+      ),
+    );
+
+    expect(expand.children.map((node) => node.kind)).toEqual(['UNIT', 'MORE']);
+    expect(times.get(expand.key)?.end).toBe(at(60));
+  });
+
+  it('незавершённая подзадача вне выдачи — фаза ещё идёт', () => {
+    const { times, expand } = expandOf(
+      base(
+        [unit('u1', 'SUCCEEDED')],
+        [attempt('x1', 'TASK', 't', 'EXPAND', 0, 1), attempt('p1', 'UNIT', 'u1', 'PROCESS', 2, 5)],
+        [
+          { taskId: 't', batchId: null, status: 'SUCCEEDED', count: 70, lastUpdatedAt: at(60) },
+          { taskId: 't', batchId: null, status: 'PENDING', count: 10, lastUpdatedAt: at(1) },
+        ],
+      ),
+    );
+
+    expect(times.get(expand.key)?.end).toBeNull();
+  });
+
+  it('законченная сущность — от первой попытки до последней, паузы между повторами входят', () => {
+    const done: ExecutionOutline = {
+      ...base([], [attempt('a1', 'TASK', 't', 'PROCESS', 0, 2), attempt('a2', 'TASK', 't', 'PROCESS', 30, 31)], []),
+      tasks: [parent('SUCCEEDED', 'PROCESS')],
+    };
+    const roots = buildTree(done);
+
+    expect(treeTimes(roots).get(roots[0].key)).toMatchObject({ start: at(0), end: at(31) });
+    expect(treeTimes(roots).get('ATTEMPT:a2')).toMatchObject({ start: at(30), end: at(31) });
+  });
+
+  it('законченная сущность ещё идёт, пока идёт созданное её попытками', () => {
+    const done: ExecutionOutline = {
+      ...base([], [attempt('a1', 'TASK', 't', 'PROCESS', 0, 2)], []),
+      tasks: [parent('SUCCEEDED', 'PROCESS')],
+      communications: [communication('c1', at(1), { type: 'TASK', id: 't', attemptId: 'a1', relation: 'SPAWNED' })],
+    };
+    const roots = buildTree(done);
+
+    expect(treeTimes(roots).get(roots[0].key)).toMatchObject({ start: at(0), end: null });
+  });
+
+  it('ждём асинхронного ответа — срок от конца отправки', () => {
+    const waiting: ExecutionOutline = {
+      ...base([], [attempt('s1', 'COMMUNICATION', 'c1', 'PROCESS', 0, 4)], []),
+      tasks: [],
+      communications: [
+        {
+          ...communication('c1', at(0)),
+          state: { status: 'AWAITING_RESPONSE', phase: 'HANDLE_RESPONSE', priority: 100, createdAt: at(0), updatedAt: at(4), orphan: false },
+        },
+      ],
+    };
+    const [root] = buildTree(waiting);
+    const phase = root.children.find((node) => node.phase)!;
+
+    expect(phase.phase?.waiting?.since).toBe(at(4));
+    expect(phase.phase?.processor).toBe('bank');
+    expect(treeTimes([root]).get(root.key)).toMatchObject({ start: at(0), end: null });
   });
 });

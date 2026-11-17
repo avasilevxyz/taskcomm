@@ -1,4 +1,5 @@
 import type { AttemptEntry, CommunicationItem, ExecutionOutline, Level, Origin, TaskItem } from '../api';
+import { between, combineEnds, earliest, type End } from '../duration';
 import { communicationRestartable, taskRestartable, type RestartKind, type RestartTarget } from '../restartMany';
 
 // Дерево дела (docs/adr/0150-execution-outline-and-meta.md, docs/adr/0166-execution-outline-units-and-attempts.md,
@@ -18,6 +19,8 @@ export const CHILD_LIMIT = 50;
 /** Попытка узлом — с номером в своей фазе. */
 export interface AttemptNode extends AttemptEntry {
   number: number;
+  /** Тип задачи или система сущности — по ним ищется предел попытки. */
+  processor: string;
 }
 
 /** Фаза сущности: её попытки — детьми узла; попыток нет — фаза текущая и ещё не начата. */
@@ -25,11 +28,18 @@ export interface PhaseNode {
   phase: string;
   kind: AttemptEntry['kind'];
   targetId: string;
+  /** Тип задачи или система сущности — по ним ищется предел попытки. */
+  processor: string;
   attempts: number;
+  /** Попытки фазы по началу. */
+  list: AttemptEntry[];
   /** Последняя попытка фазы. */
   last?: AttemptEntry;
-  /** Статус сущности — у текущей фазы без попыток. */
-  waiting?: { status: string; statusDescription?: string };
+  /**
+   * Статус сущности — у текущей фазы без попыток; {@code since} — у асинхронного ответа, который ещё
+   * ждём: конец последней отправки, от него идёт срок ожидания.
+   */
+  waiting?: { status: string; statusDescription?: string; since?: string };
 }
 
 /** Кнопка «Все группы» или «Все подзадачи» — сколько их у родителя всего. */
@@ -38,6 +48,8 @@ export interface MoreNode {
   parentId: string;
   taskType: string;
   count: number;
+  /** Когда закончились все скрытые: идёт хоть одна — {@code null}. */
+  end: End;
 }
 
 export interface TreeNode {
@@ -116,7 +128,7 @@ function hiddenBatches(batches: TaskItem[]): Set<string> {
 const WAITING = '\uFFFE';
 const LAST = '\uFFFF';
 
-const TERMINAL = ['SUCCEEDED', 'FAILED', 'WARNING', 'CANCELLED', 'SKIPPED', 'ABANDONED'];
+export const TERMINAL = ['SUCCEEDED', 'FAILED', 'WARNING', 'CANCELLED', 'SKIPPED', 'ABANDONED'];
 
 function byStart(a: AttemptEntry, b: AttemptEntry): number {
   return compare(a.times.startedAt ?? '', b.times.startedAt ?? '') || compare(a.id, b.id);
@@ -137,6 +149,7 @@ const PROCESS = 'PROCESS';
 function phaseNodes(owner: TreeNode, attempts: AttemptEntry[]): { phases: TreeNode[]; holders: Map<string, TreeNode> } {
   const target = owner.task ?? owner.communication;
   const kind = owner.kind as AttemptEntry['kind'];
+  const processor = owner.task?.taskType ?? owner.communication?.externalSystem ?? '';
   const byPhase = new Map<string, AttemptEntry[]>();
   for (const attempt of [...attempts].sort(byStart)) {
     byPhase.set(attempt.phase, [...(byPhase.get(attempt.phase) ?? []), attempt]);
@@ -148,7 +161,7 @@ function phaseNodes(owner: TreeNode, attempts: AttemptEntry[]): { phases: TreeNo
       (attempt, index): TreeNode => ({
         key: key('ATTEMPT', attempt.id),
         kind: 'ATTEMPT',
-        attempt: { ...attempt, number: index + 1 },
+        attempt: { ...attempt, number: index + 1, processor },
         createdAt: attempt.times.startedAt ?? owner.createdAt,
         units: {},
         children: [],
@@ -168,7 +181,7 @@ function phaseNodes(owner: TreeNode, attempts: AttemptEntry[]): { phases: TreeNo
     const node: TreeNode = {
       key: key(`PHASE-${phase}`, owner.key),
       kind: 'PHASE',
-      phase: { phase, kind, targetId: target?.id ?? '', attempts: list.length, last: list.at(-1) },
+      phase: { phase, kind, targetId: target?.id ?? '', processor, attempts: list.length, list, last: list.at(-1) },
       createdAt: attemptNodes[0].createdAt,
       units: {},
       children: single ? [] : attemptNodes,
@@ -185,8 +198,14 @@ function phaseNodes(owner: TreeNode, attempts: AttemptEntry[]): { phases: TreeNo
         phase: current,
         kind,
         targetId: target.id,
+        processor,
         attempts: 0,
-        waiting: { status: target.state.status, statusDescription: target.state.statusDescription },
+        list: [],
+        waiting: {
+          status: target.state.status,
+          statusDescription: target.state.statusDescription,
+          since: target.state.status === 'AWAITING_RESPONSE' ? lastFinished(byPhase.get(PROCESS)) : undefined,
+        },
       },
       createdAt: WAITING,
       units: {},
@@ -196,12 +215,17 @@ function phaseNodes(owner: TreeNode, attempts: AttemptEntry[]): { phases: TreeNo
   return { phases, holders };
 }
 
-function moreNode(level: 'BATCH' | 'UNIT', owner: TreeNode, count: number): TreeNode {
+/** Конец последней закрытой попытки отправки — от него идёт срок ожидания асинхронного ответа. */
+function lastFinished(attempts: AttemptEntry[] | undefined): string | undefined {
+  return attempts?.filter((attempt) => attempt.times.finishedAt).at(-1)?.times.finishedAt;
+}
+
+function moreNode(level: 'BATCH' | 'UNIT', owner: TreeNode, count: number, end: End): TreeNode {
   const parentId = owner.task?.id ?? '';
   return {
     key: key(`MORE-${level}`, parentId),
     kind: 'MORE',
-    more: { level, parentId, taskType: owner.task?.taskType ?? '', count },
+    more: { level, parentId, taskType: owner.task?.taskType ?? '', count, end },
     createdAt: LAST,
     units: {},
     children: [],
@@ -271,11 +295,13 @@ export function buildTree(outline: ExecutionOutline): TreeNode[] {
   const expansionOf = (node: TreeNode) => phasesOf.get(node.key)?.get('EXPAND') ?? node;
   for (const node of nodes.values()) {
     if (node.kind === 'TASK' && node.task && (batchesOf.get(node.task.id) ?? 0) > CHILD_LIMIT) {
-      expansionOf(node).children.push(moreNode('BATCH', node, batchesOf.get(node.task.id)!));
+      const taskId = node.task.id;
+      const end = hiddenBatchesEnd(outline, (batch) => batch.parents?.taskId === taskId && hidden.has(batch.id));
+      expansionOf(node).children.push(moreNode('BATCH', node, batchesOf.get(taskId)!, end));
     }
     const count = total(node.units);
     if ((node.kind === 'TASK' || node.kind === 'BATCH') && count > (shownUnits.get(node.key) ?? 0)) {
-      expansionOf(node).children.push(moreNode('UNIT', node, count));
+      expansionOf(node).children.push(moreNode('UNIT', node, count, unitsEnd(outline, node)));
     }
   }
 
@@ -285,6 +311,132 @@ export function buildTree(outline: ExecutionOutline): TreeNode[] {
   };
   sort(roots);
   return roots;
+}
+
+/**
+ * Когда закончились подзадачи родителя — по счётчикам, в них есть и не попавшие в дерево
+ * (docs/adr/0171-durations-and-limits.md): незавершённая есть — ещё идут, иначе — последнее изменение.
+ */
+function unitsEnd(outline: ExecutionOutline, owner: TreeNode): End {
+  const counts = outline.unitCounts.filter((count) =>
+    owner.kind === 'BATCH' ? count.batchId === owner.task?.id : count.taskId === owner.task?.id && !count.batchId,
+  );
+  return combineEnds(counts.map((count) => (TERMINAL.includes(count.status) ? count.lastUpdatedAt : null)));
+}
+
+/** Когда закончились скрытые группы: каждая — со своими подзадачами; закрытая без них — по времени изменения. */
+function hiddenBatchesEnd(outline: ExecutionOutline, hiddenOf: (batch: TaskItem) => boolean): End {
+  return combineEnds(
+    outline.batches.filter(hiddenOf).map((batch) => {
+      if (!TERMINAL.includes(batch.state.status)) {
+        return null;
+      }
+      const ends = outline.unitCounts
+        .filter((count) => count.batchId === batch.id)
+        .map((count) => (TERMINAL.includes(count.status) ? count.lastUpdatedAt : null));
+      return combineEnds([batch.state.updatedAt, ...ends]);
+    }),
+  );
+}
+
+/**
+ * Работа — время самих попыток, без ожидания: закрытые — суммой, идущие — началами, их время растёт
+ * до текущего момента.
+ */
+export interface Work {
+  closedMs: number;
+  openStarts: string[];
+}
+
+/** Начало и окончание узла дерева и работа попыток в нём и под ним. */
+export interface NodeTimes {
+  start?: string;
+  end: End;
+  work: Work;
+}
+
+const NO_WORK: Work = { closedMs: 0, openStarts: [] };
+
+function attemptWork(attempt: AttemptEntry): Work {
+  const { startedAt, finishedAt } = attempt.times;
+  if (!startedAt) {
+    return NO_WORK;
+  }
+  return finishedAt ? { closedMs: between(startedAt, finishedAt), openStarts: [] } : { closedMs: 0, openStarts: [startedAt] };
+}
+
+function sumWork(parts: Work[]): Work {
+  return {
+    closedMs: parts.reduce((sum, part) => sum + part.closedMs, 0),
+    openStarts: parts.flatMap((part) => part.openStarts),
+  };
+}
+
+/** Своё начало и окончание попытки, без созданного ею. */
+export function attemptTimes(attempt: AttemptEntry): Omit<NodeTimes, 'work'> {
+  return {
+    start: attempt.times.startedAt,
+    end: attempt.times.startedAt ? (attempt.times.finishedAt ?? null) : undefined,
+  };
+}
+
+/**
+ * Начало, окончание и работа узлов дерева (docs/adr/0171-durations-and-limits.md). Окончание — последняя
+ * попытка или последний из созданных, и пока хоть что-то из этого идёт, идёт и узел. Начало у попытки
+ * и фазы — их первая попытка, у сущности — её создание: ожидание в очереди входит и в её «всего», и во
+ * «всего» узла над ней, и строки складываются. Сущность не в конечном статусе ещё идёт. Работа — сумма
+ * попыток узла и всего под ним; подзадач вне выдачи в ней нет.
+ */
+export function treeTimes(roots: TreeNode[]): Map<string, NodeTimes> {
+  const times = new Map<string, NodeTimes>();
+  const visit = (node: TreeNode): NodeTimes => {
+    const children = node.children.map(visit);
+    const childEnds = children.map((child) => child.end);
+    const childWork = children.map((child) => child.work);
+    let result: NodeTimes;
+    if (node.attempt) {
+      const own = attemptTimes(node.attempt);
+      result = {
+        start: own.start,
+        end: own.start ? combineEnds([own.end, ...childEnds]) : undefined,
+        work: sumWork([attemptWork(node.attempt), ...childWork]),
+      };
+    } else if (node.phase) {
+      const phase = node.phase;
+      const own = phase.list.map(attemptTimes);
+      const start = earliest(own.map((item) => item.start));
+      let end: End = undefined;
+      if (phase.waiting) {
+        end = null;
+      } else if (start) {
+        end = combineEnds([...own.map((item) => item.end), ...childEnds]);
+      }
+      // Попыток больше одной — они сами узлы под фазой и уже посчитаны в детях.
+      const ownWork = phase.list.length === 1 ? [attemptWork(phase.list[0])] : [];
+      result = { start, end, work: sumWork([...ownWork, ...childWork]) };
+    } else if (node.more) {
+      result = { end: node.more.end, work: NO_WORK };
+    } else {
+      const item = node.task ?? node.communication;
+      const process = node.processAttempt ? attemptTimes(node.processAttempt) : undefined;
+      let end: End = null;
+      // Не в конечном статусе — ещё идёт, даже если ждёт в очереди: у родителя такой ребёнок не закончен.
+      if (item && TERMINAL.includes(item.state.status)) {
+        // Не «??»: null — ещё идёт кто-то из детей, а время изменения — только когда сказать нечего.
+        const combined = combineEnds([process?.end, ...childEnds]);
+        end = combined === undefined ? item.state.updatedAt : combined;
+      }
+      result = {
+        start: item?.state.createdAt,
+        end,
+        work: sumWork([...(node.processAttempt ? [attemptWork(node.processAttempt)] : []), ...childWork]),
+      };
+    }
+    times.set(node.key, result);
+    return result;
+  };
+  roots.forEach(visit);
+  return times;
 }
 
 export function total(units: Record<string, number>): number {

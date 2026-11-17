@@ -186,6 +186,18 @@ public interface TaskInspection {
     Map<String, Integer> defaultPriorities();
 
     /**
+     * Предел одной попытки каждого метода процессора у типов задач с процессором — итог лестницы
+     * настроек {@code lease.max-execution-time} (docs/adr/0171-durations-and-limits.md). Вычисляется
+     * из настроек, в попытке не хранится.
+     *
+     * @return тип задачи → пределы его методов в порядке каскада, по имени типа; реализация, которая
+     *     настроек не знает, отдаёт пустое
+     */
+    default Map<String, List<TaskAttemptLimit>> attemptLimits() {
+        return Map.of();
+    }
+
+    /**
      * Поллер, который захватывает работу типа на этом экземпляре: выделенный или {@code main}
      * (docs/adr/0156-communication-keys-and-pollers-in-reading.md). Вычисляется из настроек,
      * в попытке не хранится.

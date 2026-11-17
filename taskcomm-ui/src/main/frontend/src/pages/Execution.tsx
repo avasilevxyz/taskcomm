@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { Button, Flex, Space, Tabs, Tag, Tree, Typography } from 'antd';
+import { Button, Flex, Space, Tabs, Tag, Tooltip, Tree, Typography } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import { useState, useMemo } from 'react';
-import { useParams, useSearchParams } from 'react-router';
-import { getJson, type CorrelationKey, type ExecutionOutline } from '../api';
+import { Link, useParams, useSearchParams } from 'react-router';
+import { getJson, type AttemptEntry, type CorrelationKey, type DedupKeyEntry, type ExecutionOutline } from '../api';
 import {
   CountLabel,
   communicationPath,
@@ -21,6 +21,9 @@ import {
   Reason,
 } from '../common';
 import { CreateInExecutionButton } from '../createPanel';
+import { attemptLimit, responseTimeout } from '../duration';
+import { Dotted, Elapsed, WorkTime } from '../elapsed';
+import { useMeta } from '../meta';
 import { ColumnsSlotProvider, DataTable, useColumnsSlot } from '../dataTable';
 import { useI18n } from '../i18n';
 import { rowOpens, useEntityPanel } from '../entityPanel';
@@ -32,7 +35,10 @@ import {
   restartChoices,
   restartTargets,
   toggleRestart,
+  attemptTimes,
+  treeTimes,
   type MoreNode,
+  type NodeTimes,
   type TreeNode,
 } from './executionTree';
 import { TaskTable, useTaskPages } from './TaskTable';
@@ -56,6 +62,8 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
   const { t } = useI18n();
   const time = useTime();
   const roots = useMemo(() => buildTree(outline), [outline]);
+  // Начало и окончание узлов: окончание фазы — окончание всех её детей (docs/adr/0171-durations-and-limits.md).
+  const times = useMemo(() => treeTimes(roots), [roots]);
   // Выбор для перезапуска нескольких сразу (docs/adr/0169-restart-many.md): ключи узлов сущностей.
   const choices = useMemo(() => restartChoices(roots), [roots]);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -121,12 +129,12 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
   const toData = (node: TreeNode): DataNode => ({
     key: node.key,
     title: node.more ? (
-      <NodeTitle node={node} onMore={showAll} />
+      <NodeTitle node={node} times={times.get(node.key)} onMore={showAll} />
     ) : (
       <Flex gap={8} align="center">
         {box(node)}
         <div {...rowOpens(() => openNode(node))} style={{ flex: 1, cursor: 'pointer' }}>
-          <NodeTitle node={node} onMore={showAll} />
+          <NodeTitle node={node} times={times.get(node.key)} onMore={showAll} />
         </div>
       </Flex>
     ),
@@ -135,10 +143,12 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
   const timeline = [
     ...outline.tasks.map((item) => ({ key: `TASK:${item.id}`, kind: 'TASK', item, createdAt: item.state.createdAt })),
     ...outline.batches.map((item) => ({ key: `BATCH:${item.id}`, kind: 'BATCH', item, createdAt: item.state.createdAt })),
+    // Подзадачи — те, что в выдаче: не больше 50 у родителя, остальные — по кнопке «Все подзадачи» в дереве.
+    ...(outline.units ?? []).map((item) => ({ key: `UNIT:${item.id}`, kind: 'UNIT', item, createdAt: item.state.createdAt })),
   ]
     .map((row) => ({
       key: row.key,
-      kind: row.kind as 'TASK' | 'BATCH' | 'COMMUNICATION',
+      kind: row.kind as 'TASK' | 'BATCH' | 'UNIT' | 'COMMUNICATION',
       id: row.item.id,
       name: row.item.taskType,
       label: <ProcessorTitle kind="task" id={row.item.taskType} />,
@@ -228,6 +238,16 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
                 scroll={{ x: 'max-content' }}
                 pagination={false}
                 dataSource={timeline}
+                // Щелчок по строке — карточка в боковой панели, как в дереве и в списках.
+                onRow={(row) =>
+                  rowOpens(() =>
+                    openEntity(
+                      row.kind === 'COMMUNICATION'
+                        ? { kind: 'communication', id: row.id, createdAt }
+                        : { kind: 'task', level: row.kind, id: row.id, createdAt },
+                    ),
+                  )
+                }
                 columns={[
                   { title: t('common.created'), sorter: by((row: { createdAt: string; kind: string; id: string; name: string; status: string }) => row.createdAt), dataIndex: 'createdAt', render: (value: string) => time(value) },
                   { title: t('common.type'), sorter: by((row: { createdAt: string; kind: string; id: string; name: string; status: string }) => row.kind), dataIndex: 'kind', render: (kind: 'TASK') => t(`level.${kind}`) },
@@ -268,6 +288,10 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
                 pagination={false}
                 rowKey={(row) => `${row.externalSystem}/${row.correlationId}`}
                 dataSource={outline.correlationKeys}
+                // Щелчок по строке — карточка коммуникации ключа.
+                onRow={(row) =>
+                  rowOpens(() => openEntity({ kind: 'communication', id: row.communicationId, createdAt }))
+                }
                 columns={[
                   { title: t('communications.system'), sorter: by((row: CorrelationKey) => row.externalSystem), dataIndex: 'externalSystem', render: (system: string) => <ProcessorTitle kind="system" id={system} /> },
                   { title: t('execution.correlationId'), sorter: by((row: CorrelationKey) => row.correlationId), dataIndex: 'correlationId' },
@@ -281,15 +305,100 @@ function ExecutionView({ outline }: { outline: ExecutionOutline }) {
               />
             ),
           },
+          // Ключи дедупликации дела (docs/adr/0172-execution-dedup-keys.md); старый сервер их не отдаёт — вкладки нет.
+          ...(outline.dedupKeys
+            ? [
+                {
+                  key: 'dedup',
+                  label: <CountLabel label={t('execution.dedup')} count={outline.dedupKeys.length} />,
+                  children: (
+                    <DataTable<DedupKeyEntry>
+                      size="small"
+                      scroll={{ x: 'max-content' }}
+                      pagination={false}
+                      rowKey={(row) => `${row.communicationId}/${row.subject ?? ''}/${row.key}`}
+                      dataSource={outline.dedupKeys}
+                      onRow={(row) =>
+                        rowOpens(() => openEntity({ kind: 'communication', id: row.communicationId, createdAt }))
+                      }
+                      columns={[
+                        { title: t('communications.direction'), sorter: by((row: DedupKeyEntry) => row.direction), dataIndex: 'direction', render: (direction: DedupKeyEntry['direction']) => t(`direction.${direction}`) },
+                        { title: t('communications.system'), sorter: by((row: DedupKeyEntry) => row.externalSystem), dataIndex: 'externalSystem', render: (system: string) => <ProcessorTitle kind="system" id={system} /> },
+                        {
+                          title: (
+                            <Tooltip title={t('execution.dedupSubjectHint')}>
+                              <span style={{ cursor: 'help', textDecoration: 'underline dotted' }}>{t('execution.dedupSubject')}</span>
+                            </Tooltip>
+                          ),
+                          sorter: by((row: DedupKeyEntry) => row.subject), dataIndex: 'subject',
+                          render: (subject?: string | null) => subject ?? '—',
+                        },
+                        {
+                          title: t('execution.correlationId'),
+                          sorter: by((row: DedupKeyEntry) => row.key),
+                          // Ключ — ссылка на поиск в его пространстве, как в карточке коммуникации.
+                          render: (_, row) => <Link to={dedupSearch(row)}>{row.key}</Link>,
+                        },
+                        {
+                          title: t('level.COMMUNICATION'),
+                          dataIndex: 'communicationId',
+                          render: (id: string) => <IdLink to={communicationPath(id, createdAt)} id={id} />,
+                        },
+                        { title: t('common.created'), sorter: by((row: DedupKeyEntry) => row.createdAt), dataIndex: 'createdAt', render: (value: string) => time(value) },
+                      ]}
+                    />
+                  ),
+                },
+              ]
+            : []),
         ]}
       />
     </Flex>
   );
 }
 
-function NodeTitle({ node, onMore }: { node: TreeNode; onMore: (more: MoreNode) => void }) {
+/** Поиск коммуникаций по ключу дедупликации — в его пространстве: направление и система. */
+function dedupSearch(row: DedupKeyEntry): string {
+  return `/communications?${new URLSearchParams({
+    direction: row.direction,
+    system: row.externalSystem,
+    dedupKey: row.key,
+    ...(row.subject ? { dedupSubject: row.subject } : {}),
+  })}`;
+}
+
+/** Созданное узлом — не его фазы и попытки: только тогда у строки есть «всего», отличное от её попытки. */
+function hasCreated(node: TreeNode): boolean {
+  return node.children.some((child) => !child.phase && !child.attempt);
+}
+
+function NodeTitle({ node, times, onMore }: { node: TreeNode; times?: NodeTimes; onMore: (more: MoreNode) => void }) {
   const { t } = useI18n();
   const time = useTime();
+  const meta = useMeta().data;
+  // Суммарное время родителя: от создания (у фазы — от первой попытки) до окончания последней попытки или
+  // последнего ребёнка; рядом — работа, сумма попыток здесь и ниже (docs/adr/0171-durations-and-limits.md).
+  const totalParts = (withWork: boolean) =>
+    times?.start && times.end !== undefined
+      ? [
+          <Elapsed key="total" start={times.start} end={times.end} limit="none" total />,
+          withWork && <WorkTime key="work" {...times.work} />,
+        ]
+      : [];
+  // Начало и длительность попытки, слитой со строкой; начала нет — нет и длительности.
+  const attemptParts = (attempt: AttemptEntry | undefined, processor: string) =>
+    attempt?.times.startedAt
+      ? [
+          <Typography.Text key="started" type="secondary">
+            {time(attempt.times.startedAt)}
+          </Typography.Text>,
+          <Elapsed
+            key="duration"
+            {...attemptTimes(attempt)}
+            limit={attemptLimit(meta, attempt.kind, processor, attempt.phase)}
+          />,
+        ]
+      : [];
   const createdAt = node.task?.execution.createdAt ?? node.communication?.execution.createdAt ?? '';
   if (node.more) {
     const more = node.more;
@@ -310,6 +419,10 @@ function NodeTitle({ node, onMore }: { node: TreeNode; onMore: (more: MoreNode) 
           <>
             <Tag>{t('execution.phaseNotStarted')}</Tag>
             <StatusTag status={phase.waiting.status} description={phase.waiting.statusDescription} />
+            {/* Ждём асинхронного ответа: срок — от конца отправки (docs/adr/0171-durations-and-limits.md). */}
+            {phase.waiting.since && (
+              <Elapsed start={phase.waiting.since} end={null} limit={responseTimeout(meta, phase.processor)} />
+            )}
           </>
         ) : (
           <>
@@ -322,9 +435,12 @@ function NodeTitle({ node, onMore }: { node: TreeNode; onMore: (more: MoreNode) 
               <Tag>{t('execution.attemptOpen')}</Tag>
             )}
             {/* Одна попытка слита с фазой — её время и причина здесь же. */}
-            {phase.attempts === 1 && phase.last?.times.startedAt && (
-              <Typography.Text type="secondary">{time(phase.last.times.startedAt)}</Typography.Text>
-            )}
+            <Dotted
+              parts={[
+                ...(phase.attempts === 1 ? attemptParts(phase.last, phase.processor) : []),
+                ...(phase.attempts > 1 || hasCreated(node) ? totalParts(true) : []),
+              ]}
+            />
             {phase.attempts === 1 && phase.last?.outcome.statusDescription && (
               <Reason text={phase.last.outcome.statusDescription} width={360} />
             )}
@@ -343,7 +459,7 @@ function NodeTitle({ node, onMore }: { node: TreeNode; onMore: (more: MoreNode) 
         ) : (
           <Tag>{t('execution.attemptOpen')}</Tag>
         )}
-        {attempt.times.startedAt && <Typography.Text type="secondary">{time(attempt.times.startedAt)}</Typography.Text>}
+        <Dotted parts={attemptParts(attempt, attempt.processor)} />
         {attempt.outcome.statusDescription && <Reason text={attempt.outcome.statusDescription} width={360} />}
       </Flex>
     );
@@ -370,10 +486,14 @@ function NodeTitle({ node, onMore }: { node: TreeNode; onMore: (more: MoreNode) 
           <SyncTag runMode={node.communication.runMode} />
         </>
       )}
-      {/* Единственная попытка обработки слита со строкой сущности — её время здесь. */}
-      {node.processAttempt?.times.startedAt && (
-        <Typography.Text type="secondary">{time(node.processAttempt.times.startedAt)}</Typography.Text>
-      )}
+      {/* Единственная попытка обработки слита со строкой сущности — её время здесь. «Всего» у сущности —
+          всегда: в нём её ожидание в очереди; работа — когда под ней есть ещё попытки. */}
+      <Dotted
+        parts={[
+          ...attemptParts(node.processAttempt, node.task?.taskType ?? node.communication?.externalSystem ?? ''),
+          ...totalParts(!node.processAttempt || node.children.length > 0),
+        ]}
+      />
       {node.outsideOrigin && (
         <Typography.Text type="secondary">
           {t('execution.createdBy', { type: t(`level.${node.outsideOrigin.type}`), id: shortId(node.outsideOrigin.id) })}

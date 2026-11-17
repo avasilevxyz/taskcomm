@@ -18,6 +18,7 @@ import xyz.avasilev.taskcomm.SqlQuery;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationInspection;
 import xyz.avasilev.taskcomm.communication.api.inspection.CommunicationQuery;
 import xyz.avasilev.taskcomm.communication.api.inspection.CorrelationKeySnapshot;
+import xyz.avasilev.taskcomm.communication.api.inspection.DedupKeyEntry;
 import xyz.avasilev.taskcomm.execution.api.ExecutionRef;
 import xyz.avasilev.taskcomm.execution.api.ExecutionService;
 import xyz.avasilev.taskcomm.execution.api.HistoryWindow;
@@ -117,7 +118,7 @@ public class ExecutionController extends RestErrors {
                                         .toList(),
                         this.tasks == null ? List.<TaskUnitCount>of() : this.tasks.unitCounts(found),
                         this.communications(found),
-                        this.correlationKeys(found),
+                        new RestDtos.ExecutionKeysDto(this.correlationKeys(found), this.dedupKeys(found)),
                         this.attempts(found))))
                 .orElseGet(() -> notFound("дело " + id));
     }
@@ -170,6 +171,7 @@ public class ExecutionController extends RestErrors {
                     this.communications.listSql(
                             CommunicationQuery.all().inExecution(execution), HistoryWindow.everywhere(), first));
             statements.put("Ключи корреляции дела", this.communications.correlationKeysSql(execution));
+            statements.put("Ключи дедупликации дела", this.communications.dedupKeysSql(execution));
             statements.put("Попытки коммуникаций дела", this.communications.attemptEntriesSql(execution));
         }
         return statements;
@@ -214,7 +216,8 @@ public class ExecutionController extends RestErrors {
                 this.level(execution, TaskSnapshot.Level.BATCH),
                 this.level(execution, TaskSnapshot.Level.UNIT),
                 this.communications(execution),
-                this.correlationKeys(execution));
+                this.correlationKeys(execution),
+                this.dedupKeys(execution));
     }
 
     private List<RestDtos.CommunicationDto> communications(final ExecutionRef execution) {
@@ -228,6 +231,10 @@ public class ExecutionController extends RestErrors {
 
     private List<CorrelationKeySnapshot> correlationKeys(final ExecutionRef execution) {
         return this.communications == null ? List.of() : this.communications.correlationKeys(execution);
+    }
+
+    private List<DedupKeyEntry> dedupKeys(final ExecutionRef execution) {
+        return this.communications == null ? List.of() : this.communications.dedupKeys(execution);
     }
 
     private List<RestDtos.TaskDto> level(final ExecutionRef execution, final TaskSnapshot.Level level) {
