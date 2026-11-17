@@ -33,6 +33,14 @@ export function taskRestartable(level: Level, status: string): boolean {
   return level === 'UNIT' ? status === 'FAILED' : PARENT_RESTARTABLE.has(status);
 }
 
+/**
+ * Принимает ли родитель перезапуск детей — то же условие, что сервер ставит предку: завершён, ждёт детей
+ * или ждёт сборки; не собирается и не раскрывается. Отметку отмены и удалённые результаты проверит сервер.
+ */
+export function acceptsChildRestart(status: string, phase?: string): boolean {
+  return PARENT_RESTARTABLE.has(status) || status === 'AWAITING_CHILDREN' || (status === 'PENDING' && phase === 'COLLECT');
+}
+
 /** Коммуникация — только упавшая и не синхронная исходящая (docs/adr/0167-communication-run-mode.md). */
 export function communicationRestartable(item: CommunicationItem): boolean {
   return item.state.status === 'FAILED' && !(item.direction === 'OUTBOUND' && item.runMode === 'SYNC');

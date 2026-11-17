@@ -8,7 +8,14 @@ import { useI18n } from '../i18n';
  * Отмена и перезапуск: отказ (409) — исход с причиной, а не ошибка; после действия затронутые
  * экраны перечитываются сразу, не дожидаясь опроса.
  */
-export function Actions({ path, params, cancellable, restartable, restartHint, failedUnits = false, extra }: {
+/** Кнопка «Перезапустить упавшие подзадачи»: недоступная — с причиной в подсказке. */
+export interface FailedUnitsButton {
+  enabled: boolean;
+  count: number;
+  hint?: string;
+}
+
+export function Actions({ path, params, cancellable, restartable, restartHint, failedUnits, extra }: {
   path: string;
   params: Params;
   cancellable: boolean;
@@ -19,7 +26,7 @@ export function Actions({ path, params, cancellable, restartable, restartHint, f
    * Кнопка «Перезапустить упавшие подзадачи» — у задачи и группы с подзадачами
    * (docs/adr/0170-restart-failed-units.md). Есть ли упавшие, решит сервер.
    */
-  failedUnits?: boolean;
+  failedUnits?: FailedUnitsButton;
   /** Прочие действия карточки — в той же строке. */
   extra?: ReactNode;
 }) {
@@ -60,11 +67,20 @@ export function Actions({ path, params, cancellable, restartable, restartHint, f
           </Popconfirm>
         </Tooltip>
         {failedUnits && (
-          <Popconfirm title={t('restart.failedUnitsConfirm')} onConfirm={() => action.mutate('restart-failed-units')}>
-            <Button loading={action.isPending && action.variables === 'restart-failed-units'}>
-              {t('restart.failedUnits')}
-            </Button>
-          </Popconfirm>
+          <Tooltip title={failedUnits.hint}>
+            <Popconfirm
+              title={t('restart.failedUnitsConfirm', { count: failedUnits.count })}
+              onConfirm={() => action.mutate('restart-failed-units')}
+              disabled={!failedUnits.enabled}
+            >
+              <Button
+                disabled={!failedUnits.enabled}
+                loading={action.isPending && action.variables === 'restart-failed-units'}
+              >
+                {t('restart.failedUnits', { count: failedUnits.count })}
+              </Button>
+            </Popconfirm>
+          </Tooltip>
         )}
         {extra}
       </Space>
@@ -75,11 +91,7 @@ export function Actions({ path, params, cancellable, restartable, restartHint, f
 
 const FINAL = new Set(['SUCCEEDED', 'WARNING', 'FAILED', 'CANCELLED', 'SKIPPED', 'ABANDONED']);
 
-/** Отменить можно незавершённое; перезапустить — завершённое неуспешно. Остальное решит сервер. */
+/** Отменить можно незавершённое; остальное решит сервер. Перезапуск — по правилам уровня, в restartMany. */
 export function canCancel(status: string): boolean {
   return !FINAL.has(status);
-}
-
-export function canRestart(status: string): boolean {
-  return status === 'FAILED' || status === 'WARNING';
 }

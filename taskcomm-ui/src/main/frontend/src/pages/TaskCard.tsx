@@ -29,7 +29,8 @@ import { useI18n } from '../i18n';
 import { useMeta } from '../meta';
 import { useInPanel, usePanelLabel } from '../panels';
 import { fieldColumns, fillTitle, useSearchFields } from './searchFields';
-import { Actions, canCancel, canRestart } from './actions';
+import { Actions, canCancel, type FailedUnitsButton } from './actions';
+import { acceptsChildRestart, taskRestartable } from '../restartMany';
 import { TaskTable, useTaskPages } from './TaskTable';
 
 /** Карточка по адресу экрана. */
@@ -67,6 +68,7 @@ function TaskDetails({ task }: { task: TaskItem }) {
     queryFn: () => getJson<TaskAttempt[]>(`${path}/attempts`, { executionCreatedAt: createdAt }),
   });
   const { selected, rowSelection, onRow } = useAttemptSelection(attempts.data);
+  const failedUnits = useFailedUnits(task, contract, attempts.data);
   // Кнопка «Столбцы» таблицы попыток — в заголовке её карточки.
   const [attemptsSlot, attemptsSlotNode] = useColumnsSlot();
   const fields = useSearchFields();
@@ -99,8 +101,8 @@ function TaskDetails({ task }: { task: TaskItem }) {
         path={path}
         params={{ executionCreatedAt: createdAt }}
         cancellable={canCancel(task.state.status)}
-        restartable={canRestart(task.state.status)}
-        failedUnits={task.level !== 'UNIT' && contract !== undefined && contract !== 'FLAT'}
+        restartable={taskRestartable(task.level, task.state.status)}
+        failedUnits={failedUnits}
       />
       {/* Попытки — на своей вкладке: на основной то, что сущность сейчас представляет собой. */}
       <Tabs
@@ -302,6 +304,41 @@ function AttemptChildren({ task, contract, attempt }: { task: TaskItem; contract
 }
 
 /** Число детей уровня по тем же условиям, что у списка на вкладке. */
+/**
+ * Кнопка «Перезапустить упавшие подзадачи» (docs/adr/0170-restart-failed-units.md): только у задачи
+ * и группы с подзадачами; доступна, когда в последнем раскрытии есть упавшие и родитель принимает
+ * перезапуск детей. Точный отбор — на сервере: он не берёт подзадачи прежних раскрытий групп.
+ */
+function useFailedUnits(task: TaskItem, contract: string | undefined, attempts?: TaskAttempt[]): FailedUnitsButton | undefined {
+  const { t } = useI18n();
+  const parent = task.level !== 'UNIT' && contract !== undefined && contract !== 'FLAT';
+  const expansion = [...(attempts ?? [])].reverse().find((attempt) => attempt.phase === 'EXPAND');
+  const failed = useQuery({
+    queryKey: ['tasks', 'count', 'UNIT', 'FAILED', expansion?.id],
+    queryFn: () =>
+      getJson<{ count: number }>('/tasks/count', {
+        level: 'UNIT',
+        status: 'FAILED',
+        executionId: task.execution.id,
+        executionCreatedAt: task.execution.createdAt,
+        parentId: task.id,
+        parentAttemptId: expansion!.id,
+      }),
+    enabled: parent && expansion !== undefined,
+  });
+  if (!parent) {
+    return undefined;
+  }
+  const count = failed.data?.count ?? 0;
+  if (count === 0) {
+    return { enabled: false, count, hint: t('restart.noFailedUnits') };
+  }
+  if (!acceptsChildRestart(task.state.status, task.state.phase)) {
+    return { enabled: false, count, hint: t('restart.parentBusy') };
+  }
+  return { enabled: true, count };
+}
+
 function useChildCount(level: Level, scope: Record<string, string>, enabled: boolean): number | undefined {
   const count = useQuery({
     queryKey: ['tasks', 'count', level, scope.parentAttemptId],
