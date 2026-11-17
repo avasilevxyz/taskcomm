@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Card, Empty, Flex, Space, Tabs, Tag, Tooltip, Typography } from 'antd';
+import { Card, Empty, Flex, Space, Tabs, Tag, Typography } from 'antd';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { getJson, type CommunicationAttempt, type CommunicationItem, type CommunicationKeys, type ExchangeMessage } from '../api';
 import {
@@ -16,7 +16,9 @@ import {
   ProcessorId,
   ProcessorTitle,
   Reason,
+  RunModeLabel,
   StatusTag,
+  SyncTag,
   by,
   useAttemptSelection,
   useTime,
@@ -89,11 +91,7 @@ function CommunicationDetails({ communication }: { communication: CommunicationI
         <ProcessorId kind="system" id={communication.externalSystem} />
         <StatusTag status={status} description={communication.state.statusDescription} />
         <OrphanTag orphan={communication.state.orphan} />
-        {sync && (
-          <Tooltip title={t('communications.syncHint')}>
-            <Tag color="purple">{t('communications.sync')}</Tag>
-          </Tooltip>
-        )}
+        <SyncTag runMode={communication.runMode} />
       </Space>
       <ProcessorDescription kind="system" id={communication.externalSystem} />
       <Actions
@@ -132,6 +130,7 @@ function CommunicationDetails({ communication }: { communication: CommunicationI
                   { key: 'reason', label: t('common.reason'), children: communication.state.statusDescription ?? '—' },
                   { key: 'phase', label: t('common.phase'), children: <PhaseLabel phase={communication.state.phase} /> },
                   { key: 'transport', label: t('communications.transport'), children: communication.state.contractShape ?? '—' },
+                  { key: 'runMode', label: t('communications.runMode'), children: <RunModeLabel runMode={communication.runMode} /> },
                   {
                     key: 'requestId',
                     label: t('communications.requestId'),
