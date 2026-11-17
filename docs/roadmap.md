@@ -708,6 +708,8 @@
       пределы в `/meta` ([ADR 0171](adr/0171-durations-and-limits.md))
 - [x] Ключи дедупликации дела: `dedupKeys` в выдаче дела и вкладка на экране дела
       ([ADR 0172](adr/0172-execution-dedup-keys.md))
+- [x] Выпуск `2.5.0`: длительности и пределы в интерфейсе, ключи дедупликации дела — Maven Central
+      и GitHub Packages, тег `v2.5.0`
 
 ---
 

@@ -8,7 +8,7 @@
 ## Подключение
 
 ```groovy
-implementation platform('xyz.avasilev:taskcomm-bom:2.4.0')
+implementation platform('xyz.avasilev:taskcomm-bom:2.5.0')
 implementation 'xyz.avasilev:taskcomm-spring-boot-starter'
 implementation 'xyz.avasilev:taskcomm-ui'
 ```
